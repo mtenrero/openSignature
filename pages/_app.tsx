@@ -8,9 +8,8 @@ function MyApp({ Component, pageProps }: AppProps) {
     <Grommet plain>
       <Header background="brand">
           <Button margin="10px" hoverIndicator label={process.env.BRAND || "OpenSignature"}/>
-          <Menu label="account" items={[{ label: 'logout' }]} />
       </Header>
-      <Main margin={{top: "20px"}} align="center">
+      <Main margin={{top: "20px"}}>
 
         <Component {...pageProps} />
       </Main>
