@@ -6,13 +6,12 @@ import { Grommet, Main, Header, Button, Menu } from 'grommet'
 function MyApp({ Component, pageProps }: AppProps) {
   return (
     <Grommet plain>
-      <Main
-        border={{ color: 'brand', size: 'large' }}
-      >
-        <Header background="brand">
-          <Button hoverIndicator label="OpenSignature"/>
+      <Header background="brand">
+          <Button margin="10px" hoverIndicator label={process.env.BRAND || "OpenSignature"}/>
           <Menu label="account" items={[{ label: 'logout' }]} />
-        </Header>
+      </Header>
+      <Main margin={{top: "20px"}} align="center">
+
         <Component {...pageProps} />
       </Main>
     </Grommet>
