@@ -1,11 +1,13 @@
-import { Card, CardHeader, CardBody, CardFooter, Button, CheckBox, ResponsiveContext, Heading, Paragraph, Box } from "grommet";
-import React from "react";
-import SignaturePad from "react-signature-pad-wrapper";
+import { Card, CardHeader, CardBody, CardFooter, Button, CheckBox, ResponsiveContext, Heading, Paragraph, Box } from "grommet"
+import React, { useState } from "react"
+import SignaturePad from "react-signature-pad-wrapper"
 
 
 export default function SignDocument(props: any) {
     const size = React.useContext(ResponsiveContext);
     const Canvas = props => <canvas {...props}/>
+
+    const [acceptChecked, setAcceptChecked] = useState(false)
 
     return(
         <Box margin={{bottom: "10px"}}>
@@ -30,15 +32,20 @@ export default function SignDocument(props: any) {
                     <div style={{margin:"15px"}}>
 
                     <Heading level="3" margin="none">Signature</Heading>
+                    <div style={{marginTop: "10px", marginBottom: "10px"}}>
+                    Acting as <b>{"Name"}, {"Surname"}</b> with ID Number <b>{"ID Num."}</b>, phone
+                    number {"999999999"} and e-mail address {"email@email.com"}:
+                    </div>
                     <CheckBox
                         label="I accept the terms of this contract"
                         style={{marginTop: "10px"}}
+                        onChange={()=> {setAcceptChecked(!acceptChecked)}}
                     />
                     <Box 
                         border
                         style={{marginTop: "10px"}}
                     >
-                        <SignaturePad  redrawOnResize canvasProps={{
+                        <SignaturePad redrawOnResize canvasProps={{
                             backgroundColor: 'rgb(255, 255, 255)'
                         }}/>
                     </Box>
@@ -48,7 +55,7 @@ export default function SignDocument(props: any) {
                 </CardBody>
                 <CardFooter background="light-2">
                     
-                    <Button primary margin="5px" hoverIndicator label="Sign" />
+                    <Button disabled={!acceptChecked} primary margin="5px" hoverIndicator label="Sign" />
                 </CardFooter>
             </Card>
         </Box>
