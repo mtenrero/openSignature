@@ -10,19 +10,23 @@ export default function SignDocument(props: any) {
 
     const [acceptChecked, setAcceptChecked] = useState(false)
 
+    const signAnalogData = () => {
+        console.log(signature.current);
+        const ctx = signature.current.signaturePad._ctx;
+        ctx.fillStyle = "#999999"
+        ctx.font = "20px sans-serif"
+        const d = moment().format('DD/MM/YYYY')
+        const slug = `${d} NAME LAST NAME `
+        ctx.fillText(
+            `${slug} - ${slug} - ${slug} - ${slug}`,
+            0,
+            20
+        )
+    }
+
     useEffect(() => {
         if (signature.current) {
-            console.log(signature.current);
-            const ctx = signature.current.signaturePad._ctx;
-            ctx.fillStyle = "#999999"
-            ctx.font = "20px sans-serif"
-            const d = moment().format('DD/MM/YYYY')
-            const slug = `${d} NAME LAST NAME `
-            ctx.fillText(
-                `${slug} - ${slug} - ${slug} - ${slug}`,
-                0,
-                20
-            )
+            signAnalogData()
         }
     })
 
@@ -62,7 +66,11 @@ export default function SignDocument(props: any) {
                         border
                         style={{marginTop: "10px"}}
                     >
-                        <Button label="X" onClick={()=> {signature.current.clear()}} />
+                        <Button label="X" onClick={()=> {
+                            signature.current.clear()
+                            signAnalogData()}
+                            } 
+                        />
                         <SignaturePad ref={signature} redrawOnResize canvasProps={{
                             backgroundColor: 'rgb(255, 255, 255)'
                         }}/>
