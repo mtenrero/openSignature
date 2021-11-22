@@ -1,18 +1,18 @@
 import { Card, CardHeader, CardBody, CardFooter, Button, CheckBox, ResponsiveContext, Heading, Paragraph, Box } from "grommet"
-import React, { useState } from "react"
+import React, { useRef, useState } from "react"
 import SignaturePad from "react-signature-pad-wrapper"
 
 
 export default function SignDocument(props: any) {
     const size = React.useContext(ResponsiveContext);
-    const Canvas = props => <canvas {...props}/>
+    const signature = useRef({})
 
     const [acceptChecked, setAcceptChecked] = useState(false)
 
     return(
         <Box margin={{bottom: "10px"}}>
             <Heading textAlign="center">Contract Name</Heading>
-            <Card alignSelf="center" height={{min: "80%"}} width={{min: "60%", max: "90%"}} background="light-1">
+            <Card alignSelf="center" height={{min: "60%"}} width={{min: "60%", max: "90%"}} background="light-1">
                 <CardBody pad={size} style={{textAlign: "justify"}}>
                     Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut
                     labore et dolore magna aliqua.
@@ -45,7 +45,8 @@ export default function SignDocument(props: any) {
                         border
                         style={{marginTop: "10px"}}
                     >
-                        <SignaturePad redrawOnResize canvasProps={{
+                        <Button label="X" onClick={()=> {signature.current.clear()}} />
+                        <SignaturePad ref={signature} redrawOnResize canvasProps={{
                             backgroundColor: 'rgb(255, 255, 255)'
                         }}/>
                     </Box>
@@ -54,7 +55,6 @@ export default function SignDocument(props: any) {
                 
                 </CardBody>
                 <CardFooter background="light-2">
-                    
                     <Button disabled={!acceptChecked} primary margin="5px" hoverIndicator label="Sign" />
                 </CardFooter>
             </Card>
