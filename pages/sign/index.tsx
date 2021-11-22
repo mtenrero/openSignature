@@ -1,13 +1,30 @@
+import { sign } from "crypto";
 import { Card, CardHeader, CardBody, CardFooter, Button, CheckBox, ResponsiveContext, Heading, Paragraph, Box } from "grommet"
-import React, { useRef, useState } from "react"
+import moment from "moment";
+import React, { useEffect, useRef, useState } from "react"
 import SignaturePad from "react-signature-pad-wrapper"
-
 
 export default function SignDocument(props: any) {
     const size = React.useContext(ResponsiveContext);
-    const signature = useRef({})
+    const signature = useRef()
 
     const [acceptChecked, setAcceptChecked] = useState(false)
+
+    useEffect(() => {
+        if (signature.current) {
+            console.log(signature.current);
+            const ctx = signature.current.signaturePad._ctx;
+            ctx.fillStyle = "#999999"
+            ctx.font = "20px sans-serif"
+            const d = moment().format('DD/MM/YYYY')
+            const slug = `${d} NAME LAST NAME `
+            ctx.fillText(
+                `${slug} - ${slug} - ${slug} - ${slug}`,
+                0,
+                20
+            )
+        }
+    })
 
     return(
         <Box margin={{bottom: "10px"}}>
