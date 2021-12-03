@@ -20,7 +20,8 @@
     "react-signature-pad-wrapper": "^2.0.2",
     "relational-pouch": "^4.0.0",
     "signature_pad": "^3.0.0-beta.4",
-    "styled-components": "^5.3.3"
+    "styled-components": "^5.3.3",
+    "uuid": "^8.3.2"
   },
   "devDependencies": {
     "@types/node": "16.11.9",
