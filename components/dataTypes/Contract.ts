@@ -9,6 +9,7 @@ export interface SendData {
 }
 
 export interface ContractDetails {
+    name?: string
     _id?: string
     templateID?: string // templateID to get template from
     template?: string // embedded template data

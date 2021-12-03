@@ -26,14 +26,6 @@ export default async function handler(
     case 'PUT':
       const tenant_details = await findTenantByToken(apikey.split(' ')[1])
 
-      const template_data = await getTemplate(
-        tenant_details["tenant"],
-        template.toString()
-      ).catch(e => {
-        res.status(400)
-        res.end()
-      })
-
       const contract = await generateContract(tenant_details["tenant"], {
         templateID: template.toString(),
         sendData: body['sendData'],
@@ -46,6 +38,18 @@ export default async function handler(
       const df = new DataFetcher({dbName: tenant_details["tenant"]})
       const saved_contract = await df.save(contract)
 
+      try {
+        if (saved_contract['ok']) {
+          const df_contrats = new DataFetcher({dbName: "esign_contracts"})
+          await df_contrats.save({
+            _id: contract["_id"]?.replace("contract:", ""),
+            tenant: tenant_details["tenant"]
+          })
+        }
+      } catch{
+        // TODO Remove failed contract
+      }
+     
       res.status(200).json(saved_contract)
       break
     default:
