@@ -33,8 +33,6 @@ export default async function handler(
 
       const contract_details = await df_tenant.get(`contract:${contract}`)
 
-      console.log(body)
-
       contract_details['templateData']['date']= moment().format('DD/MM/YYYY')
       const htmlContract = Handlebars.compile(contract_details.template)
 
@@ -56,6 +54,8 @@ export default async function handler(
         signed: true,
         completed: true,
         signDate: moment().format("DD/MM/YYYY HH:mm:ss")
+      }).catch(err => {
+        console.log(err)
       })
 
       res.status(200).json({
