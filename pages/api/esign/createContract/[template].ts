@@ -4,6 +4,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { generateContract, getTemplate } from '../../../../components/libs/contract'
 import DataFetcher from '../../../../libs/dataFetcher'
 import findTenantByToken from '../../../../libs/findToken'
+import { sendSMS } from '../../../../libs/sendSMS'
 
 type Data = {
   name: string
@@ -46,6 +47,13 @@ export default async function handler(
             _id: contract["_id"]?.replace("contract:", ""),
             tenant: tenant_details["tenant"]
           })
+          if (process.env.SEND_SMS) {
+            await sendSMS(
+              "Barvet",
+              "Hola! Tienes un contrato por firmar " + `https://sign.barvet.es/sign/${contract["_id"]?.replace("contract:", "")}`,
+              `${body['sendData']['phone']}`
+            )
+          }
         }
       } catch{
         // TODO Remove failed contract
