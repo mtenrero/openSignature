@@ -31,7 +31,10 @@ export default async function handler(
       const contract_map = await df_contrats.get(`${contract}`)
       const df_tenant = new DataFetcher({dbName: contract_map.tenant})
 
-      const contract_details = await df_tenant.get(`contract:${contract}`)
+      const contract_details = await df_tenant.get(`contract:${contract}`).catch(err => {
+        res.status(500).send(err)
+        res.end()
+      })
 
       contract_details['templateData']['date']= moment().format('DD/MM/YYYY')
       const htmlContract = Handlebars.compile(contract_details.template)
@@ -43,6 +46,9 @@ export default async function handler(
           }),
         signer_name: `${contract_details.templateData.name} ${contract_details.templateData.lastname}`,
         signature: body.signature
+      }).catch(err => {
+        res.status(500).send(err)
+        res.end()
       })
 
       const base64 = await StreamToBase64Var(pdf)      
@@ -55,7 +61,8 @@ export default async function handler(
         completed: true,
         signDate: moment().format("DD/MM/YYYY HH:mm:ss")
       }).catch(err => {
-        console.log(err)
+        res.status(500).send(err)
+        res.end()
       }).then(value => {
         res.status(200).json({
           status: "OK",
