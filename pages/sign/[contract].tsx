@@ -56,7 +56,12 @@ export default function SignDocument(props: any) {
                 title: "ERROR",
                 message: "Ocurrió un error firmando el contrato"
             })
+            setSigning(false)
+            setToastVisible(true)
         })
+        if (client) {
+            router.reload()
+        }
     }
 
     useEffect(() => {
