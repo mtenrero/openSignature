@@ -56,11 +56,15 @@ export default async function handler(
         signDate: moment().format("DD/MM/YYYY HH:mm:ss")
       }).catch(err => {
         console.log(err)
+      }).then(value => {
+        res.status(200).json({
+          status: "OK",
+        })
+        res.end()
       })
 
-      res.status(200).json({
-        status: "OK",
-      })
+      res.status(500).end()
+      
       break
     default:
       res.setHeader('Allow', ['POST'])
