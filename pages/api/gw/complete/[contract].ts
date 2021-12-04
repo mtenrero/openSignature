@@ -6,7 +6,6 @@ const { convert } = require('html-to-text');
 import Handlebars from "handlebars";'handlebars/dist/handlebars.min.js';
 import { createPDFAgreement } from '../../../../libs/createPDF';
 import StreamToBase64Var from '../../../../libs/streamToBase64Var';
-var {Base64Encode} = require('base64-stream');
 
 type Data = {
   status: string
@@ -34,7 +33,7 @@ export default async function handler(
 
       const contract_details = await df_tenant.get(`contract:${contract}`)
 
-      console.log(contract_details)
+      console.log(body)
 
       contract_details['templateData']['date']= moment().format('DD/MM/YYYY')
       const htmlContract = Handlebars.compile(contract_details.template)
@@ -44,7 +43,8 @@ export default async function handler(
         agreement: convert(htmlContract(contract_details.templateData), {
             wordwrap: 130
           }),
-        signer_name: `${contract_details.templateData.name} ${contract_details.templateData.lastname}`
+        signer_name: `${contract_details.templateData.name} ${contract_details.templateData.lastname}`,
+        signature: body.signature
       })
 
       const base64 = await StreamToBase64Var(pdf)      

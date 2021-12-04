@@ -36,21 +36,14 @@ export default function SignDocument(props: any) {
     }
 
     const onClick = async (event) => {
-
         const pdf = await axios({
             method: 'POST',
             url: props.signEndpoint,
             data: {
-                signature: signature.current.toDataURL("image/jpeg")
+                signature: signature.current.toDataURL("image/png")
             },
             transformResponse: r => {r}
         })
-       
-        const buffer = new Buffer.from(pdf.data, 'base64')
-        const blob = new Blob([buffer], { type: 'application/pdf' });
-
-        var fileURL = URL.createObjectURL(blob, { type: 'application/pdf' });
-        window.open(fileURL)
     }
 
     useEffect(() => {
@@ -88,7 +81,11 @@ export default function SignDocument(props: any) {
                             } 
                         />
                         <SignaturePad ref={signature} redrawOnResize canvasProps={{
-                            backgroundColor: 'rgb(255, 255, 255)'
+                            backgroundColor: 'white',
+                            minWidth: 40,
+                            maxWidth: 60,
+                            penColor: "black",
+                            dotSize: 10
                         }}/>
                     </Box>
                     </div>
