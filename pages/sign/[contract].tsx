@@ -50,8 +50,6 @@ export default function SignDocument(props: any) {
             data: {
                 signature: signature.current.toDataURL("image/png")
             },
-        }).catch(err =>{
-            console.log(err)
         })
         if (pdf.status== 200) {
             router.reload()
