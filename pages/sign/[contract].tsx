@@ -8,6 +8,7 @@ import SignaturePad from "react-signature-pad-wrapper"
 import DataFetcher from '../../libs/dataFetcher';
 import Handlebars from "handlebars";
 import axios from "axios";
+import axiosRetry from 'axios-retry';
 import { IconContext } from "react-icons";
 import { FiCheck, FiAlertOctagon } from "react-icons/fi";
 import ReactLoading from "react-loading";
@@ -27,9 +28,9 @@ export default function SignDocument(props: any) {
 
     const [acceptChecked, setAcceptChecked] = useState(false)
 
+    axiosRetry(axios, { retries: 3 });
 
     const signAnalogData = () => {
-        console.log(signature.current);
         const ctx = signature.current.signaturePad._ctx;
         ctx.fillStyle = "#999999"
         ctx.font = "20px sans-serif"
