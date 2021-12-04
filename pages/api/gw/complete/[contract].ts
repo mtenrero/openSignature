@@ -49,26 +49,29 @@ export default async function handler(
       }).catch(err => {
         res.status(500).send(err)
         res.end()
-      })
+      }).then( async stream => {
+        // @ts-expect-error
+        const base64 = await StreamToBase64Var(stream)      
 
-      const base64 = await StreamToBase64Var(pdf)      
-
-      df_tenant.save({
-        ...contract_details,
-        pdf: base64,
-        status: "signed",
-        signed: true,
-        completed: true,
-        signDate: moment().format("DD/MM/YYYY HH:mm:ss")
-      }).catch(err => {
-        res.status(500).send(err)
-        res.end()
-      }).then(value => {
-        res.status(200).json({
-          status: "OK",
+        df_tenant.save({
+          ...contract_details,
+          pdf: base64,
+          status: "signed",
+          signed: true,
+          completed: true,
+          signDate: moment().format("DD/MM/YYYY HH:mm:ss")
+        }).catch(err => {
+          res.status(500).send(err)
+          res.end()
+        }).then(value => {
+          res.status(200).json({
+            status: "OK",
+          })
+          res.end()
         })
-        res.end()
       })
+
+      
 
       res.status(503).end()
       
