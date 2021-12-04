@@ -1,11 +1,10 @@
 // Next.js API route support: https://nextjs.org/docs/api-routes/introduction
 import moment from 'moment'
 import type { NextApiRequest, NextApiResponse } from 'next'
-import { generatePDF } from '../../../../libs/createPDF'
 import DataFetcher from '../../../../libs/dataFetcher'
 const { convert } = require('html-to-text');
 import Handlebars from "handlebars";'handlebars/dist/handlebars.min.js';
-import {writeFileSync} from 'fs'
+import { createPDFAgreement } from '../../../../libs/createPDF';
 type Data = {
   name: string
 }
@@ -37,8 +36,7 @@ export default async function handler(
       contract_details['templateData']['date']= moment().format('DD/MM/YYYY')
       const htmlContract = Handlebars.compile(contract_details.template)
 
-
-      const pdf = await generatePDF({
+      const pdf = await createPDFAgreement({
         name: contract_details['name'],
         agreement: convert(htmlContract(contract_details.templateData), {
             wordwrap: 130
@@ -46,11 +44,8 @@ export default async function handler(
         signer_name: `${contract_details.templateData.name} ${contract_details.templateData.lastname}`
       })
 
-      writeFileSync('pdf.pdf', pdf)
-
-      res.setHeader('Content-Length', pdf.length);
       res.setHeader('Content-Type', 'application/pdf');
-      res.end(Buffer.from(pdf.buffer, 'binary'));
+      res.send(pdf)
       break
     default:
       res.setHeader('Allow', ['PUT'])

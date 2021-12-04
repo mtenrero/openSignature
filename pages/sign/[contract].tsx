@@ -6,8 +6,8 @@ import { BaseContext } from "next/dist/shared/lib/utils";
 import React, { useEffect, useRef, useState } from "react"
 import SignaturePad from "react-signature-pad-wrapper"
 import DataFetcher from '../../libs/dataFetcher';
-import Handlebars from "handlebars";'handlebars/dist/handlebars.min.js';
-import {generatePDF} from '../../libs/createPDF';
+import Handlebars from "handlebars";import { createPDFAgreement } from "../../libs/createPDF";
+'handlebars/dist/handlebars.min.js';
 const { convert } = require('html-to-text');
 
 export default function SignDocument(props: any) {
@@ -35,7 +35,7 @@ export default function SignDocument(props: any) {
     }
 
     const onClick = async (event) => {
-        const blob = await generatePDF({
+        const blob = await createPDFAgreement({
             name: props.contract.name,
             agreement: convert(htmlContract(props.contract.templateData), {
                 wordwrap: 130
