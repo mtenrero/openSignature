@@ -6,7 +6,8 @@ import { BaseContext } from "next/dist/shared/lib/utils";
 import React, { useEffect, useRef, useState } from "react"
 import SignaturePad from "react-signature-pad-wrapper"
 import DataFetcher from '../../libs/dataFetcher';
-import Handlebars from "handlebars";import { createPDFAgreement } from "../../libs/createPDF";
+import Handlebars from "handlebars";
+import axios from "axios";
 'handlebars/dist/handlebars.min.js';
 const { convert } = require('html-to-text');
 
@@ -35,14 +36,20 @@ export default function SignDocument(props: any) {
     }
 
     const onClick = async (event) => {
-        const blob = await createPDFAgreement({
-            name: props.contract.name,
-            agreement: convert(htmlContract(props.contract.templateData), {
-                wordwrap: 130
-              }),
-            signer_name: `${props.contract.templateData.name} ${props.contract.templateData.lastname}`
+
+        const pdf = await axios({
+            method: 'POST',
+            url: props.signEndpoint,
+            data: {
+                signature: signature.current.toDataURL("image/jpeg")
+            },
+            transformResponse: r => {r}
         })
-        var fileURL = URL.createObjectURL(blob);
+       
+        const buffer = new Buffer.from(pdf.data, 'base64')
+        const blob = new Blob([buffer], { type: 'application/pdf' });
+
+        var fileURL = URL.createObjectURL(blob, { type: 'application/pdf' });
         window.open(fileURL)
     }
 
@@ -106,6 +113,7 @@ export async function getServerSideProps(context: BaseContext) {
     return {
       props: {
         contract: contractDetails,
+        signEndpoint: `${process.env.API}/api/gw/complete/${contract}`
       }, // will be passed to the page component as props
     }
   }
