@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { Card, CardHeader, CardBody, CardFooter, Button, CheckBox, ResponsiveContext, Heading, Paragraph, Box } from "grommet"
+import { Card, CardHeader, CardBody, CardFooter, Button, CheckBox, ResponsiveContext, Heading, Notification, Box } from "grommet"
 import moment from "moment";
 import { useRouter } from "next/dist/client/router";
 import { BaseContext } from "next/dist/shared/lib/utils";
@@ -10,9 +10,11 @@ import Handlebars from "handlebars";
 import axios from "axios";
 import { IconContext } from "react-icons";
 import { FiCheck, FiAlertOctagon } from "react-icons/fi";
-const { convert } = require('html-to-text');
+import ReactLoading from "react-loading";
+
 
 export default function SignDocument(props: any) {
+    const [signing, setSigning] = useState(false)
     const [toastVisible, setToastVisible] = useState(false)
     const [toastData, setToastData] = useState({
         title: "Notificación",
@@ -41,6 +43,7 @@ export default function SignDocument(props: any) {
     }
 
     const onClick = async (event) => {
+        setSigning(true)
         const pdf = await axios({
             method: 'POST',
             url: props.signEndpoint,
@@ -75,6 +78,15 @@ export default function SignDocument(props: any) {
             </IconContext.Provider>
         )
     }
+
+    if (signing) {
+        return (
+            <Box align="center" background="#7d4cdb" height={"medium"} align="center">
+                <ReactLoading type="cylon" color="#fff" />
+                <Heading>Firmando...</Heading>
+            </Box>
+        )
+    }
  
     if (props.completed) {
         return(
@@ -93,7 +105,6 @@ export default function SignDocument(props: any) {
             <Box margin={{bottom: "10px"}}>
                 {toastVisible && (
                 <Notification
-                    toast
                     title={toastData.title}
                     message={toastData.message}
                     onClose={() => setToastVisible(false)}
