@@ -15,4 +15,5 @@ export interface ContractDetails {
     template?: string // embedded template data
     templateData: object // data to be replaced inside the template
     sendData: SendData | object
+    status?: string
 }

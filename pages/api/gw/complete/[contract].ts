@@ -51,7 +51,10 @@ export default async function handler(
 
       df_tenant.save({
         ...contract_details,
-        pdf: base64
+        pdf: base64,
+        status: "signed",
+        signed: true,
+        completed: true
       })
 
       res.status(200).json({

@@ -32,7 +32,8 @@ export default async function handler(
         templateData: {
           ...body['templateData'],
           date: moment().format('l')
-        }
+        },
+        status: "pending"
       })
 
       const df = new DataFetcher({dbName: tenant_details["tenant"]})
