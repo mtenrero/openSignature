@@ -1,4 +1,4 @@
-import * as pdfMake from 'pdfmake';
+import pdfMake from 'pdfmake';
 import moment from 'moment';
 
 export async function createPDFAgreement(contents: any) {

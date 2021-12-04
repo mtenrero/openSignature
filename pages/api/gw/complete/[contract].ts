@@ -54,7 +54,8 @@ export default async function handler(
         pdf: base64,
         status: "signed",
         signed: true,
-        completed: true
+        completed: true,
+        signDate: moment().format("DD/MM/YYYY HH:mm:ss")
       })
 
       res.status(200).json({

@@ -32,7 +32,7 @@ export default function SignDocument(props: any) {
         ctx.fillStyle = "#999999"
         ctx.font = "20px sans-serif"
         const d = props.contract.templateData.date
-        const slug = `${d} NAME LAST NAME `
+        const slug = `${d} ${props.contract.templateData.name} ${props.contract.templateData.lastname} `
         ctx.fillText(
             `${slug} - ${slug} - ${slug} - ${slug}`,
             0,

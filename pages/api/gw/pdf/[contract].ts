@@ -27,7 +27,8 @@ export default async function handler(
       const df_tenant = new DataFetcher({dbName: contract_map.tenant})
 
       const contract_details = await df_tenant.get(`contract:${contract}`)
-      
+
+      // @ts-expect-error:
       const buffer = new Buffer.from(contract_details.pdf, 'base64')
 
       res.setHeader('Content-Type', 'application/pdf');
