@@ -44,22 +44,25 @@ export default function SignDocument(props: any) {
     const onClick = async (event) => {
         axiosRetry(axios, { retries: 3 });
         setSigning(true)
-        const pdf = await axios({
+        const pdf = axios({
             method: 'POST',
             url: props.signEndpoint,
             data: {
                 signature: signature.current.toDataURL("image/png")
             },
         })
-        if (pdf.status== 200) {
-            router.reload()
-        } else {
-            setToastData({
-                title: "ERROR",
-                message: "Ocurrió un error firmando el contrato"
-            })
-            setToastVisible(true)
-        }
+
+        pdf.then(request => {
+            if (request.status== 200) {
+                router.reload()
+            } else {
+                setToastData({
+                    title: "ERROR",
+                    message: "Ocurrió un error firmando el contrato"
+                })
+                setToastVisible(true)
+            }
+        })
     }
 
     useEffect(() => {
