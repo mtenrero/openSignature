@@ -51,6 +51,8 @@ export default function SignDocument(props: any) {
             data: {
                 signature: signature.current.toDataURL("image/png")
             },
+        }).catch(err =>{
+            console.log(err)
         })
         if (pdf.status== 200) {
             router.reload()
@@ -173,8 +175,8 @@ export async function getServerSideProps(context: BaseContext) {
             props: {
                 completed: contractDetails.completed || false,
                 contract: contractDetails,
-                signEndpoint: `${process.env.API}/api/gw/complete/${contract}`,
-                downloadEndpoint: `${process.env.API}/api/gw/pdf/${contract}`
+                signEndpoint: `/api/gw/complete/${contract}`,
+                downloadEndpoint: `/api/gw/pdf/${contract}`
             },
         }
     } else{
