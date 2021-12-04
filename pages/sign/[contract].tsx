@@ -28,8 +28,6 @@ export default function SignDocument(props: any) {
 
     const [acceptChecked, setAcceptChecked] = useState(false)
 
-    axiosRetry(axios, { retries: 3 });
-
     const signAnalogData = () => {
         const ctx = signature.current.signaturePad._ctx;
         ctx.fillStyle = "#999999"
@@ -44,6 +42,7 @@ export default function SignDocument(props: any) {
     }
 
     const onClick = async (event) => {
+        axiosRetry(axios, { retries: 3 });
         setSigning(true)
         const pdf = await axios({
             method: 'POST',

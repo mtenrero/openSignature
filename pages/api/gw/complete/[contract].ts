@@ -63,7 +63,7 @@ export default async function handler(
         res.end()
       })
 
-      res.status(500).end()
+      res.status(503).end()
       
       break
     default:
