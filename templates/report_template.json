@@ -1,0 +1,260 @@
+{
+	"fontName": "Verdana",
+	"basePdf": "data:application/pdf;base64,JVBERi0xLjQKJdPr6eEKMSAwIG9iago8PC9UaXRsZSAoQmFzZSBCYXJ2ZXQgcmVwb3J0KQovUHJvZHVjZXIgKFNraWEvUERGIG05MyBHb29nbGUgRG9jcyBSZW5kZXJlcik+PgplbmRvYmoKMyAwIG9iago8PC9jYSAxCi9CTSAvTm9ybWFsPj4KZW5kb2JqCjQgMCBvYmoKPDwvQ0EgMQovY2EgMQovTEMgMAovTEogMAovTFcgMS4zMzMzMzMzNwovTUwgMTAKL1NBIHRydWUKL0JNIC9Ob3JtYWw+PgplbmRvYmoKNSAwIG9iago8PC9GaWx0ZXIgL0ZsYXRlRGVjb2RlCi9MZW5ndGggMTczPj4gc3RyZWFtCnicjZBJDsIwDEX3PoXXSLhxBic5QdfAggMg6IYiUe4vYTcMVcWCfCnD8/dPFEan2rJOuXo8jXAHI8J+BtMZjhu8KaWcZu97VSujad9j20wDdH3A4TEnFBZkl8QiLrBT/ZOcPbJkKswl2BVdHy2QpI2qTyVXfAyuCo4LzslR5Zw04AoHCNWtrEZWJvGRfqV++apBMylyyhJDaL4laA5r8cnVV/1ztKr9whNkA0k0CmVuZHN0cmVhbQplbmRvYmoKMiAwIG9iago8PC9UeXBlIC9QYWdlCi9SZXNvdXJjZXMgPDwvUHJvY1NldCBbL1BERiAvVGV4dCAvSW1hZ2VCIC9JbWFnZUMgL0ltYWdlSV0KL0V4dEdTdGF0ZSA8PC9HMyAzIDAgUgovRzQgNCAwIFI+Pj4+Ci9NZWRpYUJveCBbMCAwIDYxMiA3OTJdCi9Db250ZW50cyA1IDAgUgovU3RydWN0UGFyZW50cyAwCi9QYXJlbnQgNiAwIFI+PgplbmRvYmoKNiAwIG9iago8PC9UeXBlIC9QYWdlcwovQ291bnQgMQovS2lkcyBbMiAwIFJdPj4KZW5kb2JqCjcgMCBvYmoKPDwvVHlwZSAvQ2F0YWxvZwovUGFnZXMgNiAwIFI+PgplbmRvYmoKeHJlZgowIDgKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDE1IDAwMDAwIG4gCjAwMDAwMDA0NzQgMDAwMDAgbiAKMDAwMDAwMDEwOCAwMDAwMCBuIAowMDAwMDAwMTQ1IDAwMDAwIG4gCjAwMDAwMDAyMzEgMDAwMDAgbiAKMDAwMDAwMDY3MiAwMDAwMCBuIAowMDAwMDAwNzI3IDAwMDAwIG4gCnRyYWlsZXIKPDwvU2l6ZSA4Ci9Sb290IDcgMCBSCi9JbmZvIDEgMCBSPj4Kc3RhcnR4cmVmCjc3NAolJUVPRg==",
+	"schemas": [
+		{
+			"logo": {
+				"type": "image",
+				"position": {
+					"x": 26.73,
+					"y": 14.55
+				},
+				"width": 35.53,
+				"height": 36.9
+			},
+			"cvname": {
+				"type": "text",
+				"position": {
+					"x": 64.29,
+					"y": 17.46
+				},
+				"width": 65.69,
+				"height": 7,
+				"alignment": "left",
+				"fontSize": 12,
+				"characterSpacing": 0,
+				"lineHeight": 1
+			},
+			"barcode_id": {
+				"type": "code128",
+				"position": {
+					"x": 135.21,
+					"y": 24.07
+				},
+				"width": 56.17,
+				"height": 15.65
+			},
+			"cvname_2": {
+				"type": "text",
+				"position": {
+					"x": 63.97,
+					"y": 26.93
+				},
+				"width": 65.69,
+				"height": 7,
+				"alignment": "left",
+				"fontSize": 10,
+				"characterSpacing": 0,
+				"lineHeight": 1
+			},
+			"cvname_3": {
+				"type": "text",
+				"position": {
+					"x": 63.65,
+					"y": 36.08
+				},
+				"width": 65.69,
+				"height": 7,
+				"alignment": "left",
+				"fontSize": 10,
+				"characterSpacing": 0,
+				"lineHeight": 1
+			},
+			"owner": {
+				"type": "text",
+				"position": {
+					"x": 26.99,
+					"y": 62.17
+				},
+				"width": 24.95,
+				"height": 4.74,
+				"alignment": "left",
+				"fontSize": 12,
+				"characterSpacing": 0,
+				"lineHeight": 1
+			},
+			"owner_value": {
+				"type": "text",
+				"position": {
+					"x": 52.86,
+					"y": 62.38
+				},
+				"width": 73.9,
+				"height": 10.83,
+				"alignment": "left",
+				"fontSize": 12,
+				"characterSpacing": 0,
+				"lineHeight": 1
+			},
+			"address": {
+				"type": "text",
+				"position": {
+					"x": 27.2,
+					"y": 79.31
+				},
+				"width": 24.95,
+				"height": 4.74,
+				"alignment": "left",
+				"fontSize": 12,
+				"characterSpacing": 0,
+				"lineHeight": 1
+			},
+			"address_value": {
+				"type": "text",
+				"position": {
+					"x": 52.81,
+					"y": 79.14
+				},
+				"width": 73.9,
+				"height": 15.83,
+				"alignment": "left",
+				"fontSize": 12,
+				"characterSpacing": 0.2,
+				"lineHeight": 1
+			},
+			"phones": {
+				"type": "text",
+				"position": {
+					"x": 27.41,
+					"y": 93.01
+				},
+				"width": 24.95,
+				"height": 4.74,
+				"alignment": "left",
+				"fontSize": 12,
+				"characterSpacing": 0,
+				"lineHeight": 1
+			},
+			"phones_value": {
+				"type": "text",
+				"position": {
+					"x": 54.08,
+					"y": 92.96
+				},
+				"width": 73.1,
+				"height": 4.74,
+				"alignment": "left",
+				"fontSize": 12,
+				"characterSpacing": 0,
+				"lineHeight": 1
+			},
+			"pet": {
+				"type": "text",
+				"position": {
+					"x": 130.39,
+					"y": 62.38
+				},
+				"width": 18.6,
+				"height": 4.74,
+				"alignment": "left",
+				"fontSize": 12,
+				"characterSpacing": 0,
+				"lineHeight": 1
+			},
+			"pet_value": {
+				"type": "text",
+				"position": {
+					"x": 150.12,
+					"y": 62.59
+				},
+				"width": 39.24,
+				"height": 10.83,
+				"alignment": "left",
+				"fontSize": 12,
+				"characterSpacing": 0,
+				"lineHeight": 1
+			},
+			"birthdate": {
+				"type": "text",
+				"position": {
+					"x": 130.28,
+					"y": 77.94
+				},
+				"width": 18.6,
+				"height": 4.74,
+				"alignment": "left",
+				"fontSize": 12,
+				"characterSpacing": 0,
+				"lineHeight": 1
+			},
+			"birthdate_value": {
+				"type": "text",
+				"position": {
+					"x": 150.33,
+					"y": 77.15
+				},
+				"width": 39.24,
+				"height": 10.83,
+				"alignment": "left",
+				"fontSize": 12,
+				"characterSpacing": 0,
+				"lineHeight": 1
+			},
+			"petid": {
+				"type": "text",
+				"position": {
+					"x": 130.49,
+					"y": 93.02
+				},
+				"width": 7.22,
+				"height": 4.74,
+				"alignment": "left",
+				"fontSize": 12,
+				"characterSpacing": 0,
+				"lineHeight": 1
+			},
+			"petid_value": {
+				"type": "text",
+				"position": {
+					"x": 138.9,
+					"y": 92.97
+				},
+				"width": 49.55,
+				"height": 4.74,
+				"alignment": "left",
+				"fontSize": 12,
+				"characterSpacing": 0,
+				"lineHeight": 1
+			},
+			"report_header": {
+				"type": "text",
+				"position": {
+					"x": 26.45,
+					"y": 102.92
+				},
+				"width": 164.91,
+				"height": 7,
+				"alignment": "center",
+				"fontSize": 16,
+				"characterSpacing": 0,
+				"lineHeight": 1
+			},
+			"report": {
+				"type": "text",
+				"position": {
+					"x": 25.4,
+					"y": 120.91
+				},
+				"width": 166.5,
+				"height": 148.29,
+				"alignment": "left",
+				"fontSize": 12,
+				"characterSpacing": 0,
+				"lineHeight": 1.5
+			},
+			"date": {
+				"type": "text",
+				"position": {
+					"x": 25.13,
+					"y": 112.66
+				},
+				"width": 53.26,
+				"height": 7,
+				"alignment": "center",
+				"fontSize": 16,
+				"characterSpacing": 0,
+				"lineHeight": 1
+			}
+		}
+	]
+}

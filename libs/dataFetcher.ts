@@ -1,3 +1,4 @@
+// @ts-nocheck
 import PouchDB from 'pouchdb'
 
 import find from 'pouchdb-find'

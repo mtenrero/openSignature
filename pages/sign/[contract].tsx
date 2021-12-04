@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Card, CardHeader, CardBody, CardFooter, Button, CheckBox, ResponsiveContext, Heading, Paragraph, Box } from "grommet"
 import moment from "moment";
 import { useRouter } from "next/dist/client/router";
@@ -6,6 +7,8 @@ import React, { useEffect, useRef, useState } from "react"
 import SignaturePad from "react-signature-pad-wrapper"
 import DataFetcher from '../../libs/dataFetcher';
 import Handlebars from "handlebars";'handlebars/dist/handlebars.min.js';
+import {generatePDF} from '../../libs/createPDF';
+const { convert } = require('html-to-text');
 
 export default function SignDocument(props: any) {
     const router = useRouter()
@@ -29,6 +32,18 @@ export default function SignDocument(props: any) {
             0,
             20
         )
+    }
+
+    const onClick = async (event) => {
+        const blob = await generatePDF({
+            name: props.contract.name,
+            agreement: convert(htmlContract(props.contract.templateData), {
+                wordwrap: 130
+              }),
+            signer_name: `${props.contract.templateData.name} ${props.contract.templateData.lastname}`
+        })
+        var fileURL = URL.createObjectURL(blob);
+        window.open(fileURL)
     }
 
     useEffect(() => {
@@ -74,7 +89,7 @@ export default function SignDocument(props: any) {
                 
                 </CardBody>
                 <CardFooter background="light-2">
-                    <Button disabled={!acceptChecked} primary margin="5px" hoverIndicator label="Sign" />
+                    <Button disabled={!acceptChecked} primary margin="5px" hoverIndicator label="Sign" onClick={onClick} />
                 </CardFooter>
             </Card>
         </Box>
@@ -94,4 +109,8 @@ export async function getServerSideProps(context: BaseContext) {
       }, // will be passed to the page component as props
     }
   }
+
+function dynamic(arg0: () => Promise<any>, arg1: { ssr: boolean; }) {
+    throw new Error("Function not implemented.");
+}
   
