@@ -9,10 +9,15 @@ import DataFetcher from '../../libs/dataFetcher';
 import Handlebars from "handlebars";
 import axios from "axios";
 import { IconContext } from "react-icons";
-import { FiCheck } from "react-icons/fi";
+import { FiCheck, FiAlertOctagon } from "react-icons/fi";
 const { convert } = require('html-to-text');
 
 export default function SignDocument(props: any) {
+    const [toastVisible, setToastVisible] = useState(false)
+    const [toastData, setToastData] = useState({
+        title: "Notificación",
+        message: ""
+    })
     const router = useRouter()
     const { contract } = router.query
     const size = React.useContext(ResponsiveContext);
@@ -20,7 +25,6 @@ export default function SignDocument(props: any) {
 
     const [acceptChecked, setAcceptChecked] = useState(false)
 
-    const htmlContract = Handlebars.compile(props.contract.template)
 
     const signAnalogData = () => {
         console.log(signature.current);
@@ -43,8 +47,16 @@ export default function SignDocument(props: any) {
             data: {
                 signature: signature.current.toDataURL("image/png")
             },
-            transformResponse: r => {r}
         })
+        if (pdf.status== 200) {
+            router.reload()
+        } else {
+            setToastData({
+                title: "ERROR",
+                message: "Ocurrió un error firmando el contrato"
+            })
+            setToastVisible(true)
+        }
     }
 
     useEffect(() => {
@@ -53,6 +65,17 @@ export default function SignDocument(props: any) {
         }
     })
 
+    if (! props.contract) {
+        return(
+            <IconContext.Provider value={{ color: "darkred", className: "global-class-name", size: "10em" }}>
+                <Box margin={{bottom: "10px"}} align="center" justify="center" alignSelf="center">
+                    <FiAlertOctagon/>
+                    <Heading>No se pudo encontrar el contrato</Heading>
+                </Box>
+            </IconContext.Provider>
+        )
+    }
+ 
     if (props.completed) {
         return(
             <IconContext.Provider value={{ color: "#7d4cdb", className: "global-class-name", size: "10em" }}>
@@ -64,8 +87,18 @@ export default function SignDocument(props: any) {
             </IconContext.Provider>
         )
     } else {
+        const htmlContract = Handlebars.compile(props.contract.template)
+
         return(
             <Box margin={{bottom: "10px"}}>
+                {toastVisible && (
+                <Notification
+                    toast
+                    title={toastData.title}
+                    message={toastData.message}
+                    onClose={() => setToastVisible(false)}
+                />
+                )}
                 <Heading textAlign="center">{ props.contract.name || "Contract" }</Heading>
                 <Card alignSelf="center" height={{min: "60%"}} width={{min: "60%", max: "90%"}} background="light-1">
                     <CardBody pad={size} style={{textAlign: "justify"}}>
@@ -116,18 +149,31 @@ export default function SignDocument(props: any) {
 export async function getServerSideProps(context: BaseContext) {
     const {contract} = context.params
     const dfContracts = new DataFetcher({dbName: "esign_contracts"})
-    const tenant = await dfContracts.get(contract)
-    const dfTenant = new DataFetcher({dbName: `${tenant.tenant}`})
-    const contractDetails = await dfTenant.get(`contract:${contract}`)
-    contractDetails['templateData']['date']= moment().format('DD/MM/YYYY')
-    return {
-      props: {
-        completed: contractDetails.completed || false,
-        contract: contractDetails,
-        signEndpoint: `${process.env.API}/api/gw/complete/${contract}`,
-        downloadEndpoint: `${process.env.API}/api/gw/pdf/${contract}`
-      }, // will be passed to the page component as props
+    const tenant = await dfContracts.get(contract).catch((err)=> {
+        console.log(err)
+    })
+    if (tenant) {
+        const dfTenant = new DataFetcher({dbName: `${tenant.tenant}`})
+        const contractDetails = await dfTenant.get(`contract:${contract}`)
+
+        contractDetails['templateData']['date']= moment().format('DD/MM/YYYY')
+        return {
+            props: {
+                completed: contractDetails.completed || false,
+                contract: contractDetails,
+                signEndpoint: `${process.env.API}/api/gw/complete/${contract}`,
+                downloadEndpoint: `${process.env.API}/api/gw/pdf/${contract}`
+            },
+        }
+    } else{
+        return {
+            props: {
+                completed: false,
+                contract: false
+            },
+        }
     }
+    
   }
 
 function dynamic(arg0: () => Promise<any>, arg1: { ssr: boolean; }) {
