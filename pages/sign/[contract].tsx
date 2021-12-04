@@ -8,7 +8,8 @@ import SignaturePad from "react-signature-pad-wrapper"
 import DataFetcher from '../../libs/dataFetcher';
 import Handlebars from "handlebars";
 import axios from "axios";
-'handlebars/dist/handlebars.min.js';
+import { IconContext } from "react-icons";
+import { FiCheck } from "react-icons/fi";
 const { convert } = require('html-to-text');
 
 export default function SignDocument(props: any) {
@@ -52,52 +53,64 @@ export default function SignDocument(props: any) {
         }
     })
 
-    return(
-        <Box margin={{bottom: "10px"}}>
-            <Heading textAlign="center">{ props.contract.name || "Contract" }</Heading>
-            <Card alignSelf="center" height={{min: "60%"}} width={{min: "60%", max: "90%"}} background="light-1">
-                <CardBody pad={size} style={{textAlign: "justify"}}>
-                    <div dangerouslySetInnerHTML={{ __html: htmlContract(props.contract.templateData) }} />
-                    
-                    <div style={{margin:"15px"}}>
-
-                    <Heading level="3" margin="none">Signature</Heading>
-                    <div style={{marginTop: "10px", marginBottom: "10px"}}>
-                    Actuando como <b>{props.contract.templateData.name} {props.contract.templateData.lastname}</b> with ID Number <b>{props.contract.templateData.idnum}</b>, phone
-                    number {props.contract.templateData.phone} and e-mail address {props.contract.templateData.mail}:
-                    </div>
-                    <CheckBox
-                        label="I accept the terms of this contract"
-                        style={{marginTop: "10px"}}
-                        onChange={()=> {setAcceptChecked(!acceptChecked)}}
-                    />
-                    <Box 
-                        border
-                        style={{marginTop: "10px"}}
-                    >
-                        <Button label="X" onClick={()=> {
-                            signature.current.clear()
-                            signAnalogData()}
-                            } 
+    if (props.completed) {
+        return(
+            <IconContext.Provider value={{ color: "#7d4cdb", className: "global-class-name", size: "10em" }}>
+                <Box margin={{bottom: "10px"}} align="center" justify="center" alignSelf="center">
+                    <FiCheck/>
+                    <Heading>Este contrato ya se ha firmado</Heading>
+                    <Button primary label="Descargar contrato" href={props.downloadEndpoint} />
+                </Box>
+            </IconContext.Provider>
+        )
+    } else {
+        return(
+            <Box margin={{bottom: "10px"}}>
+                <Heading textAlign="center">{ props.contract.name || "Contract" }</Heading>
+                <Card alignSelf="center" height={{min: "60%"}} width={{min: "60%", max: "90%"}} background="light-1">
+                    <CardBody pad={size} style={{textAlign: "justify"}}>
+                        <div dangerouslySetInnerHTML={{ __html: htmlContract(props.contract.templateData) }} />
+                        
+                        <div style={{margin:"15px"}}>
+    
+                        <Heading level="3" margin="none">Signature</Heading>
+                        <div style={{marginTop: "10px", marginBottom: "10px"}}>
+                        Actuando como <b>{props.contract.templateData.name} {props.contract.templateData.lastname}</b> with ID Number <b>{props.contract.templateData.idnum}</b>, phone
+                        number {props.contract.templateData.phone} and e-mail address {props.contract.templateData.mail}:
+                        </div>
+                        <CheckBox
+                            label="I accept the terms of this contract"
+                            style={{marginTop: "10px"}}
+                            onChange={()=> {setAcceptChecked(!acceptChecked)}}
                         />
-                        <SignaturePad ref={signature} redrawOnResize canvasProps={{
-                            backgroundColor: 'white',
-                            minWidth: 40,
-                            maxWidth: 60,
-                            penColor: "black",
-                            dotSize: 10
-                        }}/>
-                    </Box>
-                    </div>
+                        <Box 
+                            border
+                            style={{marginTop: "10px"}}
+                        >
+                            <Button label="X" onClick={()=> {
+                                signature.current.clear()
+                                signAnalogData()}
+                                } 
+                            />
+                            <SignaturePad ref={signature} redrawOnResize canvasProps={{
+                                backgroundColor: 'white',
+                                minWidth: 40,
+                                maxWidth: 60,
+                                penColor: "black",
+                                dotSize: 10
+                            }}/>
+                        </Box>
+                        </div>
+                        
                     
-                
-                </CardBody>
-                <CardFooter background="light-2">
-                    <Button disabled={!acceptChecked} primary margin="5px" hoverIndicator label="Sign" onClick={onClick} />
-                </CardFooter>
-            </Card>
-        </Box>
-    )
+                    </CardBody>
+                    <CardFooter background="light-2">
+                        <Button disabled={!acceptChecked} primary margin="5px" hoverIndicator label="Sign" onClick={onClick} />
+                    </CardFooter>
+                </Card>
+            </Box>
+        )
+    }
 }
 
 export async function getServerSideProps(context: BaseContext) {
@@ -109,8 +122,10 @@ export async function getServerSideProps(context: BaseContext) {
     contractDetails['templateData']['date']= moment().format('DD/MM/YYYY')
     return {
       props: {
+        completed: contractDetails.completed || false,
         contract: contractDetails,
-        signEndpoint: `${process.env.API}/api/gw/complete/${contract}`
+        signEndpoint: `${process.env.API}/api/gw/complete/${contract}`,
+        downloadEndpoint: `${process.env.API}/api/gw/pdf/${contract}`
       }, // will be passed to the page component as props
     }
   }
