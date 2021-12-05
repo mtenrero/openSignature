@@ -70,6 +70,17 @@ export default function SignDocument(props: any) {
         }
     })
 
+    if (! props.authorized) {
+        return(
+            <IconContext.Provider value={{ color: "darkred", className: "global-class-name", size: "10em" }}>
+                <Box margin={{bottom: "10px"}} align="center" justify="center" alignSelf="center">
+                    <FiAlertOctagon/>
+                    <Heading>No está autorizado para acceder a este contrato</Heading>
+                </Box>
+            </IconContext.Provider>
+        )
+    }
+
     if (! props.contract) {
         return(
             <IconContext.Provider value={{ color: "darkred", className: "global-class-name", size: "10em" }}>
@@ -161,17 +172,28 @@ export default function SignDocument(props: any) {
 
 export async function getServerSideProps(context: BaseContext) {
     const {contract} = context.params
+    const { token } = context.query
     const dfContracts = new DataFetcher({dbName: "esign_contracts"})
-    const tenant = await dfContracts.get(contract).catch((err)=> {
+    const contractMap = await dfContracts.get(contract).catch((err)=> {
         console.log(err)
     })
-    if (tenant) {
-        const dfTenant = new DataFetcher({dbName: `${tenant.tenant}`})
+
+    if (contractMap) {
+        const dfTenant = new DataFetcher({dbName: `${contractMap.tenant}`})
         const contractDetails = await dfTenant.get(`contract:${contract}`)
+
+        if (!token || contractDetails.token !== token) {
+            return {
+                props: { 
+                    authorized: false
+                }
+            }
+        }
 
         contractDetails['templateData']['date']= moment().format('DD/MM/YYYY')
         return {
             props: {
+                authorized: true,
                 completed: contractDetails.completed || false,
                 contract: contractDetails,
                 signEndpoint: `/api/gw/complete/${contract}`,

@@ -12,7 +12,7 @@ type Data = {
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<Data>
+  res: NextApiResponse<object>
 ) {
   const apikey = req.headers.authorization || ""
   const {
@@ -50,7 +50,7 @@ export default async function handler(
           if (process.env.SEND_SMS) {
             await sendSMS(
               "Barvet",
-              "Hola! Tienes un contrato por firmar " + `https://sign.barvet.es/sign/${contract["_id"]?.replace("contract:", "")}`,
+              "Hola! Tienes un contrato por firmar " + `https://sign.barvet.es/sign/${contract["_id"]?.replace("contract:", "")}/token=${contract['token']}`,
               `${body['sendData']['phone']}`
             )
           }
@@ -59,7 +59,12 @@ export default async function handler(
         // TODO Remove failed contract
       }
      
-      res.status(200).json(saved_contract)
+      res.status(200).json({
+        status: 'ok',
+        signURL: `https://sign.barvet.es/sign/${contract["_id"]?.replace("contract:", "")}?token=${contract['token']}`,
+        token: contract['token'],
+        contractID: contract["_id"]?.replace("contract:", ""),
+      })
       break
     default:
       res.setHeader('Allow', ['PUT'])

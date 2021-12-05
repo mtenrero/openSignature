@@ -17,6 +17,7 @@ export async function generateContract(tenantID: string, details: ContractDetail
         const template = await getTemplate(tenantID, details.templateID)
         let contract: ContractDetails = {
             _id: "contract:" +  nanoid(10),
+            token: nanoid(5),
             template: template.template,
             name: template.name,
             templateData: details.templateData,
