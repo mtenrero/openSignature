@@ -8,6 +8,7 @@ export async function getTemplate(tenantID: string, templateID: string) {
     return df.get(`template:${templateID}`).then(template => {
         return template
     }).catch(err => {
+        console.log(err)
         throw new Error(err)
     })
 }
