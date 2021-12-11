@@ -2,13 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import findTenantByToken from '../../../libs/findToken'
 
 export async function middleware(req: NextRequest) {
-  const auth = req.headers.get('authorization')
+  const auth = req.headers.get('Authorization')
 
   if (auth) {
-    const authToken = auth.split(' ')[1]
-    const tenant = await findTenantByToken(authToken).catch(()=> {
-      return null
-    })
+    const authToken = auth.replace("Bearer ", "")
+    const tenant = await findTenantByToken(authToken)
 
     if (tenant !== null) {
       return NextResponse.next()
