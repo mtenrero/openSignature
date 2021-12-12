@@ -2,7 +2,7 @@
   "name": "open-signature",
   "private": true,
   "scripts": {
-    "dev": "export $(cat local.env | xargs) && next dev",
+    "dev": "export $(cat local.env | xargs) && next dev -p 3001",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

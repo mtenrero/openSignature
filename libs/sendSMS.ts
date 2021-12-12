@@ -8,12 +8,22 @@ function getAuth(): string {
     return Buffer.from(getToken() + ":").toString("base64")
 }
 
+function determinePrefix(phone: string) {
+    const defaultPrefix = process.env.PHONE_PREFIX || 34
+
+    if (phone.length <= 9) {
+        return defaultPrefix + phone
+    } else {
+        return phone
+    }
+}
+
 function SMSpayload(sender, message, recipient): string {
     return JSON.stringify({
         sender: sender,
         message: message,
         recipients: [
-          { msisdn: recipient },
+          { msisdn: determinePrefix(recipient) },
         ],
     })
 }

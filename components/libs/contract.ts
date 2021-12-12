@@ -30,6 +30,12 @@ export async function generateContract(tenantID: string, details: ContractDetail
     }
 }
 
+export async function getContract(tenantID: string, contractID: string) {
+    const df = new DataFetcher({dbName: tenantID})
+
+    return await df.get(`contract:${contractID}`)
+}
+
 export function getContractByToken(token: string) {
     const df = new DataFetcher({dbName: "esign_signtokens"})
 
