@@ -50,7 +50,7 @@ export default async function handler(
           if (process.env.SEND_SMS) {
             await sendSMS(
               "Barvet",
-              "Hola! Tienes un contrato por firmar " + `https://sign.barvet.es/sign/${contract["_id"]?.replace("contract:", "")}/token=${contract['token']}`,
+              "Hola! Tienes un contrato por firmar " + `https://${process.env.OPENSIGN_URL}/sign/${contract["_id"]?.replace("contract:", "")}?token=${contract['token']}`,
               `${body['sendData']['phone']}`
             )
           }
@@ -61,7 +61,7 @@ export default async function handler(
      
       res.status(200).json({
         status: 'ok',
-        signURL: `https://sign.barvet.es/sign/${contract["_id"]?.replace("contract:", "")}?token=${contract['token']}`,
+        signURL: `https://${process.env.OPENSIGN_URL}/sign/${contract["_id"]?.replace("contract:", "")}?token=${contract['token']}`,
         token: contract['token'],
         contractID: contract["_id"]?.replace("contract:", ""),
       })
