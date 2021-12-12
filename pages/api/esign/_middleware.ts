@@ -6,7 +6,9 @@ export async function middleware(req: NextRequest) {
 
   if (auth) {
     const authToken = auth.replace("Bearer ", "")
-    const tenant = await findTenantByToken(authToken)
+    const tenant = await findTenantByToken(authToken).catch(()=> {
+       return null
+     })
 
     if (tenant !== null) {
       return NextResponse.next()
