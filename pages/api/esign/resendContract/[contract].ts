@@ -29,7 +29,7 @@ export default async function handler(
       if (process.env.SEND_SMS && contractDetails.sendData.sendSMS) {
         await sendSMS(
           "Barvet",
-          "Hola! Tienes un contrato por firmar " + `https://${process.env.API}/sign/${contractDetails["_id"]?.replace("contract:", "")}?token=${contractDetails['token']}`,
+          "Hola! Tienes un contrato por firmar " + `${process.env.API}/sign/${contractDetails["_id"]?.replace("contract:", "")}?token=${contractDetails['token']}`,
           `${body['sendData']['phone']}`
         )
       }
