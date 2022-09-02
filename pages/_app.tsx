@@ -1,19 +1,27 @@
 import '../styles/globals.css'
 import type { AppProps } from 'next/app'
 import React from 'react'
-import { Grommet, Main, Header, Button, Menu, Heading } from 'grommet'
+import { MantineProvider } from '@mantine/core'
+import Header from '../components/header'
+import { SessionProvider } from 'next-auth/react'
 
-function MyApp({ Component, pageProps }: AppProps) {
+function MyApp({ Component, pageProps: { session, ...pageProps } }: AppProps) {
   return (
-    <Grommet plain>
-      <Header background="brand">
-        <Heading margin="medium" level="3">{process.env.BRAND || "OpenSignature"}</Heading>
-      </Header>
-      <Main margin={{top: "20px"}}>
+    <SessionProvider session={session}>
+    <MantineProvider
+        withGlobalStyles
+        withNormalizeCSS
+        withCSSVariables
+        theme={{
+          /** Put your mantine theme override here */
+          colorScheme: 'light',
+        }}
+      >
+      <Header></Header>
 
         <Component {...pageProps} />
-      </Main>
-    </Grommet>
+    </MantineProvider>
+    </SessionProvider>
   )
   
   
