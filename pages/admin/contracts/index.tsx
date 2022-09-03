@@ -50,7 +50,7 @@ export default function Contracts(props: any) {
         <div>
           {TITLE()}
           <Center>
-            <Button>No data, create first contract</Button>
+            <Button component='a' href="/admin/contracts/add">No data, create first contract</Button>
           </Center>
         </div>
       )
