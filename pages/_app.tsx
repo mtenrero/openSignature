@@ -1,7 +1,7 @@
 import '../styles/globals.css'
 import type { AppProps } from 'next/app'
 import React from 'react'
-import { MantineProvider } from '@mantine/core'
+import { Container, MantineProvider } from '@mantine/core'
 import Header from '../components/header'
 import { SessionProvider } from 'next-auth/react'
 
@@ -19,7 +19,9 @@ function MyApp({ Component, pageProps: { session, ...pageProps } }: AppProps) {
       >
       <Header></Header>
 
+      <Container>
         <Component {...pageProps} />
+      </Container>
     </MantineProvider>
     </SessionProvider>
   )
