@@ -68,7 +68,7 @@ export function SimpleCard() {
             Edit and create contracts
           </Text>
         </div>
-        <Button radius="xl" style={{ flex: 1 }}>
+        <Button component='a' href="/admin/contracts" radius="xl" style={{ flex: 1 }}>
           Edit Contracts
         </Button>
       </Group>
