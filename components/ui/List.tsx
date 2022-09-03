@@ -5,14 +5,13 @@ import {
     Group,
     Text,
     ActionIcon,
-    Anchor,
     ScrollArea,
     useMantineTheme,
   } from '@mantine/core';
   import { IconPencil, IconTrash } from '@tabler/icons';
   
   interface ListProps {
-    data: { name: string; tags: string[]; }[];
+    data: { name: string; description: string; }[];
   }
   
   const jobColors: Record<string, string> = {
@@ -27,21 +26,19 @@ import {
       <tr key={item.name}>
         <td>
           <Group spacing="sm">
-            <Text size="sm" weight={500}>
+            <Text size="sm" weight={800}>
               {item.name}
             </Text>
           </Group>
         </td>
   
         <td>
-          {item.tags.map((tag) => {
-            <Badge
-              variant={theme.colorScheme === 'dark' ? 'light' : 'outline'}
-            >
-              {tag}
-            </Badge>
-          })}
-          
+          <Group spacing="xl">
+            <Text size="xs" weight={400}>
+              {item.description}
+            </Text>
+          </Group>
+
         </td>
         
         <td>
