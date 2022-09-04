@@ -1,5 +1,6 @@
 import { Burger, Container, Group, Header, createStyles, Anchor, Title } from '@mantine/core';
 import { useSession } from 'next-auth/react';
+import Link from 'next/link';
 import type { FC } from 'react';
 import UserMenu from './ui/UserMenu';
 
@@ -97,13 +98,14 @@ const header: FC<headerProps> = ({}) => {
     ]
 
     const mainItems = mainLinks.map((item, index) => (
-        <Anchor<'a'>
-          href={item.link}
-          key={item.label}
-          className={cx(classes.mainLink, { [classes.mainLinkActive]: true })}
-        >
-          {item.label}
-        </Anchor>
+        <Link href={item.link}>
+          <Anchor<'a'>
+            key={item.label}
+            className={cx(classes.mainLink, { [classes.mainLinkActive]: true })}
+          >
+            {item.label}
+          </Anchor>
+        </Link>
     ));
             
 

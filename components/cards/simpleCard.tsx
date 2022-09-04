@@ -1,5 +1,6 @@
 import { Card, Text, Group, createStyles, Center, Button } from '@mantine/core';
 import { IconGasStation, IconGauge, IconManualGearbox, IconUsers } from '@tabler/icons';
+import Link from 'next/link';
 
 const useStyles = createStyles((theme) => ({
   card: {
@@ -68,9 +69,11 @@ export function SimpleCard() {
             Edit and create contracts
           </Text>
         </div>
-        <Button component='a' href="/admin/contracts" radius="xl" style={{ flex: 1 }}>
-          Edit Contracts
-        </Button>
+        <Link href="/admin/contracts">
+          <Button radius="xl" style={{ flex: 1 }}>
+            Edit Contracts
+          </Button>
+        </Link>
       </Group>
     </Card>
   );

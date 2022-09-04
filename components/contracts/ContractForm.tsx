@@ -2,6 +2,7 @@ import { TextInput, createStyles, Paper, Button, Group } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import RichTextEditor from "@mantine/rte";
 import type { NextComponentType, NextPageContext } from "next";
+import { useRouter } from "next/router";
 import { useState } from "react";
 
 interface FormValues {
@@ -17,6 +18,7 @@ const ContractForm: NextComponentType<NextPageContext, {}, Props> = (
 ) => {
   const form = useForm<FormValues>({});
   const [value, onChange] = useState("");
+  const router = useRouter()
   
   const useStyles = createStyles((theme) => {
     const BREAKPOINT = theme.fn.smallerThan('sm');
@@ -81,8 +83,22 @@ const ContractForm: NextComponentType<NextPageContext, {}, Props> = (
 
   const { classes } = useStyles();
 
-  const save = (e) => {
-    console.log(form.values)
+  const save = async (e) => {
+    const endpoint = "/api/contracts"
+    const JSONdata = JSON.stringify(form.values)
+    const options = {
+      // The method is POST because we are sending data.
+      method: 'POST',
+      // Tell the server we're sending JSON.
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      // Body of the request is the JSON data we created above.
+      body: JSONdata,
+    }
+    const response = await fetch(endpoint, options)
+    console.log(response)
+    router.back()
   }
 
   return (

@@ -68,4 +68,8 @@ export default class DataFetcher {
       endkey: `${pattern}\ufff0`
     })
   }
+
+  async delete(documentId) {
+    return this.db.remove(documentId)
+  }
 }

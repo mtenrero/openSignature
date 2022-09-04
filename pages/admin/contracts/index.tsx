@@ -1,10 +1,13 @@
-import { Center, Button, Container, Grid, LoadingOverlay, SimpleGrid, Skeleton, useMantineTheme, Title } from '@mantine/core'
+import { Center, Button, Container, Grid, LoadingOverlay, SimpleGrid, Skeleton, useMantineTheme, Title, Group } from '@mantine/core'
+import Link from 'next/link';
 import React, { useEffect, useState } from 'react'
 import { List } from '../../../components/ui/List';
 
 export default function Contracts(props: any) {
   const [contracts, setContracts] = useState(null)
   const [isLoading, setLoading] = useState(false)
+  const [thereIsData, setThereIsData] = useState(false)
+  const [refresh, setRefresh] = useState(0)
 
   useEffect(() => {
     setLoading(true)
@@ -13,8 +16,13 @@ export default function Contracts(props: any) {
       .then((data) => {
         setContracts(data.rows)
         setLoading(false)
+        setThereIsData(data.rows.length > 0)
       })
-  }, [])
+  }, [refresh])
+
+  const forceRefresh = () => {
+    setRefresh(refresh+1)
+  }
 
   const theme = useMantineTheme();
   const PRIMARY_COL_HEIGHT = 300;
@@ -36,13 +44,18 @@ export default function Contracts(props: any) {
       </div>
     )
   } else {
-    if (contracts && contracts.rows && contracts.rows.length > 0) {
+    if (thereIsData) {
       return (
         <div>
           {TITLE()}
-          <LoadingOverlay visible={isLoading}>
-            <List data={contracts}/>
-          </LoadingOverlay>
+          <LoadingOverlay visible={isLoading}/>
+          <Group position="right" mt="md">
+            <Link href="/admin/contracts/add">
+              <Button>New contract</Button>
+            </Link>
+          </Group>
+          
+          <List data={contracts} forceRefresh={forceRefresh}/>
         </div>
       )
     } else {
@@ -50,7 +63,9 @@ export default function Contracts(props: any) {
         <div>
           {TITLE()}
           <Center>
-            <Button component='a' href="/admin/contracts/add">No data, create first contract</Button>
+            <Link href="/admin/contracts/add">
+              <Button>No data, create first contract</Button>
+            </Link>
           </Center>
         </div>
       )

@@ -1,33 +1,37 @@
 import {
-    Avatar,
-    Badge,
     Table,
     Group,
     Text,
     ActionIcon,
     ScrollArea,
-    useMantineTheme,
   } from '@mantine/core';
   import { IconPencil, IconTrash } from '@tabler/icons';
+import { useRouter } from 'next/router';
   
   interface ListProps {
-    data: { name: string; description: string; }[];
+    data: { name: string; description: string; text: object; }[]
+    forceRefresh: Function
   }
+
   
-  const jobColors: Record<string, string> = {
-    engineer: 'blue',
-    manager: 'cyan',
-    designer: 'pink',
-  };
-  
-  export function List({ data }: ListProps) {
-    const theme = useMantineTheme();
+  export function List({ data, forceRefresh }: ListProps) {
+    const router = useRouter()
+
+    const deleteContract = async (id) => {
+      const endpoint = `/api/contracts?id=${id}`
+      const options = {
+        method: 'DELETE',
+      }
+      const response = await fetch(endpoint, options)
+      console.log(response)
+      forceRefresh()
+    }
     const rows = data.map((item) => (
-      <tr key={item.name}>
+      <tr key={item["doc"].name}>
         <td>
           <Group spacing="sm">
             <Text size="sm" weight={800}>
-              {item.name}
+              {item["doc"].name}
             </Text>
           </Group>
         </td>
@@ -35,10 +39,9 @@ import {
         <td>
           <Group spacing="xl">
             <Text size="xs" weight={400}>
-              {item.description}
+              {item["doc"].description}
             </Text>
           </Group>
-
         </td>
         
         <td>
@@ -46,7 +49,7 @@ import {
             <ActionIcon>
               <IconPencil size={16} stroke={1.5} />
             </ActionIcon>
-            <ActionIcon color="red">
+            <ActionIcon color="red" onClick={() => deleteContract(item["doc"].name)}>
               <IconTrash size={16} stroke={1.5} />
             </ActionIcon>
           </Group>
@@ -60,7 +63,7 @@ import {
           <thead>
             <tr>
               <th>Name</th>
-              <th>Tags</th>
+              <th>Description</th>
               <th />
             </tr>
           </thead>
