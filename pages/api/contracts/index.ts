@@ -7,16 +7,24 @@ type Data = {
 };
 
 const handler = async (req: NextApiRequest, res: NextApiResponse<Data>) => {
+  const token = await getToken({ req })
+  console.log(token)
+  const df = new DataFetcher({dbName: `osign_${token.sub.replace("auth0|","")}`})
+  
   switch (req.method) {
     case 'GET':
-      const token = await getToken({ req })
-      console.log(token)
-      const df = new DataFetcher({dbName: `osign_${token.sub.replace("auth0|","")}`})
       res.status(200).json(await df.getMany("contract:"))
       break
     case 'POST':
-      // Update or create data in your database
-      res.status(200).json({ ...req.body })
+      if(req.body.hasOwnProperty('name')) {
+        let save = await df.save({
+          _id: "contract:" + req.body.name,
+          ...req.body
+        })
+        res.status(200).json(save)
+      } else {
+        res.status(406).end()
+      }
       break
     default:
       res.setHeader('Allow', ['GET', 'POST'])
