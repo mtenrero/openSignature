@@ -17,11 +17,12 @@ export default class DataFetcher {
     PouchDB.plugin(rel)
     PouchDB.plugin(find)
     this.db = new PouchDB({
-    name: process.env.DB_SERVER + `/${options.dbName}`,
-    skip_setup: true,
-    fetch: function (url, opts) {
-        opts.headers.set('Authorization', `Basic ${process.env.DB_AUTH}`);
-        return PouchDB.fetch(url, opts);
+      adapter: "http",
+      name: process.env.DB_SERVER + `/${options.dbName}`,
+      skip_setup: true,
+      fetch: function (url, opts) {
+          opts.headers.set('Authorization', `Basic ${process.env.DB_AUTH}`);
+          return PouchDB.fetch(url, opts);
     }})
   }
 

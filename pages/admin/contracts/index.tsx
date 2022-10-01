@@ -39,7 +39,7 @@ export default function Contracts(props: any) {
       <div>
         {TITLE()}
         <LoadingOverlay visible={isLoading}>
-          <List data={contracts}/>
+          <List data={contracts} forceRefresh={null}/>
         </LoadingOverlay>
       </div>
     )
@@ -54,7 +54,6 @@ export default function Contracts(props: any) {
               <Button>New contract</Button>
             </Link>
           </Group>
-          
           <List data={contracts} forceRefresh={forceRefresh}/>
         </div>
       )

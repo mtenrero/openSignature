@@ -47,7 +47,7 @@ import { useRouter } from 'next/router';
         <td>
           <Group spacing={0} position="right">
             <ActionIcon>
-              <IconPencil size={16} stroke={1.5} />
+              <IconPencil size={16} stroke={1.5} onClick={() => router.push(`/admin/contracts/edit/${item["doc"].name}`)} />
             </ActionIcon>
             <ActionIcon color="red" onClick={() => deleteContract(item["doc"].name)}>
               <IconTrash size={16} stroke={1.5} />
