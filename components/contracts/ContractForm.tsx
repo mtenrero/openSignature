@@ -3,7 +3,7 @@ import { useForm } from "@mantine/form";
 import RichTextEditor from "@mantine/rte";
 import type { NextComponentType, NextPageContext } from "next";
 import { useRouter } from "next/router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface FormValues {
   name: string;
@@ -11,14 +11,20 @@ interface FormValues {
   text: object;
 }
 
-interface Props {}
+interface Props {
+  previousValues: object
+}
 
 const ContractForm: NextComponentType<NextPageContext, {}, Props> = (
   props: Props,
 ) => {
-  const form = useForm<FormValues>({});
+  const form = useForm<FormValues>(props.previousValues || {});
   const [value, onChange] = useState("");
   const router = useRouter()
+
+  useEffect(() => {
+    form.setValues(props.previousValues)
+  }, [props.previousValues])
   
   const useStyles = createStyles((theme) => {
     const BREAKPOINT = theme.fn.smallerThan('sm');
@@ -123,6 +129,7 @@ const ContractForm: NextComponentType<NextPageContext, {}, Props> = (
           />
           <RichTextEditor value={value} onChange={onChange} sx={{marginTop: "20px "}} {...form.getInputProps('text')} />
           <Group position="right" mt="md">
+            <Button color="gray" sx={{marginTop: "20px "}} onClick={() => router.back()}>Discard</Button>
             <Button sx={{marginTop: "20px "}} type="submit">Save</Button>
           </Group>
         </form>
