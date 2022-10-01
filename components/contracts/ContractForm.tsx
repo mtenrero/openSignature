@@ -127,7 +127,17 @@ const ContractForm: NextComponentType<NextPageContext, {}, Props> = (
             inputWrapperOrder={['label', 'error', 'input', 'description']}
             {...form.getInputProps('description')}
           />
-          <RichTextEditor value={value} onChange={onChange} sx={{marginTop: "20px "}} {...form.getInputProps('text')} />
+          <RichTextEditor
+            controls={[
+              ["bold", "italic", "underline"],
+              ["unorderedList", "orderedList"],
+              ["image"]
+            ]}
+            value={value}
+            onChange={onChange}
+            sx={{marginTop: "20px "}}
+            {...form.getInputProps('text')}
+          />
           <Group position="right" mt="md">
             <Button color="gray" sx={{marginTop: "20px "}} onClick={() => router.back()}>Discard</Button>
             <Button sx={{marginTop: "20px "}} type="submit">Save</Button>
