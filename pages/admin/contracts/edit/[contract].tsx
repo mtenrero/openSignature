@@ -29,7 +29,7 @@ const EditContract = () => {
   } else {
     return(
       <div>
-        <Title order={1}>Create New Contract</Title>
+        <Title order={1}>{"Editing contract: " + contractData["name"] || "Edit Contract"}</Title>
         <ContractForm previousValues={contractData}></ContractForm>
       </div>
     )
