@@ -127,11 +127,18 @@ const ContractForm: NextComponentType<NextPageContext, {}, Props> = (
             inputWrapperOrder={['label', 'error', 'input', 'description']}
             {...form.getInputProps('description')}
           />
+          <p>
+            <b>Contract contents:</b>
+            <p>
+              <i>
+                Dynamic values can be referenced using square brackets: {"{{dynamic_variable_name}}"}
+              </i>
+            </p>
+          </p>
           <RichTextEditor
             controls={[
               ["bold", "italic", "underline"],
-              ["unorderedList", "orderedList"],
-              ["image"]
+              ["unorderedList", "orderedList"]
             ]}
             value={value}
             onChange={onChange}
