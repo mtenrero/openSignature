@@ -13,36 +13,36 @@ const useStyles = createStyles((theme) => ({
       backgroundColor: theme.fn.variant({ variant: 'filled', color: theme.primaryColor }).background,
       borderBottom: 0,
     },
-  
+
     inner: {
       height: HEADER_HEIGHT,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
     },
-  
+
     burger: {
       [theme.fn.largerThan('sm')]: {
         display: 'none',
       },
     },
-  
+
     links: {
       paddingTop: theme.spacing.lg,
       height: HEADER_HEIGHT,
       display: 'flex',
       flexDirection: 'column',
       justifyContent: 'space-between',
-  
+
       [theme.fn.smallerThan('sm')]: {
         display: 'none',
       },
     },
-  
+
     mainLinks: {
       marginRight: -theme.spacing.sm,
     },
-  
+
     mainLink: {
       textTransform: 'uppercase',
       fontSize: 13,
@@ -54,25 +54,25 @@ const useStyles = createStyles((theme) => ({
       opacity: 0.9,
       borderTopRightRadius: theme.radius.sm,
       borderTopLeftRadius: theme.radius.sm,
-  
+
       '&:hover': {
         opacity: 1,
         textDecoration: 'none',
       },
     },
-  
+
     secondaryLink: {
       color: theme.colors[theme.primaryColor][0],
       fontSize: theme.fontSizes.xs,
       textTransform: 'uppercase',
       transition: 'color 100ms ease',
-  
+
       '&:hover': {
         color: theme.white,
         textDecoration: 'none',
       },
     },
-  
+
     mainLinkActive: {
       color: theme.white,
       opacity: 1,
@@ -84,7 +84,7 @@ const useStyles = createStyles((theme) => ({
       ),
     },
   }));
-  
+
   interface LinkProps {
     label: string;
     link: string;
@@ -99,15 +99,15 @@ const header: FC<headerProps> = ({}) => {
 
     const mainItems = mainLinks.map((item, index) => (
         <Link href={item.link}>
-          <Anchor<'a'>
+          <div
             key={item.label}
             className={cx(classes.mainLink, { [classes.mainLinkActive]: true })}
           >
             {item.label}
-          </Anchor>
+          </div>
         </Link>
     ));
-            
+
 
     return (
         <Header height={HEADER_HEIGHT} mb={120} className={classes.header}>
@@ -115,7 +115,7 @@ const header: FC<headerProps> = ({}) => {
           <div style={{ color: '#fff' }}>
             <Title order={1}>oSignature</Title>
           </div>
-  
+
           <div className={classes.links}>
             <Group position="right">{<UserMenu/>}</Group>
             <Group spacing={0} position="right" className={classes.mainLinks}>
