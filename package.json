@@ -19,7 +19,6 @@
     "@types/pdfmake": "^0.2.1",
     "axios": "^0.27.2",
     "axios-retry": "^3.3.1",
-    "grommet": "^2.26.0",
     "handlebars": "^4.7.7",
     "html-to-text": "^8.2.1",
     "labelmake": "^2.0.23",
