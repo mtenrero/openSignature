@@ -24,7 +24,6 @@ import {
   IconChevronDown,
   IconTemplate,
 } from '@tabler/icons';
-import Link from 'next/link';
 import UserHeaderMenu from './ui/UserHeaderMenu';
 
 export const useStyles = createStyles((theme) => ({

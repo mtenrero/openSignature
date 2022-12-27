@@ -9,7 +9,7 @@ export default function UserIndex(props: any) {
           <SimpleCard
             title="Contract Templates"
             description="Edit and create contract templates"
-            href="/templates"
+            href="/admin/templates"
             buttonText='Go to Templates'
           />
           <SimpleCard

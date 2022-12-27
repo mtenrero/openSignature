@@ -35,9 +35,11 @@ export default () => {
                 </UnstyledButton>
               </Menu.Target>
               <Menu.Dropdown>
-                <Menu.Item icon={<IconTemplate size={14} stroke={1.5}  />}>
-                  Contract Templates
-                </Menu.Item>
+                <Link href={"/admin/templates"}>
+                  <Menu.Item icon={<IconTemplate size={14} stroke={1.5}  />}>
+                    Contract Templates
+                  </Menu.Item>
+                </Link>
                 <Menu.Label>Settings</Menu.Label>
                 <Link href={"/admin"}>
                   <Menu.Item icon={<IconSettings size={14} stroke={1.5} />}>Account settings</Menu.Item>

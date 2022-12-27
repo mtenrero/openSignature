@@ -80,7 +80,7 @@ export function SimpleCard(props: SimpleCardProps) {
             {props.description? props.description : ""}
           </Text>
         </div>
-        <Link href="/admin/contracts">
+        <Link href={props.href}>
           <Button className={classes.button} radius="xl" style={{ flex: 1 }}>
             {props.buttonText}
           </Button>

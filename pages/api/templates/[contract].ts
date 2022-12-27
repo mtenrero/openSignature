@@ -11,11 +11,11 @@ type Data = {
 const handler = async (req: NextApiRequest, res: NextApiResponse<Data>) => {
   const token = await getToken({ req })
   const {contract} = req.query
-  console.log(token)
   const df = new DataFetcher({dbName: `osign_${token.sub.replace("auth0|","")}`})
 
   switch (req.method) {
     case 'GET':
+      console.log(contract)
       res.status(200).json(await df.get("contract:" + contract))
       break
 

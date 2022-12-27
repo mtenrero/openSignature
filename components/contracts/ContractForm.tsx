@@ -25,60 +25,59 @@ const ContractForm: NextComponentType<NextPageContext, {}, Props> = (
   useEffect(() => {
     form.setValues(props.previousValues)
   }, [props.previousValues])
-  
+
   const useStyles = createStyles((theme) => {
     const BREAKPOINT = theme.fn.smallerThan('sm');
-  
+
     return {
-  
+
       form: {
         boxSizing: 'border-box',
         flex: 1,
         padding: theme.spacing.xl,
         paddingLeft: theme.spacing.xl * 2,
         borderLeft: 0,
-  
+
         [BREAKPOINT]: {
           padding: theme.spacing.md,
           paddingLeft: theme.spacing.md,
         },
       },
-  
+
       fields: {
         marginTop: -12,
       },
-  
+
       fieldInput: {
         flex: 1,
-  
+
         '& + &': {
           marginLeft: theme.spacing.md,
-  
+
           [BREAKPOINT]: {
             marginLeft: 0,
             marginTop: theme.spacing.md,
           },
         },
       },
-  
+
       fieldsGroup: {
         display: 'flex',
-  
+
         [BREAKPOINT]: {
           flexDirection: 'column',
         },
       },
-  
-     
+
       title: {
         marginBottom: theme.spacing.xl * 1.5,
         fontFamily: `Greycliff CF, ${theme.fontFamily}`,
-  
+
         [BREAKPOINT]: {
           marginBottom: theme.spacing.xl,
         },
       },
-  
+
       control: {
         [BREAKPOINT]: {
           flex: 1,
@@ -90,7 +89,7 @@ const ContractForm: NextComponentType<NextPageContext, {}, Props> = (
   const { classes } = useStyles();
 
   const save = async (e) => {
-    const endpoint = "/api/contracts"
+    const endpoint = "/api/templates"
     const JSONdata = JSON.stringify(form.values)
     const options = {
       // The method is POST because we are sending data.
@@ -115,15 +114,15 @@ const ContractForm: NextComponentType<NextPageContext, {}, Props> = (
           save(event)
         }}>
           <TextInput
-            label="Contract Name"
-            description="Name of the contract. Must be unique"
+            label="Template Name"
+            description="Name of the template. Must be unique"
             inputWrapperOrder={['label', 'error', 'input', 'description']}
             required
             {...form.getInputProps('name')}
           />
           <TextInput
-            label="Contract Description"
-            description="Add a description to the contract for better identification"
+            label="Template Description"
+            description="Add a description to the template for better identification"
             inputWrapperOrder={['label', 'error', 'input', 'description']}
             {...form.getInputProps('description')}
           />

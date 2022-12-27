@@ -17,7 +17,7 @@
     "@mantine/rte": "^5.9.5",
     "@tabler/icons": "^1.101.0",
     "@types/pdfmake": "^0.2.1",
-    "axios": "^0.27.2",
+    "axios": "^1.2.1",
     "axios-retry": "^3.3.1",
     "handlebars": "^4.7.7",
     "html-to-text": "^8.2.1",
@@ -40,6 +40,7 @@
     "relational-pouch": "^4.0.0",
     "signature_pad": "^4.0.9",
     "styled-components": "^5.3.6",
+    "swr": "^2.0.0",
     "uuid": "^9.0.0"
   },
   "devDependencies": {

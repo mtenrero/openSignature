@@ -6,7 +6,7 @@ const AddContract: NextPage = () => {
   return (
     <>
       <Title order={1}>Create New Contract</Title>
-      <ContractForm></ContractForm>
+      <ContractForm previousValues={undefined}></ContractForm>
     </>
   )
 }

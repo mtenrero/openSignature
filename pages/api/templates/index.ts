@@ -12,7 +12,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse<Data>) => {
   const token = await getToken({ req })
   console.log(token)
   const df = new DataFetcher({dbName: `osign_${token.sub.replace("auth0|","")}`})
-  
+
   switch (req.method) {
     case 'GET':
       res.status(200).json(await df.getMany("contract:"))
