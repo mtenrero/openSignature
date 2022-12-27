@@ -1,130 +1,154 @@
-import { Burger, Container, Group, Header, createStyles, Anchor, Title } from '@mantine/core';
-import { useSession } from 'next-auth/react';
+import { useState } from 'react';
+import Image from 'next/image'
+import {
+  createStyles,
+  Container,
+  Avatar,
+  UnstyledButton,
+  Group,
+  Text,
+  Menu,
+  Tabs,
+  Burger,
+} from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
+import {
+  IconLogout,
+  IconHeart,
+  IconStar,
+  IconMessage,
+  IconSettings,
+  IconPlayerPause,
+  IconTrash,
+  IconSwitchHorizontal,
+  IconChevronDown,
+  IconTemplate,
+} from '@tabler/icons';
 import Link from 'next/link';
-import type { FC } from 'react';
-import UserMenu from './ui/UserMenu';
+import UserHeaderMenu from './ui/UserHeaderMenu';
 
-interface headerProps {}
+export const useStyles = createStyles((theme) => ({
+  header: {
+    paddingTop: theme.spacing.sm,
+    backgroundColor: theme.fn.variant({ variant: 'filled', color: theme.primaryColor }).background,
+    borderBottom: `1px solid ${
+      theme.fn.variant({ variant: 'filled', color: theme.primaryColor }).background
+    }`,
+    marginBottom: 120,
+  },
 
-const HEADER_HEIGHT = 84;
+  mainSection: {
+    paddingBottom: theme.spacing.sm,
+  },
 
-const useStyles = createStyles((theme) => ({
-    header: {
-      backgroundColor: theme.fn.variant({ variant: 'filled', color: theme.primaryColor }).background,
-      borderBottom: 0,
-    },
+  user: {
+    color: theme.white,
+    padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+    borderRadius: theme.radius.sm,
+    transition: 'background-color 100ms ease',
 
-    inner: {
-      height: HEADER_HEIGHT,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-
-    burger: {
-      [theme.fn.largerThan('sm')]: {
-        display: 'none',
-      },
-    },
-
-    links: {
-      paddingTop: theme.spacing.lg,
-      height: HEADER_HEIGHT,
-      display: 'flex',
-      flexDirection: 'column',
-      justifyContent: 'space-between',
-
-      [theme.fn.smallerThan('sm')]: {
-        display: 'none',
-      },
-    },
-
-    mainLinks: {
-      marginRight: -theme.spacing.sm,
-    },
-
-    mainLink: {
-      textTransform: 'uppercase',
-      fontSize: 13,
-      color: theme.white,
-      padding: `7px ${theme.spacing.sm}px`,
-      fontWeight: 700,
-      borderBottom: '2px solid transparent',
-      transition: 'border-color 100ms ease, opacity 100ms ease',
-      opacity: 0.9,
-      borderTopRightRadius: theme.radius.sm,
-      borderTopLeftRadius: theme.radius.sm,
-
-      '&:hover': {
-        opacity: 1,
-        textDecoration: 'none',
-      },
-    },
-
-    secondaryLink: {
-      color: theme.colors[theme.primaryColor][0],
-      fontSize: theme.fontSizes.xs,
-      textTransform: 'uppercase',
-      transition: 'color 100ms ease',
-
-      '&:hover': {
-        color: theme.white,
-        textDecoration: 'none',
-      },
-    },
-
-    mainLinkActive: {
-      color: theme.white,
-      opacity: 1,
-      borderBottomColor:
-        theme.colorScheme === 'dark' ? theme.white : theme.colors[theme.primaryColor][5],
+    '&:hover': {
       backgroundColor: theme.fn.lighten(
-        theme.fn.variant({ variant: 'filled', color: theme.primaryColor }).background,
+        theme.fn.variant({ variant: 'filled', color: theme.primaryColor }).background!,
         0.1
       ),
     },
-  }));
 
-  interface LinkProps {
-    label: string;
-    link: string;
-  }
+    [theme.fn.smallerThan('xs')]: {
+      display: 'none',
+    },
+  },
 
-const header: FC<headerProps> = ({}) => {
-    const { classes, cx } = useStyles();
+  burger: {
+    [theme.fn.largerThan('xs')]: {
+      display: 'none',
+    },
+  },
 
-    const mainLinks = [
-        { label: "Admin", link: "/admin" }
-    ]
+  userActive: {
+    backgroundColor: theme.fn.lighten(
+      theme.fn.variant({ variant: 'filled', color: theme.primaryColor }).background!,
+      0.1
+    ),
+  },
 
-    const mainItems = mainLinks.map((item, index) => (
-        <Link href={item.link}>
-          <div
-            key={item.label}
-            className={cx(classes.mainLink, { [classes.mainLinkActive]: true })}
-          >
-            {item.label}
-          </div>
-        </Link>
-    ));
+  tabs: {
+    [theme.fn.smallerThan('sm')]: {
+      display: 'none',
+    },
+  },
 
+  tabsList: {
+    borderBottom: '0 !important',
+  },
 
-    return (
-        <Header height={HEADER_HEIGHT} mb={120} className={classes.header}>
-        <Container className={classes.inner}>
-          <div style={{ color: '#fff' }}>
-            <Title order={1}>oSignature</Title>
-          </div>
+  tab: {
+    fontWeight: 500,
+    height: 38,
+    color: theme.white,
+    backgroundColor: 'transparent',
+    borderColor: theme.fn.variant({ variant: 'filled', color: theme.primaryColor }).background,
 
-          <div className={classes.links}>
-            <Group position="right">{<UserMenu/>}</Group>
-            <Group spacing={0} position="right" className={classes.mainLinks}>
-              {mainItems}
-            </Group>
-          </div>
+    '&:hover': {
+      backgroundColor: theme.fn.lighten(
+        theme.fn.variant({ variant: 'filled', color: theme.primaryColor }).background!,
+        0.1
+      ),
+    },
 
-        </Container>
-      </Header>
-    );
+    '&[data-active]': {
+      backgroundColor: theme.fn.lighten(
+        theme.fn.variant({ variant: 'filled', color: theme.primaryColor }).background!,
+        0.1
+      ),
+      borderColor: theme.fn.variant({ variant: 'filled', color: theme.primaryColor }).background,
+    },
+  },
+}));
+
+interface HeaderTabsProps {
 }
-export default header;
+
+const tabs = []
+
+export function Header({ }: HeaderTabsProps) {
+  const { classes, theme, cx } = useStyles();
+  const [opened, { toggle }] = useDisclosure(false);
+
+  const items = tabs.map((tab) => (
+    <Tabs.Tab value={tab} key={tab}>
+      {tab}
+    </Tabs.Tab>
+  ));
+
+  return (
+    <div className={classes.header}>
+      <Container className={classes.mainSection}>
+        <Group position="apart">
+          <Image width={250} height={70} alt="openFirma" src="/openFirma.svg"></Image>
+          <Burger
+            opened={opened}
+            onClick={toggle}
+            className={classes.burger}
+            size="sm"
+            color={theme.white}
+          />
+
+          <UserHeaderMenu/>
+        </Group>
+      </Container>
+      <Container>
+        <Tabs
+          variant="outline"
+          classNames={{
+            root: classes.tabs,
+            tabsList: classes.tabsList,
+            tab: classes.tab,
+          }}
+        >
+          <Tabs.List>{items}</Tabs.List>
+        </Tabs>
+      </Container>
+    </div>
+  );
+}
