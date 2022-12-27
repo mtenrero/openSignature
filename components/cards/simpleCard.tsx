@@ -12,7 +12,7 @@ const useStyles = createStyles((theme) => ({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: theme.colors.blue[5],
+    background: theme.colors.ocean[6],
     maxHeight: '10px',
     borderBottom: `1px solid ${
       theme.colorScheme === 'dark' ? theme.colors.dark[4] : theme.colors.gray[3]
@@ -39,6 +39,10 @@ const useStyles = createStyles((theme) => ({
     marginRight: 5,
     color: theme.colorScheme === 'dark' ? theme.colors.dark[2] : theme.colors.gray[5],
   },
+
+  button: {
+    background: theme.colors.ocean[9]
+  }
 }));
 
 const mockdata = [
@@ -48,7 +52,14 @@ const mockdata = [
   { label: 'Electric', icon: IconGasStation },
 ];
 
-export function SimpleCard() {
+interface SimpleCardProps {
+  title: string
+  description?: string
+  href: string
+  buttonText: string
+}
+
+export function SimpleCard(props: SimpleCardProps) {
   const { classes } = useStyles();
   const features = mockdata.map((feature) => (
     <Center key={feature.label}>
@@ -64,14 +75,14 @@ export function SimpleCard() {
 
       <Group position="apart" mt="md">
         <div>
-          <Text weight={500}>Contracts</Text>
+          <Text weight={500}>{props.title}</Text>
           <Text size="xs" color="dimmed">
-            Edit and create contracts
+            {props.description? props.description : ""}
           </Text>
         </div>
         <Link href="/admin/contracts">
-          <Button radius="xl" style={{ flex: 1 }}>
-            Edit Contracts
+          <Button className={classes.button} radius="xl" style={{ flex: 1 }}>
+            {props.buttonText}
           </Button>
         </Link>
       </Group>
