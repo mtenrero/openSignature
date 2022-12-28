@@ -115,7 +115,7 @@ export default function Features() {
   const features = mockdata.map((feature) => (
     <Card key={feature.title} shadow="md" radius="md" className={classes.card} p="xl">
       <feature.icon size={50} stroke={2} color={theme.fn.primaryColor()} />
-      <Text size="lg" weight={500} className={classes.cardTitle} mt="md">
+      <Text size="lg" weight={500} color={theme.colors.ocean[9]} className={classes.cardTitle} mt="md">
         {feature.title}
       </Text>
       <Text size="sm" color="dimmed" mt="sm">
@@ -126,7 +126,7 @@ export default function Features() {
   return (
     <Container size="lg" py="xl">
 
-      <Title order={2} className={classes.title} align="center" mt="sm">
+      <Title order={2} className={classes.title} align="center" color={theme.fn.primaryColor()} mt="sm">
         This is what OpenFirma can offer you
       </Title>
 
