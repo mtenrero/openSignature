@@ -27,7 +27,6 @@ function MyApp({ Component, pageProps: { session, ...pageProps } }: AppProps) {
           }}
         >
         <Header></Header>
-
         <Container>
           <Component {...pageProps} />
         </Container>
@@ -35,8 +34,6 @@ function MyApp({ Component, pageProps: { session, ...pageProps } }: AppProps) {
       </SessionProvider>
     </>
   )
-  
-  
 }
 
 export default MyApp
