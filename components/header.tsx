@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import Image from 'next/image'
 import {
   createStyles,
@@ -10,6 +9,7 @@ import {
   Menu,
   Tabs,
   Burger,
+  Button,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
@@ -25,6 +25,7 @@ import {
   IconTemplate,
 } from '@tabler/icons';
 import UserHeaderMenu from './ui/UserHeaderMenu';
+import Link from 'next/link';
 
 export const useStyles = createStyles((theme) => ({
   header: {
@@ -124,7 +125,9 @@ export function Header({ }: HeaderTabsProps) {
     <div className={classes.header}>
       <Container className={classes.mainSection}>
         <Group position="apart">
-          <Image width={250} height={70} alt="openFirma" src="/openFirma.svg"></Image>
+          <Link href="/">
+            <Image width={250} height={70} alt="openFirma" src="/openFirma.svg"/>
+          </Link>
           <Burger
             opened={opened}
             onClick={toggle}

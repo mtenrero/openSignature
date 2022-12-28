@@ -29,7 +29,7 @@ export default function Contracts(props: any) {
       <LoadingOverlay visible={isLoading} overlayBlur={2}/>
       <Group position="right" mt="md">
         <Link href="/admin/templates/add">
-          <Button>New contract</Button>
+          <Button>New Template</Button>
         </Link>
       </Group>
       <List data={data}/>
