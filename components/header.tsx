@@ -2,28 +2,12 @@ import Image from 'next/image'
 import {
   createStyles,
   Container,
-  Avatar,
-  UnstyledButton,
   Group,
-  Text,
-  Menu,
   Tabs,
   Burger,
-  Button,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import {
-  IconLogout,
-  IconHeart,
-  IconStar,
-  IconMessage,
-  IconSettings,
-  IconPlayerPause,
-  IconTrash,
-  IconSwitchHorizontal,
-  IconChevronDown,
-  IconTemplate,
-} from '@tabler/icons';
+
 import UserHeaderMenu from './ui/UserHeaderMenu';
 import Link from 'next/link';
 
@@ -109,16 +93,43 @@ export const useStyles = createStyles((theme) => ({
 interface HeaderTabsProps {
 }
 
-const tabs = []
+const tabs = [
+  {
+    name: "Home",
+    href: "/",
+  },
+  {
+    name: "Features",
+    href: "/features",
+  },
+  {
+    name: "Use cases",
+    href: "/use-cases",
+  },
+  {
+    name: "For Developers",
+    href: "/developers",
+  },
+  {
+    name: "Pricing",
+    href: "/pricing",
+  },
+  {
+    name: "Status",
+    href: "/",
+  }
+]
 
 export function Header({ }: HeaderTabsProps) {
   const { classes, theme, cx } = useStyles();
   const [opened, { toggle }] = useDisclosure(false);
 
   const items = tabs.map((tab) => (
-    <Tabs.Tab value={tab} key={tab}>
-      {tab}
-    </Tabs.Tab>
+    <Link href={tab.href}>
+      <Tabs.Tab value={tab.name.toLowerCase()} key={tab.name.toLowerCase()}>
+        {tab.name}
+      </Tabs.Tab>
+    </Link>
   ));
 
   return (

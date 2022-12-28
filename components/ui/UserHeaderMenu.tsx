@@ -61,8 +61,8 @@ export default () => {
                 <UnstyledButton
                   className={cx(classes.user, { [classes.userActive]: userMenuOpened })}
                 >
-                  <Group onClick={() => signIn("auth0")}  spacing={7}>
-                    {"SIGN IN"}
+                  <Group onClick={() => signIn("auth0")} spacing={7}>
+                    {"Log in"}
                   </Group>
                 </UnstyledButton>
               </Menu.Target>
