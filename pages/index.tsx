@@ -90,7 +90,7 @@ export default function Index() {
         </h1>
 
         <Text className={classes.description} color="dimmed">
-          Build and send digital contracts making effective communications flows with your customers using our platform.
+          Build and send digital contracts making effective communication flows with your customers using our platform.
         </Text>
 
         <Text className={classes.description2} color="dimmed">
