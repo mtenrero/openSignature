@@ -103,14 +103,6 @@ const tabs = [
     href: "/features",
   },
   {
-    name: "Use cases",
-    href: "/use-cases",
-  },
-  {
-    name: "For Developers",
-    href: "/developers",
-  },
-  {
     name: "Pricing",
     href: "/pricing",
   },
