@@ -85,7 +85,7 @@ export default function Index() {
           The{' '}
           <Text component="span" variant="gradient" gradient={{ from: '#936405', to: '#ECAD2B' }} inherit>
             digital signature
-          </Text>{' '},
+          </Text>,{' '}
           made simple
         </h1>
 

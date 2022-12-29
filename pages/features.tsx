@@ -8,7 +8,7 @@ import {
   SimpleGrid,
   Container,
 } from '@mantine/core';
-import { IconGauge, IconUser, IconCookie, IconBoxMultiple, IconHistory, IconLock, IconMailbox, IconWorld, IconAccessible, IconCode, IconCurrencyEuro } from '@tabler/icons';
+import { IconGauge, IconUser, IconCookie, IconBoxMultiple, IconHistory, IconLock, IconMailbox, IconWorld, IconAccessible, IconCode, IconCurrencyEuro, IconEye } from '@tabler/icons';
 
 const mockdata = [
   {
@@ -34,6 +34,12 @@ const mockdata = [
     description:
       'We don\'t store plain data, each customer has its own encryption key',
     icon: IconLock,
+  },
+  {
+    title: 'Responsive contracts',
+    description:
+      'Your clients will perfectly see the contract as text, no mor buggy PDF windows for checking the contents of the contract',
+    icon: IconEye,
   },
   {
     title: 'SMS and e-mail signing flows',
