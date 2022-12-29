@@ -121,7 +121,7 @@ export default function Features() {
   const features = mockdata.map((feature) => (
     <Card key={feature.title} shadow="md" radius="md" className={classes.card} p="xl">
       <feature.icon size={50} stroke={2} color={theme.fn.primaryColor()} />
-      <Text size="lg" weight={500} color={theme.colors.ocean[9]} className={classes.cardTitle} mt="md">
+      <Text size="lg" weight={600} color={theme.colors.ocean[9]} className={classes.cardTitle} mt="md">
         {feature.title}
       </Text>
       <Text size="sm" color="dimmed" mt="sm">
