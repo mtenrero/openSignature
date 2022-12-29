@@ -45,17 +45,17 @@ import { useRouter } from 'next/router';
 
         <td>
           <Group spacing={0} position="right">
-            <Tooltip label="Preview Contract as signer">
+            <Tooltip label="Preview Template as signer">
               <ActionIcon>
-                <IconEye size={16} stroke={1.5} onClick={() => router.push(`/admin/templates/edit/${item["doc"].name}`)} />
+                <IconEye size={16} stroke={1.5} onClick={() => router.push(`/admin/templates/preview/${item["doc"].name}`)} />
               </ActionIcon>
             </Tooltip>
-            <Tooltip label="Edit Contract">
+            <Tooltip label="Edit Template">
               <ActionIcon>
                 <IconPencil size={16} stroke={1.5} onClick={() => router.push(`/admin/templates/edit/${item["doc"].name}`)} />
               </ActionIcon>
             </Tooltip>
-            <Tooltip label="Delete Contract">
+            <Tooltip label="Delete Template">
               <ActionIcon color="red" onClick={() => deleteContract(item["doc"].name)}>
                 <IconTrash size={16} stroke={1.5} />
               </ActionIcon>

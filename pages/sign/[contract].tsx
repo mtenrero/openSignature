@@ -99,7 +99,7 @@ export default function SignDocument(props: any) {
             </Box>
         )
     }
- 
+
     if (props.completed) {
         return(
             <IconContext.Provider value={{ color: "#7d4cdb", className: "global-class-name", size: "10em" }}>
@@ -157,8 +157,6 @@ export default function SignDocument(props: any) {
                             }}/>
                         </Box>
                         </div>
-                        
-                    
                     </CardBody>
                     <CardFooter background="light-2">
                         <Button disabled={!acceptChecked} primary margin="5px" hoverIndicator label="Sign" onClick={onClick} />
