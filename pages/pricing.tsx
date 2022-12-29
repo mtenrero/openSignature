@@ -6,7 +6,7 @@ export default () => {
   return (
     <div>
       <Grid>
-        <Grid.Col span={4}>
+        <Grid.Col md={12} lg={4}>
           <PricingTierCard
             title={"Top-Up"}
             description={"The most basic tier for personal & business occasional use"}
@@ -40,7 +40,7 @@ export default () => {
             ]}
           />
         </Grid.Col>
-        <Grid.Col span={4}>
+        <Grid.Col md={12} lg={4}>
           <PricingTierCard
             title={"Small Business"}
             description={"Small Business usage with extended support, included contract sends allowance per month, and reduced pricing for following sends"}
@@ -83,7 +83,7 @@ export default () => {
             ]}
           />
         </Grid.Col>
-        <Grid.Col span={4}>
+        <Grid.Col md={12} lg={4}>
           <PricingTierCard
             title={"Business"}
             description={"The most basic tier for small business and occasional use"}
