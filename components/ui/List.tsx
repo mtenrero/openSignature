@@ -5,61 +5,81 @@ import {
     ActionIcon,
     ScrollArea,
     Tooltip,
+    MantineNumberSize,
   } from '@mantine/core';
   import { IconEye, IconPencil, IconTrash } from '@tabler/icons';
 import { useRouter } from 'next/router';
 
   interface ListProps {
+    resourceName: string
     data: object[]
+    apiEndpoint?: string
+    extraRefresh?: Function,
+    item_key: string
+    columns: {
+      name: string
+      weight: number
+      size: MantineNumberSize
+      spacing?: MantineNumberSize
+      overrideValue?: string
+      dataPath?: string
+    }[]
+    editable?: boolean
+    previewable?: boolean
   }
 
-  export function List({ data }: ListProps) {
+  export function List({ data, columns, item_key, editable, previewable, apiEndpoint, extraRefresh, resourceName }: ListProps) {
     const router = useRouter()
 
     const deleteContract = async (id) => {
-      const endpoint = `/api/templates?id=${id}`
+      const endpoint = `/api/${apiEndpoint}?id=${id}`
       const options = {
         method: 'DELETE',
       }
       const response = await fetch(endpoint, options)
       console.log(response)
+      extraRefresh ? extraRefresh() : ""
     }
 
-    const rows = (data || []).map((item) => (
-      <tr key={item["doc"].name}>
-        <td>
-          <Group spacing="sm">
-            <Text size="sm" weight={800}>
-              {item["doc"].name}
-            </Text>
-          </Group>
-        </td>
+    console.log(data)
 
-        <td>
-          <Group spacing="xl">
-            <Text size="xs" weight={400}>
-              {item["doc"].description}
-            </Text>
-          </Group>
-        </td>
+    const rows = (data || []).map((item) => (
+      <tr key={item[item_key]}>
+        {columns.map(c =>{
+          return(
+            <td>
+              <Group spacing={c.spacing? c.spacing : c.size}>
+                <Text size={c.size} weight={c.weight}>
+                  {c.overrideValue && (item['overrideValue'] || true) ? c.overrideValue : item[c.dataPath? c[c.dataPath] : c[c.name]]}
+                </Text>
+              </Group>
+            </td>
+          )
+        })}
 
         <td>
           <Group spacing={0} position="right">
-            <Tooltip label="Preview Template as signer">
-              <ActionIcon>
-                <IconEye size={16} stroke={1.5} onClick={() => router.push(`/admin/templates/preview/${item["doc"].name}`)} />
-              </ActionIcon>
-            </Tooltip>
-            <Tooltip label="Edit Template">
-              <ActionIcon>
-                <IconPencil size={16} stroke={1.5} onClick={() => router.push(`/admin/templates/edit/${item["doc"].name}`)} />
-              </ActionIcon>
-            </Tooltip>
-            <Tooltip label="Delete Template">
-              <ActionIcon color="red" onClick={() => deleteContract(item["doc"].name)}>
-                <IconTrash size={16} stroke={1.5} />
-              </ActionIcon>
-            </Tooltip>
+            {previewable ? (
+              <Tooltip label={`Preview ${resourceName}`}>
+                <ActionIcon>
+                  <IconEye size={16} stroke={1.5} onClick={() => router.push(`/admin/templates/preview/${item['name']}`)} />
+                </ActionIcon>
+              </Tooltip>
+            ) : null}
+
+            {editable? (
+              <Tooltip label={`Edit ${resourceName}`}>
+                <ActionIcon>
+                  <IconPencil size={16} stroke={1.5} onClick={() => router.push(`/admin/templates/edit/${item['name']}`)} />
+                </ActionIcon>
+              </Tooltip>
+            ) : null}
+
+            <Tooltip label={`Delete ${resourceName}`}>
+                <ActionIcon color="red" onClick={() => deleteContract(item[item_key])}>
+                  <IconTrash size={16} stroke={1.5} />
+                </ActionIcon>
+              </Tooltip>
           </Group>
         </td>
       </tr>
@@ -70,9 +90,11 @@ import { useRouter } from 'next/router';
         <Table sx={{ minWidth: 800 }} verticalSpacing="sm">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Description</th>
-              <th />
+              {columns.map(c =>{
+                return(
+                <th>{c.name}</th>
+                )
+              })}
             </tr>
           </thead>
           <tbody>{rows}</tbody>

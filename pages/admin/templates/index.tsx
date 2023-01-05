@@ -13,6 +13,8 @@ export default function Contracts(props: any) {
 
   if (error) return <div>Failed to load</div>
 
+  if (isLoading) return <LoadingOverlay visible={isLoading} overlayBlur={2}/>
+
   const theme = useMantineTheme();
   const PRIMARY_COL_HEIGHT = 300;
   const SECONDARY_COL_HEIGHT = PRIMARY_COL_HEIGHT / 2 - theme.spacing.md / 2;
@@ -23,16 +25,39 @@ export default function Contracts(props: any) {
     )
   }
 
+  const tempData = data.map(d => {
+    return d['doc']
+  })
+
   return (
     <div>
       {TITLE()}
-      <LoadingOverlay visible={isLoading} overlayBlur={2}/>
       <Group position="right" mt="md">
         <Link href="/admin/templates/add">
           <Button>New Template</Button>
         </Link>
       </Group>
-      <List data={data}/>
+      <List
+        editable
+        previewable
+        resourceName='Template'
+        item_key='name'
+        apiEndpoint='templates'
+        data={tempData}
+        columns={[
+          {
+            name: "name",
+            size: "sm",
+            weight: 800
+          },
+          {
+            name: "description",
+            spacing: 'xl',
+            size: "xs",
+            weight: 400
+          }
+        ]}
+      />
     </div>
   )
 

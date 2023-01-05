@@ -138,7 +138,6 @@ export function Header({ }: HeaderTabsProps) {
             size="sm"
             color={theme.white}
           />
-
           <UserHeaderMenu/>
         </Group>
       </Container>

@@ -1,5 +1,5 @@
 import { UnstyledButton, Group, Menu, Avatar, Text } from "@mantine/core";
-import { IconChevronDown, IconTemplate, IconSettings, IconLogout } from "@tabler/icons";
+import { IconChevronDown, IconTemplate, IconSettings, IconLogout, IconSquareKey } from "@tabler/icons";
 import Link from "next/link";
 import { useState } from "react";
 import { useStyles } from "../header";
@@ -43,6 +43,9 @@ export default () => {
                 <Menu.Label>Settings</Menu.Label>
                 <Link href={"/admin"}>
                   <Menu.Item icon={<IconSettings size={14} stroke={1.5} />}>Account settings</Menu.Item>
+                </Link>
+                <Link href={"/admin/tokens"}>
+                  <Menu.Item icon={<IconSquareKey size={14} stroke={1.5} />}>API Tokens</Menu.Item>
                 </Link>
                 <Menu.Item onClick={() => signOut({callbackUrl:`${window.location.origin}`})} color="red" icon={<IconLogout size={14} stroke={1.5} />}>
                   Close Session
