@@ -2,7 +2,7 @@ import { Card, Image, Text, Group, Button, createStyles, Checkbox, Stack, Action
 import { IconClearAll, IconEraser } from '@tabler/icons';
 import * as DOMPurify from 'dompurify';
 import Handlebars from "handlebars";
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import SignaturePad from 'react-signature-pad-wrapper';
 
 const useStyles = createStyles((theme) => ({
@@ -38,7 +38,8 @@ interface ContractCardProps {
 }
 
 export function ContractCard({ title, description, template, contractData }: ContractCardProps) {
-  const { classes, theme } = useStyles();
+  const { classes, theme } = useStyles()
+  const [accepted, setAccepted] = useState(false)
   const signature = useRef()
 
   const contractDetails = Handlebars.compile(template['text'])
@@ -73,6 +74,7 @@ export function ContractCard({ title, description, template, contractData }: Con
         </Text>
         <Checkbox
           required
+          onChange={(event) => setAccepted(event.currentTarget.checked)}
           label="I agree with the terms of this contract"
         />
 
@@ -90,7 +92,7 @@ export function ContractCard({ title, description, template, contractData }: Con
         />
         <Divider my="sm" />
         <Group mt="xs">
-          <Button radius="md" style={{ flex: 1 }}>
+          <Button radius="md" style={{ flex: 1 }} disabled={!accepted}>
             Sign
           </Button>
           <ActionIcon color={'red'} onClick={()=> signature.current && signature.current.clear() } variant="filled" radius="md" size={36}>
