@@ -61,7 +61,7 @@ export default (props: FormItemListProps) => {
       <Group position="center" mt="md">
         <Button
           onClick={() =>
-            props.form.insertListItem(props.formKeyName, { name: '', active: false, key: randomId() })
+            props.form.insertListItem(props.formKeyName, { name: '', type: 'text', key: randomId() })
           }
         >
           Add {props.itemName}
