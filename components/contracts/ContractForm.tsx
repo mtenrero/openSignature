@@ -4,11 +4,13 @@ import RichTextEditor from "@mantine/rte";
 import type { NextComponentType, NextPageContext } from "next";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
+import FormItemList from "../ui/FormItemList";
 
 interface FormValues {
   name: string;
   description: string;
   text: object;
+  dynamicFields: object[]
 }
 
 interface Props {
@@ -23,7 +25,10 @@ const ContractForm: NextComponentType<NextPageContext, {}, Props> = (
   const router = useRouter()
 
   useEffect(() => {
-    form.setValues(props.previousValues)
+    form.setValues({
+      dynamicFields: [],
+      ...props.previousValues
+    })
   }, [props.previousValues])
 
   const useStyles = createStyles((theme) => {
@@ -127,6 +132,12 @@ const ContractForm: NextComponentType<NextPageContext, {}, Props> = (
             {...form.getInputProps('description')}
           />
           <p>
+            <b>Dynamic fields:</b>
+            <FormItemList
+              itemName={"Dynamic Field"}
+              formKeyName={"dynamicFields"}
+              form={form}
+            />
             <b>Contract contents:</b>
             <p>
               <i>

@@ -14,14 +14,12 @@ const EditContract = () => {
   if (error) return <div>Failed to load</div>
   if (isLoading) return <div>LOADING...</div>
 
-  console.log(data)
-
-    return(
-      <div>
-        <Title order={1}>{"Editing template: " + data["name"] || "Edit Template"}</Title>
-        <ContractForm previousValues={data}></ContractForm>
-      </div>
-    )
+  return(
+    <div>
+      <Title order={1}>{"Editing template: " + data["name"] || "Edit Template"}</Title>
+      <ContractForm previousValues={data}></ContractForm>
+    </div>
+  )
 
 }
 
