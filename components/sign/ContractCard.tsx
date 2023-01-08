@@ -1,4 +1,4 @@
-import { Card, Image, Text, Group, Button, createStyles, Checkbox, Stack, ActionIcon, AspectRatio, Container, Divider } from '@mantine/core';
+import { Card, Image, Text, Group, Button, createStyles, Checkbox, Stack, ActionIcon, AspectRatio, Container, Divider, TextInput } from '@mantine/core';
 import { IconClearAll, IconEraser } from '@tabler/icons';
 import * as DOMPurify from 'dompurify';
 import Handlebars from "handlebars";
@@ -44,6 +44,8 @@ export function ContractCard({ title, description, template, contractData }: Con
 
   const contractDetails = Handlebars.compile(template['text'])
 
+  console.log(template)
+
   //@ts-ignore
   return (
     <Card withBorder radius="md" p="md" className={classes.card}>
@@ -60,6 +62,26 @@ export function ContractCard({ title, description, template, contractData }: Con
         <Text size="sm" mt="xs">
           {description}
         </Text>
+      </Card.Section>
+
+      <Card.Section className={classes.section}>
+        <Text mt="md" className={classes.label} color="dimmed">
+          Contract Signer Data
+        </Text>
+        {(template['dynamicFields'] || []).map(field => {
+          switch (field['type']) {
+            case 'select':
+              break
+            default:
+              return(
+                <TextInput
+                  label={field['name']}
+                  required
+                  withAsterisk
+                />
+              )
+          }
+        })}
       </Card.Section>
 
       <Card.Section className={classes.section}>
