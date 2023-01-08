@@ -44,6 +44,7 @@ export function ContractCard({ title, description, template, contractData }: Con
 
   const contractDetails = Handlebars.compile(template['text'])
 
+  //@ts-ignore
   return (
     <Card withBorder radius="md" p="md" className={classes.card}>
       <Card.Section>
@@ -95,7 +96,13 @@ export function ContractCard({ title, description, template, contractData }: Con
           <Button radius="md" style={{ flex: 1 }} disabled={!accepted}>
             Sign
           </Button>
-          <ActionIcon color={'red'} onClick={()=> signature.current && signature.current.clear() } variant="filled" radius="md" size={36}>
+          <ActionIcon color={'red'} onClick={()=> {
+            //@ts-expect-error
+            signature.current && signature.current.clear()
+            }}
+            variant="filled"
+            radius="md" size={36}
+          >
             <IconEraser size={18} stroke={1.5} />
           </ActionIcon>
         </Group>
