@@ -29,8 +29,6 @@ export default (props: FormItemListProps) => {
           { value: 'number', label: 'Number' },
           { value: 'checkbox', label: 'Checkbox' },
           { value: 'password', label: 'Password' },
-          { value: 'textarea', label: 'Text Area' },
-          { value: 'select', label: 'Select' }
         ]}
       />
       <ActionIcon color="red" onClick={() => props.form.removeListItem(props.formKeyName, index)}>

@@ -1,8 +1,9 @@
 import { Card, Image, Text, Group, Button, createStyles, Checkbox, Stack, ActionIcon, AspectRatio, Container, Divider, TextInput } from '@mantine/core';
+import { useForm, UseFormReturnType } from '@mantine/form';
 import { IconClearAll, IconEraser } from '@tabler/icons';
 import * as DOMPurify from 'dompurify';
 import Handlebars from "handlebars";
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import SignaturePad from 'react-signature-pad-wrapper';
 
 const useStyles = createStyles((theme) => ({
@@ -35,16 +36,29 @@ interface ContractCardProps {
   description: string;
   template: object;
   contractData: object;
+  form: UseFormReturnType<Record<string, unknown>>
 }
 
 export function ContractCard({ title, description, template, contractData }: ContractCardProps) {
   const { classes, theme } = useStyles()
+  const form = useForm()
+
   const [accepted, setAccepted] = useState(false)
+  const [contractDataReady, setContractDataReady] = useState((template['dynamicFields'] || []).length == 0)
+
+  const [contractRender, setContractRender] = useState("")
   const signature = useRef()
 
   const contractDetails = Handlebars.compile(template['text'])
 
-  console.log(template)
+  const setContractData = () => {
+    contractData = {
+      ...contractData,
+      ...form.values
+    }
+    setContractDataReady(true)
+    setContractRender(contractDetails(contractData))
+  }
 
   //@ts-ignore
   return (
@@ -68,9 +82,39 @@ export function ContractCard({ title, description, template, contractData }: Con
         <Text mt="md" className={classes.label} color="dimmed">
           Contract Signer Data
         </Text>
+        <Stack>
         {(template['dynamicFields'] || []).map(field => {
           switch (field['type']) {
-            case 'select':
+            case 'number':
+              return(
+                <TextInput
+                  label={field['name']}
+                  required
+                  withAsterisk
+                  type="number"
+                  {...form.getInputProps(field.name, { type: 'input' })}
+                />
+              )
+              break
+            case 'checkbox':
+              return(
+                <Checkbox
+                  label={field['name']}
+                  required
+                  {...form.getInputProps(field.name, { type: 'checkbox' })}
+                />
+              )
+              break
+            case 'password':
+              return(
+                <TextInput
+                  label={field['name']}
+                  required
+                  withAsterisk
+                  type="password"
+                  {...form.getInputProps(field.name, { type: 'input' })}
+                />
+              )
               break
             default:
               return(
@@ -78,17 +122,25 @@ export function ContractCard({ title, description, template, contractData }: Con
                   label={field['name']}
                   required
                   withAsterisk
+                  {...form.getInputProps(field.name, { type: 'input' })}
                 />
               )
           }
         })}
+        <Button
+          type='submit'
+          onClick={() => setContractData()}
+        >
+          Set Contract Data
+        </Button>
+        </Stack>
       </Card.Section>
 
       <Card.Section className={classes.section}>
         <Text mt="md" className={classes.label} color="dimmed">
           Contract details
         </Text>
-        <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(contractDetails(contractData)) }} />
+        <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(contractRender) }} />
       </Card.Section>
 
       <Stack mt="md">
@@ -98,6 +150,7 @@ export function ContractCard({ title, description, template, contractData }: Con
         <Checkbox
           required
           onChange={(event) => setAccepted(event.currentTarget.checked)}
+          disabled={!contractDataReady}
           label="I agree with the terms of this contract"
         />
 
