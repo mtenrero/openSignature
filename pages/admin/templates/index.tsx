@@ -39,6 +39,7 @@ export default function Contracts(props: any) {
       </Group>
       <List
         editable
+        sendable
         previewable
         resourceName='Template'
         item_key='name'

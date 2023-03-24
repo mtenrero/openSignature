@@ -7,7 +7,7 @@ import {
     Tooltip,
     MantineNumberSize,
   } from '@mantine/core';
-  import { IconEye, IconPencil, IconTrash } from '@tabler/icons';
+  import { IconEye, IconPencil, IconSend, IconTrash } from '@tabler/icons';
 import { useRouter } from 'next/router';
 
   interface ListProps {
@@ -26,9 +26,10 @@ import { useRouter } from 'next/router';
     }[]
     editable?: boolean
     previewable?: boolean
+    sendable?: boolean
   }
 
-  export function List({ data, columns, item_key, editable, previewable, apiEndpoint, extraRefresh, resourceName }: ListProps) {
+  export function List({ data, columns, item_key, editable, previewable, sendable, apiEndpoint, extraRefresh, resourceName }: ListProps) {
     const router = useRouter()
 
     const deleteContract = async (id) => {
@@ -61,25 +62,33 @@ import { useRouter } from 'next/router';
           <Group spacing={0} position="right">
             {previewable ? (
               <Tooltip label={`Preview ${resourceName}`}>
-                <ActionIcon>
-                  <IconEye size={16} stroke={1.5} onClick={() => router.push(`/admin/templates/preview/${item['name']}`)} />
+                <ActionIcon onClick={() => router.push(`/admin/templates/preview/${item['name']}`)}>
+                  <IconEye size={16} stroke={1.5} />
                 </ActionIcon>
               </Tooltip>
             ) : null}
 
             {editable? (
               <Tooltip label={`Edit ${resourceName}`}>
-                <ActionIcon>
-                  <IconPencil size={16} stroke={1.5} onClick={() => router.push(`/admin/templates/edit/${item['name']}`)} />
+                <ActionIcon onClick={() => router.push(`/admin/templates/edit/${item['name']}`)}>
+                  <IconPencil size={16} stroke={1.5} />
+                </ActionIcon>
+              </Tooltip>
+            ) : null}
+
+            {sendable ? (
+              <Tooltip label={`Send ${resourceName}`}>
+                <ActionIcon variant='outline' color='blue' onClick={() => router.push(`/admin/templates/preview/${item['name']}`)} >
+                  <IconSend size={16} stroke={2}/>
                 </ActionIcon>
               </Tooltip>
             ) : null}
 
             <Tooltip label={`Delete ${resourceName}`}>
-                <ActionIcon color="red" onClick={() => deleteContract(item[item_key])}>
-                  <IconTrash size={16} stroke={1.5} />
-                </ActionIcon>
-              </Tooltip>
+              <ActionIcon color="red" onClick={() => deleteContract(item[item_key])}>
+                <IconTrash size={16} stroke={1.5} />
+              </ActionIcon>
+            </Tooltip>
           </Group>
         </td>
       </tr>
