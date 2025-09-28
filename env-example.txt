@@ -1,0 +1,36 @@
+# Archivo de configuración de variables de entorno
+# Copia este contenido a un archivo .env.local en la raíz del proyecto
+
+# NextAuth Configuration
+NEXTAUTH_SECRET=your-nextauth-secret-key-change-in-production-make-it-long-and-random
+NEXTAUTH_URL=http://localhost:3000
+
+# Auth0 Configuration (replace with your actual values from Auth0 dashboard)
+# You can find these values in your Auth0 application settings
+
+# Main Auth0 Application (for user authentication)
+AUTH0_CLIENT_ID=your-auth0-client-id-here
+AUTH0_CLIENT_SECRET=your-auth0-client-secret-here
+AUTH0_ISSUER=https://your-domain.auth0.com
+
+# Auth0 Machine-to-Machine Application (for Management API access)
+# Optional: If not set, will fallback to main app credentials
+# Required for subscription management, user metadata access
+AUTH0_M2M_CLIENT_ID=your-auth0-m2m-client-id-here
+AUTH0_M2M_CLIENT_SECRET=your-auth0-m2m-client-secret-here
+
+# API Keys Configuration
+# Identifier for your API in Auth0 (used for M2M authentication)
+AUTH0_API_IDENTIFIER=https://osign.eu
+
+# CouchDB Configuration
+# For local development, use http://localhost:5984
+# For production, use your CouchDB server URL
+COUCHDB_URL=http://localhost:5984
+COUCHDB_USERNAME=admin
+COUCHDB_PASSWORD=password
+
+# Application Configuration
+BRAND=oSign.eu
+NODE_ENV=development
+NEXT_PUBLIC_APP_NAME=oSign.eu

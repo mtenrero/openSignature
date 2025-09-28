@@ -29,6 +29,23 @@ function SMSpayload(sender, message, recipient): string {
 }
 
 export async function sendSMS(sender, message, recipient) {
+    // Check if SMS is disabled via environment variable
+    const isSMSDisabled = process.env.DISABLE_SMS === 'true'
+
+    if (isSMSDisabled) {
+        console.log('📱 SMS disabled via DISABLE_SMS environment variable')
+        console.log(`   Sender: ${sender}`)
+        console.log(`   Message: ${message}`)
+        console.log(`   Recipient: ${recipient}`)
+
+        // Return a mock success response
+        return Promise.resolve({
+            success: true,
+            message: 'SMS sending disabled',
+            mockSent: true
+        })
+    }
+
     return new Promise<string>((resolve, reject) => {
         axios({
             method: 'post',
