@@ -255,11 +255,28 @@ Crea un contrato completo, legalmente válido para España, que incluya los camp
       throw new Error('No response from OpenAI')
     }
 
-    // Parse JSON response
+    // Clean and parse JSON response
     let parsedResponse: ContractGenerationResponse
     try {
-      parsedResponse = JSON.parse(response)
+      // Remove markdown code blocks if present
+      let cleanResponse = response.trim()
+
+      // Remove ```json at the beginning
+      if (cleanResponse.startsWith('```json')) {
+        cleanResponse = cleanResponse.substring(7)
+      }
+
+      // Remove ``` at the end
+      if (cleanResponse.endsWith('```')) {
+        cleanResponse = cleanResponse.substring(0, cleanResponse.length - 3)
+      }
+
+      // Remove any remaining backticks at start/end
+      cleanResponse = cleanResponse.replace(/^`+|`+$/g, '').trim()
+
+      parsedResponse = JSON.parse(cleanResponse)
     } catch (parseError) {
+      console.error('Raw AI response:', response)
       throw new Error('Invalid JSON response from AI: ' + parseError)
     }
 
