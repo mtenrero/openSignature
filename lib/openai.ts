@@ -136,7 +136,7 @@ FORMATO DE RESPUESTA (JSON válido):
 {
   "title": "Título descriptivo del contrato",
   "description": "Breve descripción del propósito",
-  "content": "Contenido HTML del contrato completo con variables y campos dinámicos",
+  "content": "Contenido HTML del contrato - MANTÉN CONCISO pero completo, usar <p> para párrafos y <br> para saltos",
   "contractType": "Tipo de contrato identificado del template",
   "suggestedDynamicFields": [
     {
@@ -152,6 +152,16 @@ FORMATO DE RESPUESTA (JSON válido):
   ]
 }
 
+IMPORTANTE PARA EL CONTENIDO:
+- Mantén el contenido del contrato CONCISO pero legalmente completo
+- Usa estructuras claras con <p> para párrafos
+- Evita repeticiones innecesarias
+- Incluye las cláusulas esenciales del template identificado
+- NO incluyas opciones múltiples en el mismo contrato (elige la más apropiada)
+- ELIMINAR COMPLETAMENTE cualquier línea de firma manuscrita, espacios para firmas, o referencias a "firma en todas las hojas"
+- NO incluir texto como "Por___ Por___", líneas de guiones para firmar, o cualquier elemento de firma física
+- El sistema usa firma digital, por lo que NO se requieren elementos de firma manuscrita
+
 INSTRUCCIONES DE GENERACIÓN:
 1. IDENTIFICA el template de contrato más apropiado
 2. ANALIZA la descripción para identificar información faltante esencial EMPRESARIAL
@@ -160,6 +170,7 @@ INSTRUCCIONES DE GENERACIÓN:
 5. USA {{dynamic:clientName}} y {{dynamic:clientTaxId}} obligatoriamente
 6. AÑADE campos dinámicos SOLO para datos genuinos del cliente/firmante
 7. SI faltan datos empresariales críticos, lista en "needsMoreInfo"
+8. ELIMINA COMPLETAMENTE cualquier elemento de firma manuscrita (líneas, espacios, "Por___", etc.)
 
 INSTRUCCIONES DE ADAPTACIÓN (cuando se proporciona contenido existente):
 1. ANALIZA el contrato existente para identificar su tipo y estructura
@@ -247,7 +258,7 @@ Crea un contrato completo, legalmente válido para España, que incluya los camp
         }
       ],
       temperature: 0.3, // Low temperature for consistency
-      max_tokens: 4000,
+      max_tokens: 8000, // Increased to handle longer contracts
     })
 
     const response = completion.choices[0]?.message?.content
@@ -274,10 +285,77 @@ Crea un contrato completo, legalmente válido para España, que incluya los camp
       // Remove any remaining backticks at start/end
       cleanResponse = cleanResponse.replace(/^`+|`+$/g, '').trim()
 
+      // Check if the response seems truncated (missing closing brace)
+      const openBraces = (cleanResponse.match(/\{/g) || []).length
+      const closeBraces = (cleanResponse.match(/\}/g) || []).length
+
+      if (openBraces > closeBraces) {
+        console.warn('Response appears truncated, attempting to fix...')
+        // Try to add missing closing braces
+        const missingBraces = openBraces - closeBraces
+        cleanResponse += '}}'.repeat(missingBraces)
+      }
+
+      // Try to fix common JSON issues in the content field
+      if (cleanResponse.includes('"content":')) {
+        // Find the content field and try to fix unterminated strings
+        const contentMatch = cleanResponse.match(/"content":\s*"/)
+        if (contentMatch) {
+          const contentStart = cleanResponse.indexOf('"content":"') + 11
+          const remaining = cleanResponse.substring(contentStart)
+
+          // Look for the end of the content field (where the next JSON field starts)
+          const nextFieldMatch = remaining.match(/",\s*"[a-zA-Z]+":/)
+          if (!nextFieldMatch) {
+            // Content field is not properly closed, try to find a reasonable end
+            console.warn('Content field appears unterminated, attempting to truncate and close...')
+            // Find last complete sentence or clause
+            const lastPeriod = remaining.lastIndexOf('.')
+            const lastClause = remaining.lastIndexOf('<br>')
+            const cutPoint = Math.max(lastPeriod, lastClause)
+
+            if (cutPoint > 0) {
+              const truncatedContent = remaining.substring(0, cutPoint + (lastPeriod > lastClause ? 1 : 4))
+              cleanResponse = cleanResponse.substring(0, contentStart) +
+                             truncatedContent +
+                             '", "suggestedDynamicFields": [], "needsMoreInfo": []}'
+            }
+          }
+        }
+      }
+
       parsedResponse = JSON.parse(cleanResponse)
     } catch (parseError) {
-      console.error('Raw AI response:', response)
-      throw new Error('Invalid JSON response from AI: ' + parseError)
+      console.error('Raw AI response length:', response.length)
+      console.error('Clean response length:', cleanResponse?.length || 0)
+      console.error('Parse error:', parseError)
+
+      // Try a fallback approach - extract what we can
+      try {
+        const titleMatch = response.match(/"title":\s*"([^"]+)"/)
+        const descMatch = response.match(/"description":\s*"([^"]+)"/)
+        const contentMatch = response.match(/"content":\s*"(.*?)(?:",\s*"[a-zA-Z]+"|$)/)
+
+        if (titleMatch && contentMatch) {
+          console.log('Using fallback JSON parsing...')
+          parsedResponse = {
+            title: titleMatch[1],
+            description: descMatch?.[1] || 'Contrato generado por IA',
+            content: contentMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '<br>'),
+            suggestedDynamicFields: [
+              { name: 'clientName', type: 'text', required: true, placeholder: 'Nombre completo del cliente' },
+              { name: 'clientTaxId', type: 'text', required: true, placeholder: 'NIF/DNI/CIF del cliente' }
+            ],
+            contractType: 'Acuerdo de Confidencialidad',
+            needsMoreInfo: []
+          }
+        } else {
+          throw new Error('Could not extract minimum required fields from AI response')
+        }
+      } catch (fallbackError) {
+        console.error('Fallback parsing also failed:', fallbackError)
+        throw new Error('Invalid JSON response from AI: ' + parseError)
+      }
     }
 
     // Validate required fields
