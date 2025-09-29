@@ -1,0 +1,19 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/check-pending-payments",
+      "schedule": "0 */24 * * *"
+    }
+  ],
+  "functions": {
+    "app/api/cron/check-pending-payments/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/webhooks/stripe/route.ts": {
+      "maxDuration": 30
+    }
+  },
+  "env": {
+    "NODE_ENV": "production"
+  }
+}

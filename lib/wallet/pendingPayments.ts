@@ -314,6 +314,17 @@ export class PendingPaymentManager {
   }
 
   /**
+   * Find a pending payment by Stripe payment intent ID
+   */
+  static async findByPaymentIntent(stripePaymentIntentId: string): Promise<PendingPayment | null> {
+    const collection = await this.getCollection()
+
+    return await collection.findOne({
+      stripePaymentIntentId
+    }) as PendingPayment | null
+  }
+
+  /**
    * Add business days to a date (excludes weekends)
    */
   private static addBusinessDays(date: Date, days: number): Date {

@@ -611,12 +611,28 @@ export class StripeManager {
         await this.handleCheckoutComplete(event.data.object as Stripe.Checkout.Session)
         break
 
+      case 'checkout.session.async_payment_succeeded':
+        await this.handleCheckoutAsyncPaymentSucceeded(event.data.object as Stripe.Checkout.Session)
+        break
+
       case 'payment_intent.succeeded':
         await this.handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent)
         break
 
       case 'payment_intent.payment_failed':
         await this.handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent)
+        break
+
+      case 'payment_intent.processing':
+        await this.handlePaymentIntentProcessing(event.data.object as Stripe.PaymentIntent)
+        break
+
+      case 'payment_intent.requires_action':
+        await this.handlePaymentIntentRequiresAction(event.data.object as Stripe.PaymentIntent)
+        break
+
+      case 'payment_intent.canceled':
+        await this.handlePaymentIntentCanceled(event.data.object as Stripe.PaymentIntent)
         break
 
       // Additional events that we can safely ignore but acknowledge
@@ -627,6 +643,7 @@ export class StripeManager {
       case 'customer.updated':
       case 'invoice.updated':
       case 'invoice.paid':
+      case 'invoice.sent':
       case 'invoice_payment.paid':
         console.log(`📝 Acknowledged event: ${event.type} (no action required)`)
         break
@@ -925,14 +942,110 @@ export class StripeManager {
   private static async handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent): Promise<void> {
     console.log('Processing payment_intent.payment_failed:', paymentIntent.id)
 
-    // Log failed wallet top-up payments for monitoring
+    // Handle pending payment failure
     if (paymentIntent.metadata?.type === 'wallet_topup') {
       const customerId = paymentIntent.metadata.openSignatureCustomerId
       const amountInCents = parseInt(paymentIntent.metadata.amountInCents || '0')
 
       console.error(`Wallet top-up payment failed for customer ${customerId}, amount: ${VirtualWallet.formatAmount(amountInCents)}, reason: ${paymentIntent.last_payment_error?.message || 'Unknown'}`)
 
-      // TODO: Optionally notify the user about the failed payment
+      // Update pending payment if it exists
+      try {
+        const { PendingPaymentManager } = await import('@/lib/wallet/pendingPayments')
+        const pendingPayment = await PendingPaymentManager.findByPaymentIntent(paymentIntent.id)
+
+        if (pendingPayment) {
+          await PendingPaymentManager.checkPendingPayment(pendingPayment)
+          console.log(`Updated pending payment status for failed payment: ${paymentIntent.id}`)
+        }
+      } catch (error) {
+        console.error('Error updating pending payment on failure:', error)
+      }
+    }
+  }
+
+  private static async handlePaymentIntentProcessing(paymentIntent: Stripe.PaymentIntent): Promise<void> {
+    console.log('Processing payment_intent.processing:', paymentIntent.id)
+
+    // Update pending payment status to processing
+    if (paymentIntent.metadata?.type === 'wallet_topup') {
+      try {
+        const { PendingPaymentManager } = await import('@/lib/wallet/pendingPayments')
+        const pendingPayment = await PendingPaymentManager.findByPaymentIntent(paymentIntent.id)
+
+        if (pendingPayment && pendingPayment.status === 'pending') {
+          await PendingPaymentManager.checkPendingPayment(pendingPayment)
+          console.log(`Updated pending payment to processing: ${paymentIntent.id}`)
+        }
+      } catch (error) {
+        console.error('Error updating pending payment to processing:', error)
+      }
+    }
+  }
+
+  private static async handlePaymentIntentRequiresAction(paymentIntent: Stripe.PaymentIntent): Promise<void> {
+    console.log('Processing payment_intent.requires_action:', paymentIntent.id)
+
+    // For SEPA, this usually means additional verification is needed
+    // We'll log this but generally don't need to take action
+    if (paymentIntent.metadata?.type === 'wallet_topup') {
+      const customerId = paymentIntent.metadata.openSignatureCustomerId
+      console.log(`Payment requires additional action for customer ${customerId}: ${paymentIntent.id}`)
+    }
+  }
+
+  private static async handlePaymentIntentCanceled(paymentIntent: Stripe.PaymentIntent): Promise<void> {
+    console.log('Processing payment_intent.canceled:', paymentIntent.id)
+
+    // Handle canceled payments similar to failed ones
+    if (paymentIntent.metadata?.type === 'wallet_topup') {
+      const customerId = paymentIntent.metadata.openSignatureCustomerId
+      const amountInCents = parseInt(paymentIntent.metadata.amountInCents || '0')
+
+      console.log(`Wallet top-up payment canceled for customer ${customerId}, amount: ${VirtualWallet.formatAmount(amountInCents)}`)
+
+      // Update pending payment if it exists
+      try {
+        const { PendingPaymentManager } = await import('@/lib/wallet/pendingPayments')
+        const pendingPayment = await PendingPaymentManager.findByPaymentIntent(paymentIntent.id)
+
+        if (pendingPayment) {
+          await PendingPaymentManager.checkPendingPayment(pendingPayment)
+          console.log(`Updated pending payment status for canceled payment: ${paymentIntent.id}`)
+        }
+      } catch (error) {
+        console.error('Error updating pending payment on cancellation:', error)
+      }
+    }
+  }
+
+  private static async handleCheckoutAsyncPaymentSucceeded(checkoutSession: Stripe.Checkout.Session): Promise<void> {
+    console.log('Processing checkout.session.async_payment_succeeded:', checkoutSession.id)
+
+    // This is typically for SEPA payments that succeed after initial processing
+    if (checkoutSession.metadata?.type === 'wallet_topup') {
+      const customerId = checkoutSession.metadata.openSignatureCustomerId
+      const amountInCents = parseInt(checkoutSession.metadata.amountInCents || '0')
+
+      console.log(`Async payment succeeded for customer ${customerId}, amount: ${VirtualWallet.formatAmount(amountInCents)}`)
+
+      // The payment_intent.succeeded webhook should handle the actual credit addition
+      // This event is mainly for logging and confirmation
+      if (checkoutSession.payment_intent) {
+        try {
+          const { PendingPaymentManager } = await import('@/lib/wallet/pendingPayments')
+          const pendingPayment = await PendingPaymentManager.findByPaymentIntent(
+            checkoutSession.payment_intent as string
+          )
+
+          if (pendingPayment) {
+            await PendingPaymentManager.checkPendingPayment(pendingPayment)
+            console.log(`Updated pending payment status for async payment success: ${checkoutSession.payment_intent}`)
+          }
+        } catch (error) {
+          console.error('Error updating pending payment on async success:', error)
+        }
+      }
     }
   }
 

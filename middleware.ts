@@ -14,7 +14,8 @@ export default auth((req) => {
     '/api/status',
     '/api/sign-requests',
     '/api/verify',
-    '/api/webhooks' // Allow all webhook endpoints (Stripe, etc.)
+    '/api/webhooks', // Allow all webhook endpoints (Stripe, etc.)
+    '/api/cron' // Allow Vercel Cron Jobs
   ]
 
   // Check if current API route is public
