@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
 import { generateContract, calculateTokenUsage, calculateCost } from '@/lib/openai'
 import { AICollections } from '@/lib/db/aiCollections'
-import { fetchAccountVariables } from '@/lib/contractUtils'
 import { UsageTracker } from '@/lib/subscription/usage'
 import { UsageAuditService } from '@/lib/usage/usageAudit'
 import { auth0UserManager } from '@/lib/auth/userManagement'
+import {
+  getDatabase,
+  mongoHelpers,
+  CustomerEncryption
+} from '@/lib/db/mongodb'
 
 export const runtime = 'nodejs'
 
@@ -80,12 +84,105 @@ export async function POST(request: NextRequest) {
 
     console.log(`[AI CONTRACT] Generating contract for customer ${customerId}: "${description}"`)
 
-    // Fetch current variables and dynamic fields
+    // Fetch current variables directly from database (server-side)
     let variables: any[] = []
     try {
-      variables = await fetchAccountVariables()
+      const db = await getDatabase()
+      const collection = db.collection('variables')
+
+      // Default variables template
+      const defaultVariablesTemplate = [
+        {
+          id: '2',
+          name: 'miNombre',
+          type: 'name',
+          required: true,
+          placeholder: '',
+          enabled: true
+        },
+        {
+          id: '3',
+          name: 'miDireccion',
+          type: 'address',
+          required: true,
+          placeholder: '',
+          enabled: true
+        },
+        {
+          id: '4',
+          name: 'miTelefono',
+          type: 'phone',
+          required: false,
+          placeholder: '',
+          enabled: true
+        },
+        {
+          id: '5',
+          name: 'miIdentificacionFiscal',
+          type: 'taxId',
+          required: true,
+          placeholder: '',
+          enabled: true
+        },
+        {
+          id: '6',
+          name: 'miEmail',
+          type: 'email',
+          required: false,
+          placeholder: '',
+          enabled: true
+        },
+        {
+          id: '7',
+          name: 'miCuentaBancaria',
+          type: 'text',
+          required: false,
+          placeholder: '',
+          enabled: false
+        }
+      ]
+
+      // Try to find existing variables for this customer
+      let variableDoc = await collection.findOne({ customerId: customerId, type: 'variables' })
+
+      if (!variableDoc) {
+        // Use default variables if none exist
+        variables = [
+          // Internal variables (always first)
+          {
+            id: '1',
+            name: 'fecha',
+            type: 'date',
+            required: true,
+            placeholder: 'Fecha y hora actual',
+            enabled: true,
+            internal: true
+          },
+          // Default database variables
+          ...defaultVariablesTemplate
+        ]
+      } else {
+        // Decrypt and use existing variables
+        const decrypted = CustomerEncryption.decryptSensitiveFields(variableDoc, customerId)
+        const cleanDoc = mongoHelpers.cleanDocument(decrypted)
+
+        variables = [
+          // Internal variables (always first)
+          {
+            id: '1',
+            name: 'fecha',
+            type: 'date',
+            required: true,
+            placeholder: 'Fecha y hora actual',
+            enabled: true,
+            internal: true
+          },
+          // Database variables
+          ...(cleanDoc.variables || [])
+        ]
+      }
     } catch (error) {
-      console.warn('Could not fetch account variables, using defaults:', error)
+      console.warn('Could not fetch account variables from database, using defaults:', error)
       variables = [
         { name: 'fecha', type: 'date' },
         { name: 'miNombre', type: 'name' },
