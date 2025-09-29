@@ -13,22 +13,22 @@ async function testPricingAccuracy() {
     FREE: {
       extraContract: 50, // 0.50€
       extraSignature: 10, // 0.10€
-      sms: 5 // 0.05€
+      sms: 7 // 0.07€
     },
     PAY_PER_USE: {
       extraContract: 50, // 0.50€
       extraSignature: 10, // 0.10€
-      sms: 5 // 0.05€
+      sms: 7 // 0.07€
     },
     PYME: {
       extraContract: 50, // 0.50€
       extraSignature: 10, // 0.10€
-      sms: 5 // 0.05€
+      sms: 7 // 0.07€
     },
     PREMIUM: {
       extraContract: 40, // 0.40€
       extraSignature: 8, // 0.08€
-      sms: 5 // 0.05€
+      sms: 7 // 0.07€
     }
   }
 

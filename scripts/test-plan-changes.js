@@ -17,7 +17,7 @@ const SUBSCRIPTION_PLANS = {
       smsSignatures: 0,
       extraContractCost: 50,
       extraSignatureCost: 10,
-      smsCost: 5
+      smsCost: 7
     },
     features: [
       '5 contratos diferentes',
@@ -38,13 +38,13 @@ const SUBSCRIPTION_PLANS = {
       smsSignatures: -1,
       extraContractCost: 50,
       extraSignatureCost: 10,
-      smsCost: 5
+      smsCost: 7
     },
     features: [
       '5 tipos de contrato incluidos',
       'Contratos adicionales: 0,50€/mes',
       'Todas las firmas por email: 0,10€', // ← Updated feature description
-      'SMS: 0,05€ (solo España)',
+      'SMS: 0,07€ (solo España)',
       'Sin acceso API'
     ]
   }
@@ -132,4 +132,4 @@ console.log('\n📝 Summary:')
 console.log('   - Plan Gratuito: 20 emails included, then upgrade required')
 console.log('   - Plan Pago por uso: 0 emails included, all emails charged at 0.10€')
 console.log('   - Both plans: 5 contracts included, extra contracts at 0.50€')
-console.log('   - SMS: Always charged at 0.05€ (both plans)')
+console.log('   - SMS: Always charged at 0.07€ (both plans)')

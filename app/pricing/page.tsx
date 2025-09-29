@@ -308,7 +308,7 @@ export default function PricingPage() {
                   Firmas por SMS disponibles en todos los planes de pago:
                 </Text>
                 <List spacing="xs" size="sm">
-                  <List.Item><strong>0,05€</strong> por SMS enviado</List.Item>
+                  <List.Item><strong>0,07€</strong> por SMS enviado</List.Item>
                   <List.Item>Perfecto para firmas rápidas</List.Item>
                   <List.Item>Cumplimiento eIDAS garantizado</List.Item>
                 </List>

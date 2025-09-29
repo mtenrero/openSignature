@@ -31,7 +31,7 @@ const SUBSCRIPTION_PLANS = {
       'Contratos adicionales: 0,50€/mes',
       '150 firmas por email al mes',
       'Firmas extra: 0,10€',
-      'SMS: 0,05€ (solo España)',
+      'SMS: 0,07€ (solo España)',
       'Acceso API completo'
     ]
   },
@@ -46,7 +46,7 @@ const SUBSCRIPTION_PLANS = {
       'Contratos adicionales: 0,40€/mes',
       '500 firmas por email al mes',
       'Firmas extra: 0,08€',
-      'SMS: 0,05€ (solo España)',
+      'SMS: 0,07€ (solo España)',
       'Acceso API completo'
     ]
   }
