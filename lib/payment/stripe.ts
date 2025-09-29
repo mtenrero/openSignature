@@ -46,12 +46,27 @@ export class StripeManager {
    */
   private static getPaymentMethodTypes(): string[] {
     const disableSEPA = process.env.DISABLE_SEPA === 'true'
+    const isProduction = process.env.NODE_ENV === 'production'
+    const isLiveStripe = process.env.STRIPE_SECRET_KEY?.startsWith('sk_live_')
 
-    if (disableSEPA) {
-      console.log('💳 SEPA payments disabled by environment variable DISABLE_SEPA=true')
+    console.log('🔍 Payment method configuration:', {
+      DISABLE_SEPA: process.env.DISABLE_SEPA,
+      disableSEPA,
+      NODE_ENV: process.env.NODE_ENV,
+      isProduction,
+      isLiveStripe,
+      stripeKeyPrefix: process.env.STRIPE_SECRET_KEY?.substring(0, 8)
+    })
+
+    // Force disable SEPA if using live Stripe keys (production Stripe account)
+    // OR if explicitly disabled via environment variable
+    if (disableSEPA || isLiveStripe) {
+      const reason = disableSEPA ? 'environment variable DISABLE_SEPA=true' : 'live Stripe account detected'
+      console.log(`💳 SEPA payments disabled due to: ${reason}`)
       return ['card']
     }
 
+    console.log('💳 SEPA payments enabled, allowing both card and sepa_debit')
     return ['card', 'sepa_debit']
   }
 

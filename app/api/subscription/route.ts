@@ -125,6 +125,28 @@ export async function GET(request: NextRequest) {
         console.log('🔍 Fetching subscription dates for customer:', stripeCustomerId, 'plan:', subscriptionInfo.plan.id)
         const { stripe } = await import('@/lib/payment/stripe')
 
+        // First check if the customer exists
+        try {
+          await stripe.customers.retrieve(stripeCustomerId)
+        } catch (customerError: any) {
+          if (customerError.code === 'resource_missing') {
+            console.warn(`⚠️ Stripe customer ${stripeCustomerId} not found (likely test data). Clearing from user metadata.`)
+
+            // Clear the invalid Stripe customer ID from user metadata
+            const { auth0UserManager } = await import('@/lib/auth/userManagement')
+            const currentMetadata = subscriptionInfo.user.user_metadata || {}
+            const newMetadata = { ...currentMetadata }
+            delete newMetadata.stripeCustomerId
+
+            await auth0UserManager.updateUserMetadata(subscriptionInfo.user.user_id, newMetadata)
+            console.log(`✅ Cleared invalid Stripe customer ID for user ${subscriptionInfo.user.email}`)
+
+            // Continue without subscription dates
+            throw new Error('Customer not found - cleared from metadata')
+          }
+          throw customerError
+        }
+
         // Get active subscriptions for this customer with expanded data
         const subscriptions = await stripe.subscriptions.list({
           customer: stripeCustomerId,
