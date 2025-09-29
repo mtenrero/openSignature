@@ -121,13 +121,22 @@ export class PendingPaymentManager {
     const collection = await this.getCollection()
 
     try {
+      // Ensure payment intent ID is a string
+      const paymentIntentId = String(pendingPayment.stripePaymentIntentId)
+
+      if (!paymentIntentId || paymentIntentId === 'undefined' || paymentIntentId === 'null') {
+        throw new Error(`Invalid payment intent ID: ${paymentIntentId}`)
+      }
+
+      console.log(`Checking payment ${paymentIntentId} (type: ${typeof paymentIntentId})`)
+
       // Get payment intent from Stripe
       const paymentIntent = await stripe.paymentIntents.retrieve(
-        pendingPayment.stripePaymentIntentId,
+        paymentIntentId,
         { expand: ['charges.data'] }
       )
 
-      console.log(`Checking payment ${pendingPayment.stripePaymentIntentId}: status=${paymentIntent.status}`)
+      console.log(`Checking payment ${paymentIntentId}: status=${paymentIntent.status}`)
 
       let newStatus: PendingPayment['status'] = pendingPayment.status
       let updated = false
@@ -155,7 +164,7 @@ export class PendingPaymentManager {
           )
 
           updated = true
-          console.log(`✅ Payment confirmed: ${pendingPayment.stripePaymentIntentId}`)
+          console.log(`✅ Payment confirmed: ${paymentIntentId}`)
           break
 
         case 'processing':
@@ -163,7 +172,7 @@ export class PendingPaymentManager {
             newStatus = 'processing'
             updateData.status = 'processing'
             updated = true
-            console.log(`🔄 Payment processing: ${pendingPayment.stripePaymentIntentId}`)
+            console.log(`🔄 Payment processing: ${paymentIntentId}`)
           }
           break
 
@@ -179,11 +188,11 @@ export class PendingPaymentManager {
             pendingPayment.amount,
             'refund',
             `Reversión: ${pendingPayment.description} (PAGO FALLIDO)`,
-            pendingPayment.stripePaymentIntentId
+            paymentIntentId
           )
 
           updated = true
-          console.log(`❌ Payment failed: ${pendingPayment.stripePaymentIntentId}`)
+          console.log(`❌ Payment failed: ${paymentIntentId}`)
           break
 
         default:
@@ -203,11 +212,11 @@ export class PendingPaymentManager {
               pendingPayment.amount,
               'refund',
               `Reversión: ${pendingPayment.description} (PAGO EXPIRADO)`,
-              pendingPayment.stripePaymentIntentId
+              paymentIntentId
             )
 
             updated = true
-            console.log(`⏰ Payment expired: ${pendingPayment.stripePaymentIntentId}`)
+            console.log(`⏰ Payment expired: ${paymentIntentId}`)
           }
           break
       }
@@ -221,7 +230,7 @@ export class PendingPaymentManager {
       return { updated, newStatus }
 
     } catch (error: any) {
-      console.error(`Error checking pending payment ${pendingPayment.stripePaymentIntentId}:`, error)
+      console.error(`Error checking pending payment ${String(pendingPayment.stripePaymentIntentId)}:`, error)
 
       // Update with error information
       await collection.updateOne(

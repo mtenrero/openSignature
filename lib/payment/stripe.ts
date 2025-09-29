@@ -913,7 +913,18 @@ export class StripeManager {
       }
 
       try {
-        // Check if credits were already added to prevent double processing
+        // First check if there's a pending payment to update
+        const { PendingPaymentManager } = await import('@/lib/wallet/pendingPayments')
+        const pendingPayment = await PendingPaymentManager.findByPaymentIntent(paymentIntent.id)
+
+        if (pendingPayment) {
+          // Update the pending payment status (this will handle credit confirmation)
+          console.log(`Found pending payment, updating status: ${paymentIntent.id}`)
+          await PendingPaymentManager.checkPendingPayment(pendingPayment)
+          return
+        }
+
+        // If no pending payment, check if credits were already added
         const existingTransaction = await VirtualWallet.findTransactionByPaymentIntent(paymentIntent.id)
         if (existingTransaction) {
           console.log(`Credits already added for payment_intent ${paymentIntent.id}, skipping`)
@@ -923,16 +934,17 @@ export class StripeManager {
         // Get the charge ID for receipt access
         const chargeId = expandedPaymentIntent.charges?.data?.[0]?.id
 
+        // Add credits directly (for immediate card payments)
         await VirtualWallet.addCredits(
           customerId,
           amountInCents,
           'top_up',
-          `Bono de uso adicional (SEPA) - ${VirtualWallet.formatAmount(amountInCents)}`,
+          `Bono de uso adicional - ${VirtualWallet.formatAmount(amountInCents)}`,
           paymentIntent.id,
           chargeId
         )
 
-        console.log(`Added ${VirtualWallet.formatAmount(amountInCents)} credits to wallet for customer ${customerId} (SEPA payment)`)
+        console.log(`Added ${VirtualWallet.formatAmount(amountInCents)} credits to wallet for customer ${customerId} (immediate payment)`)
       } catch (error) {
         console.error('Error adding credits to wallet from payment_intent.succeeded:', error)
       }
@@ -967,18 +979,50 @@ export class StripeManager {
   private static async handlePaymentIntentProcessing(paymentIntent: Stripe.PaymentIntent): Promise<void> {
     console.log('Processing payment_intent.processing:', paymentIntent.id)
 
-    // Update pending payment status to processing
+    // Handle SEPA payments entering processing state
     if (paymentIntent.metadata?.type === 'wallet_topup') {
       try {
         const { PendingPaymentManager } = await import('@/lib/wallet/pendingPayments')
-        const pendingPayment = await PendingPaymentManager.findByPaymentIntent(paymentIntent.id)
+        const { VirtualWallet } = await import('@/lib/wallet/wallet')
+        let pendingPayment = await PendingPaymentManager.findByPaymentIntent(paymentIntent.id)
 
-        if (pendingPayment && pendingPayment.status === 'pending') {
+        // If no pending payment exists, create one (this happens for SEPA payments)
+        if (!pendingPayment) {
+          const customerId = paymentIntent.metadata.openSignatureCustomerId
+          const amountInCents = parseInt(paymentIntent.metadata.amountInCents || '0')
+
+          // Expand payment intent to get charges for payment method detection
+          const expandedPaymentIntent = await stripe.paymentIntents.retrieve(paymentIntent.id, {
+            expand: ['charges.data']
+          }) as Stripe.PaymentIntent & { charges?: { data: Stripe.Charge[] } }
+
+          // Determine payment method
+          let paymentMethod: 'sepa_debit' | 'card' | 'other' = 'other'
+          if (expandedPaymentIntent.charges?.data?.[0]?.payment_method_details?.type) {
+            const methodType = expandedPaymentIntent.charges.data[0].payment_method_details.type
+            paymentMethod = methodType === 'sepa_debit' ? 'sepa_debit' :
+                           methodType === 'card' ? 'card' : 'other'
+          }
+
+          console.log(`Creating pending payment for SEPA processing: ${paymentIntent.id}, method: ${paymentMethod}`)
+
+          pendingPayment = await PendingPaymentManager.createPendingPayment({
+            customerId,
+            stripePaymentIntentId: paymentIntent.id,
+            amount: amountInCents,
+            description: `Bono de uso adicional (${paymentMethod.toUpperCase()})`,
+            paymentMethod,
+            expectedDays: paymentMethod === 'sepa_debit' ? 5 : 1
+          })
+
+          console.log(`✅ Created pending payment: ${paymentIntent.id} for ${VirtualWallet.formatAmount(amountInCents)}`)
+        } else if (pendingPayment.status === 'pending') {
+          // Update existing pending payment to processing
           await PendingPaymentManager.checkPendingPayment(pendingPayment)
           console.log(`Updated pending payment to processing: ${paymentIntent.id}`)
         }
       } catch (error) {
-        console.error('Error updating pending payment to processing:', error)
+        console.error('Error handling payment_intent.processing:', error)
       }
     }
   }
