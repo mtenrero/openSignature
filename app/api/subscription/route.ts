@@ -18,7 +18,87 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user subscription info from Auth0
-    const subscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(session.user.id)
+    let subscriptionInfo
+    try {
+      subscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(session.user.id)
+    } catch (error) {
+      console.error('Failed to get Auth0 user subscription info:', error)
+
+      // If Auth0 is not accessible, return default free plan info
+      if (error instanceof Error && error.message.includes('forbidden')) {
+        console.warn('Auth0 Management API access forbidden, using default free plan')
+
+        return NextResponse.json({
+          user: {
+            id: session.user.id,
+            email: session.user.email,
+            name: session.user.name || 'Usuario',
+            registrationDate: new Date().toISOString(),
+            subscriptionStatus: 'active',
+            isBarvetCustomer: false,
+            stripeCustomerId: null
+          },
+          plan: {
+            id: 'free',
+            name: 'Plan Gratuito',
+            price: 0,
+            currency: 'EUR',
+            features: [
+              '5 contratos por mes',
+              'Firma por email',
+              'Soporte básico'
+            ]
+          },
+          limits: {
+            contractsPerMonth: 5,
+            aiGenerationsPerMonth: 0,
+            emailSignatures: 5,
+            smsSignatures: 0,
+            localSignatures: 5,
+            apiAccess: false,
+            supportLevel: 'basic'
+          },
+          usage: {
+            contractsCreated: 0,
+            aiGenerationsUsed: 0,
+            emailSignaturesSent: 0,
+            smsSignaturesSent: 0,
+            localSignaturesSent: 0,
+            apiCalls: 0
+          },
+          usageLimits: [
+            {
+              type: 'contracts',
+              current: 0,
+              limit: 5,
+              exceeded: false
+            },
+            {
+              type: 'email_signatures',
+              current: 0,
+              limit: 5,
+              exceeded: false
+            },
+            {
+              type: 'local_signatures',
+              current: 0,
+              limit: 5,
+              exceeded: false
+            }
+          ],
+          billing: {
+            total: 0,
+            breakdown: {},
+            currency: 'EUR'
+          },
+          availablePlans: [],
+          warning: 'Auth0 Management API no disponible, mostrando plan por defecto'
+        })
+      }
+
+      throw error
+    }
+
     if (!subscriptionInfo) {
       return NextResponse.json(
         { error: 'User subscription info not found' },

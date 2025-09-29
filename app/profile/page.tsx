@@ -198,7 +198,7 @@ export default function ProfilePage() {
         <Group justify="center" py="xl">
           <Loader size="lg" />
         </Group>
-      ) : aiUsage ? (
+      ) : aiUsage && aiUsage.totalRequests > 0 ? (
         <>
           {/* Stats cards */}
           <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} spacing="md">
@@ -370,6 +370,26 @@ export default function ProfilePage() {
             </Grid.Col>
           </Grid>
         </>
+      ) : aiUsage ? (
+        // Usuario sin datos de IA
+        <Card padding="xl" withBorder bg="gray.0">
+          <Stack align="center" gap="md">
+            <IconBrain size={64} color="var(--mantine-color-gray-5)" />
+            <Title order={3} c="dimmed">
+              No has usado IA aún
+            </Title>
+            <Text size="sm" c="dimmed" ta="center" maw={400}>
+              Aún no tienes registro de uso de inteligencia artificial. Las estadísticas aparecerán cuando generes tu primer contrato con IA.
+            </Text>
+            <Button
+              variant="light"
+              onClick={() => router.push('/contracts/new')}
+              leftSection={<IconBrain size={16} />}
+            >
+              Crear contrato con IA
+            </Button>
+          </Stack>
+        </Card>
       ) : (
         <Text size="sm" c="dimmed" ta="center" py="xl">
           No se pudieron cargar las estadísticas

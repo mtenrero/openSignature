@@ -19,6 +19,9 @@ export default function NewContractPage() {
   const [parameters, setParameters] = useState<ContractParameters>({
     requireDoubleSignatureSMS: false
   })
+
+  // Check if SMS is disabled via environment variables
+  const isSMSDisabled = process.env.NEXT_PUBLIC_DISABLE_SMS === 'true'
   
 
   const handleCreateContract = async () => {
@@ -163,8 +166,9 @@ export default function NewContractPage() {
           <Stack gap="md">
             <Checkbox
               label="Requerir doble firma por SMS (mayor garantía legal)"
-              description="El firmante recibirá un código por SMS además de la firma digital"
-              checked={parameters.requireDoubleSignatureSMS}
+              description={isSMSDisabled ? "SMS está deshabilitado en la configuración del sistema" : "El firmante recibirá un código por SMS además de la firma digital"}
+              checked={parameters.requireDoubleSignatureSMS && !isSMSDisabled}
+              disabled={isSMSDisabled}
               onChange={(event) => setParameters({
                 ...parameters,
                 requireDoubleSignatureSMS: event.currentTarget.checked

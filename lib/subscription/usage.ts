@@ -486,4 +486,135 @@ export class UsageTracker {
       totalExtraCost
     }
   }
+
+  /**
+   * Get usage data adjusted for refunds
+   * This method considers refunded transactions to show accurate current usage
+   */
+  static async getAdjustedUsageData(customerId: string): Promise<{
+    contractsCreated: number
+    aiGenerationsUsed: number
+    emailSignaturesSent: number
+    smsSignaturesSent: number
+    localSignaturesSent: number
+    refundsApplied: {
+      contracts: number
+      signatures: number
+      walletRefunds: number
+    }
+  }> {
+    try {
+      // Get base usage data
+      const baseUsage = await this.getRealUsageData(customerId)
+
+      // Get refund data from RefundSystem
+      const currentMonth = new Date().toISOString().substring(0, 7)
+
+      // We need to import RefundSystem dynamically to avoid circular dependencies
+      const { RefundSystem } = await import('@/lib/subscription/refundSystem')
+      const refundSummary = await RefundSystem.getRefundSummary(customerId, currentMonth)
+
+      // Calculate refunds to subtract from usage
+      let contractRefunds = 0
+      let signatureRefunds = 0
+
+      refundSummary.transactions.forEach(transaction => {
+        if (transaction.type === 'contract_refund' || transaction.type === 'extra_contract_refund') {
+          if (transaction.details.originalUsageType === 'monthly_allowance') {
+            contractRefunds++
+          }
+          // Extra paid contracts are refunded to wallet, not subtracted from usage
+        } else if (transaction.type === 'signature_refund') {
+          if (transaction.details.originalUsageType === 'monthly_allowance') {
+            signatureRefunds++
+          }
+          // Extra paid signatures are refunded to wallet, not subtracted from usage
+        }
+      })
+
+      return {
+        contractsCreated: Math.max(0, baseUsage.contractsCreated - contractRefunds),
+        aiGenerationsUsed: baseUsage.aiGenerationsUsed, // AI usage is not refunded
+        emailSignaturesSent: Math.max(0, baseUsage.emailSignaturesSent - signatureRefunds),
+        smsSignaturesSent: baseUsage.smsSignaturesSent, // SMS is not fully refunded (only unsent SMS)
+        localSignaturesSent: Math.max(0, baseUsage.localSignaturesSent - signatureRefunds),
+        refundsApplied: {
+          contracts: contractRefunds,
+          signatures: signatureRefunds,
+          walletRefunds: refundSummary.walletRefundAmount
+        }
+      }
+
+    } catch (error) {
+      console.error('Error getting adjusted usage data:', error)
+      // Fall back to base usage data if refund calculation fails
+      const baseUsage = await this.getRealUsageData(customerId)
+      return {
+        ...baseUsage,
+        refundsApplied: {
+          contracts: 0,
+          signatures: 0,
+          walletRefunds: 0
+        }
+      }
+    }
+  }
+
+  /**
+   * Update usage record to use adjusted data with refunds
+   */
+  static async getCurrentUsageWithRefunds(customerId: string): Promise<UsageRecord & {
+    refundsApplied: {
+      contracts: number
+      signatures: number
+      walletRefunds: number
+    }
+  }> {
+    const collection = await this.getUsageCollection()
+    const currentMonth = new Date().toISOString().substring(0, 7)
+    const currentYear = new Date().getFullYear()
+
+    // Get adjusted usage data (including refunds)
+    const adjustedUsage = await this.getAdjustedUsageData(customerId)
+
+    // Use findOneAndUpdate with upsert to handle race conditions
+    const result = await collection.findOneAndUpdate(
+      {
+        customerId,
+        month: currentMonth
+      },
+      {
+        $setOnInsert: {
+          customerId,
+          planId: 'free', // Default to free, will be updated
+          month: currentMonth,
+          year: currentYear,
+          apiCalls: 0,
+          extraContracts: 0,
+          extraSignatures: 0,
+          smsCharges: 0,
+          totalExtraCost: 0,
+          createdAt: new Date()
+        },
+        $set: {
+          // Use adjusted data that considers refunds
+          contractsCreated: adjustedUsage.contractsCreated,
+          aiGenerationsUsed: adjustedUsage.aiGenerationsUsed,
+          emailSignaturesSent: adjustedUsage.emailSignaturesSent,
+          smsSignaturesSent: adjustedUsage.smsSignaturesSent,
+          localSignaturesSent: adjustedUsage.localSignaturesSent,
+          updatedAt: new Date()
+        }
+      },
+      {
+        upsert: true,
+        returnDocument: 'after'
+      }
+    )
+
+    return {
+      ...(result as UsageRecord),
+      refundsApplied: adjustedUsage.refundsApplied
+    }
+  }
 }

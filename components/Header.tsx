@@ -1,8 +1,8 @@
 'use client'
 
-import React from 'react'
-import { Group, Button, Text, ActionIcon, Box, Container, useMantineColorScheme, Menu, Avatar } from '@mantine/core'
-import { IconSunMoon, IconFileText, IconSignature, IconLogin, IconHome, IconSettings, IconLogout, IconUser, IconDeviceTablet, IconCreditCard, IconReceipt, IconWallet, IconKey } from '@tabler/icons-react'
+import React, { useState } from 'react'
+import { Group, Button, Text, ActionIcon, Box, Container, useMantineColorScheme, Menu, Avatar, Stack, Transition } from '@mantine/core'
+import { IconSunMoon, IconFileText, IconSignature, IconLogin, IconHome, IconSettings, IconLogout, IconUser, IconDeviceTablet, IconCreditCard, IconReceipt, IconWallet, IconKey, IconUserPlus } from '@tabler/icons-react'
 import Link from 'next/link'
 import { useSession, signOut } from 'next-auth/react'
 import { usePathname, useRouter } from 'next/navigation'
@@ -31,6 +31,64 @@ function ThemeToggle() {
   )
 }
 
+function LoginWithSignupHover() {
+  const [showSignup, setShowSignup] = useState(false)
+
+  return (
+    <Box
+      style={{ position: 'relative' }}
+      onMouseEnter={() => setShowSignup(true)}
+      onMouseLeave={() => setShowSignup(false)}
+    >
+      <Link href="/auth/signin">
+        <Button variant="filled" leftSection={<IconLogin size={16} />}>
+          Iniciar Sesión
+        </Button>
+      </Link>
+
+      <Transition
+        mounted={showSignup}
+        transition="slide-down"
+        duration={200}
+        timingFunction="ease"
+      >
+        {(styles) => (
+          <Box
+            style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              zIndex: 200,
+              paddingTop: '4px',
+              ...styles
+            }}
+          >
+            <Link href="/auth/signup">
+              <Button
+                variant="filled"
+                color="white"
+                c="blue"
+                leftSection={<IconUserPlus size={16} />}
+                fullWidth
+                size="sm"
+                style={{
+                  backgroundColor: 'white',
+                  color: 'var(--mantine-color-blue-6)',
+                  border: '1px solid var(--mantine-color-gray-3)',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                }}
+              >
+                Crear Cuenta
+              </Button>
+            </Link>
+          </Box>
+        )}
+      </Transition>
+    </Box>
+  )
+}
+
 export function Header() {
   const pathname = usePathname()
   const router = useRouter()
@@ -40,6 +98,7 @@ export function Header() {
     pathname.startsWith('/welcome') ||
     pathname.startsWith('/sign') ||
     pathname === '/auth/signin' ||
+    pathname === '/auth/signup' ||
     pathname === '/auth/error' ||
     pathname === '/pricing' ||
     pathname === '/features' ||
@@ -206,11 +265,7 @@ export function Header() {
                   Cómo Funciona
                 </Button>
               </Link>
-              <Link href="/auth/signin">
-                <Button variant="filled" leftSection={<IconLogin size={16} />}>
-                  Iniciar Sesión
-                </Button>
-              </Link>
+              <LoginWithSignupHover />
               <ThemeToggle />
             </Group>
           </Group>

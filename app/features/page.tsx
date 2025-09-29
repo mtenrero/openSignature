@@ -250,8 +250,8 @@ export default function FeaturesPage() {
             <Title order={3} ta="center" mb="xl">Opciones de Integración</Title>
             <SimpleGrid cols={{ base: 1, md: 3 }} spacing="lg">
               <Stack align="center" ta="center">
-                <IconApi size={40} color="var(--mantine-color-purple-6)" />
-                <Title order={5}>API REST</Title>
+              <IconApi size={40} color="var(--mantine-color-blue-6)" />
+              <Title order={5}>API REST</Title>
                 <Text size="sm" c="dimmed">
                   Integración completa con tu software existente mediante nuestra API REST
                 </Text>

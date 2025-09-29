@@ -416,11 +416,11 @@ function SubscriptionPageContent() {
         </SimpleGrid>
 
         {/* Limits Exceeded Alert */}
-        {subscriptionData.usageLimits.some(l => l.exceeded) && (
+        {Array.isArray(subscriptionData.usageLimits) && subscriptionData.usageLimits.some(l => l.exceeded) && (
           <Alert color="orange" icon={<IconInfoCircle size={16} />}>
             <Text fw={500} mb="xs">Límites alcanzados</Text>
             <Stack gap="xs">
-              {subscriptionData.usageLimits
+              {Array.isArray(subscriptionData.usageLimits) && subscriptionData.usageLimits
                 .filter(l => l.exceeded)
                 .map((limit, index) => (
                   <Text key={index} size="sm">

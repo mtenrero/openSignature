@@ -108,43 +108,6 @@ export async function GET(request: NextRequest) {
       topUsageDays
     }
 
-    // If no real data exists, return sample data for development
-    if (basicStats.totalRequests === 0) {
-      const sampleStats: AIUsageStats = {
-        totalRequests: 47,
-        totalTokens: 12850,
-        contractsGenerated: 47,
-        averageTokensPerRequest: 273,
-        totalCost: 0.0385, // ~$0.04
-        requestsByModel: {
-          'gpt-4o-mini': 47
-        },
-        dailyBreakdown: [
-          { date: '2024-12-15', requests: 8, tokens: 2100, cost: 0.0063 },
-          { date: '2024-12-14', requests: 5, tokens: 1320, cost: 0.0040 },
-          { date: '2024-12-13', requests: 12, tokens: 3200, cost: 0.0096 },
-          { date: '2024-12-12', requests: 3, tokens: 780, cost: 0.0023 },
-          { date: '2024-12-11', requests: 7, tokens: 1890, cost: 0.0057 },
-          { date: '2024-12-10', requests: 6, tokens: 1650, cost: 0.0050 },
-          { date: '2024-12-09', requests: 4, tokens: 1100, cost: 0.0033 },
-          { date: '2024-12-08', requests: 2, tokens: 810, cost: 0.0024 }
-        ],
-        topUsageDays: [
-          { date: '2024-12-13', requests: 12 },
-          { date: '2024-12-15', requests: 8 },
-          { date: '2024-12-11', requests: 7 },
-          { date: '2024-12-10', requests: 6 },
-          { date: '2024-12-14', requests: 5 }
-        ]
-      }
-      
-      return NextResponse.json({ 
-        success: true, 
-        usage: sampleStats,
-        period,
-        note: 'Datos de ejemplo - el sistema comenzará a recopilar estadísticas reales con el uso'
-      })
-    }
 
     return NextResponse.json({ 
       success: true, 

@@ -80,6 +80,8 @@ providers.push(Auth0({
   }
 }))
 
+// Auth0 handles all authentication - no local credentials needed
+
 export const config: NextAuthConfig = {
   providers,
   pages: {

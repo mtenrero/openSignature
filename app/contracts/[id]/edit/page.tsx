@@ -114,6 +114,9 @@ export default function ContractEditorPage() {
   const [aiQuestions, setAiQuestions] = useState<string[]>([])
   const [aiAnswers, setAiAnswers] = useState<{[key: string]: string}>({})
   const [showQAMode, setShowQAMode] = useState(false)
+
+  // Check if SMS is disabled via environment variables
+  const isSMSDisabled = process.env.NEXT_PUBLIC_DISABLE_SMS === 'true'
   const [aiMode, setAiMode] = useState<'generate' | 'adapt'>('generate')
   const [existingContract, setExistingContract] = useState('')
 
@@ -1270,7 +1273,8 @@ export default function ContractEditorPage() {
                   <Group>
                     <input
                       type="checkbox"
-                      checked={contrato.parameters?.requireDoubleSignatureSMS || false}
+                      checked={(contrato.parameters?.requireDoubleSignatureSMS || false) && !isSMSDisabled}
+                      disabled={isSMSDisabled}
                       onChange={(e) => setContrato({
                         ...contrato,
                         parameters: {
@@ -1279,7 +1283,10 @@ export default function ContractEditorPage() {
                         } as ContractParameters
                       })}
                     />
-                    <Text size="sm">Requerir doble firma por SMS (mayor garantía legal)</Text>
+                    <Text size="sm" c={isSMSDisabled ? "dimmed" : undefined}>
+                      Requerir doble firma por SMS (mayor garantía legal)
+                      {isSMSDisabled && <span> - SMS deshabilitado</span>}
+                    </Text>
                   </Group>
                 </div>
 

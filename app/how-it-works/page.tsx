@@ -20,21 +20,20 @@ import {
   Center,
   Timeline
 } from '@mantine/core'
-import { 
+import {
   IconUpload,
   IconUsers,
   IconMail,
   IconPencil,
   IconCheck,
   IconDownload,
-  IconRobot,
   IconDeviceTablet,
-  IconMessage,
   IconClock,
   IconShield,
   IconEye,
   IconFileCheck,
-  IconArrowRight
+  IconArrowRight,
+  IconApi
 } from '@tabler/icons-react'
 import Link from 'next/link'
 
@@ -138,7 +137,7 @@ const integrationMethods = [
   {
     title: 'API REST',
     description: 'Integración completa en tus aplicaciones existentes',
-    icon: IconRobot,
+    icon: IconApi,
     features: ['Endpoints completos', 'Documentación OpenAPI', 'SDKs disponibles', 'Webhooks de estado']
   },
   {
@@ -334,7 +333,7 @@ export default function HowItWorksPage() {
 
               <Timeline.Item
                 bullet={<IconPencil size={16} />}
-                title="5-15 minutos - Firma"
+                title="1-15 minutos - Firma"
                 color="green"
               >
                 <Text c="dimmed" size="sm">
@@ -411,7 +410,7 @@ export default function HowItWorksPage() {
                 <Text fw={600} mb="sm">¿Cuánto tiempo tarda el proceso completo?</Text>
                 <Text size="sm" c="dimmed">
                   Desde que subes el documento hasta recibir las firmas, el proceso típico tarda entre 
-                  5-30 minutos, dependiendo de la rapidez de los firmantes.
+                  1-15 minutos, dependiendo de la rapidez de los firmantes.
                 </Text>
               </Card>
 

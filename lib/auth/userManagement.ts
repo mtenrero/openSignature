@@ -99,7 +99,21 @@ export class Auth0UserManager {
 
     if (!response.ok) {
       if (response.status === 404) return null
-      throw new Error(`Failed to get user: ${response.statusText}`)
+
+      const errorBody = await response.text()
+      console.error('Auth0 getUser error:', {
+        status: response.status,
+        statusText: response.statusText,
+        userId,
+        domain: this.domain,
+        errorBody
+      })
+
+      if (response.status === 403) {
+        throw new Error(`Auth0 Management API access forbidden. Please ensure your Auth0 Machine-to-Machine application has the 'read:users' scope enabled for the Management API. Status: ${response.statusText}`)
+      }
+
+      throw new Error(`Failed to get user: ${response.statusText} - ${errorBody}`)
     }
 
     return await response.json()
