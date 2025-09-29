@@ -41,6 +41,20 @@ export interface StripeSubscription {
 
 export class StripeManager {
 
+  /**
+   * Get available payment methods based on environment configuration
+   */
+  private static getPaymentMethodTypes(): string[] {
+    const disableSEPA = process.env.DISABLE_SEPA === 'true'
+
+    if (disableSEPA) {
+      console.log('💳 SEPA payments disabled by environment variable DISABLE_SEPA=true')
+      return ['card']
+    }
+
+    return ['card', 'sepa_debit']
+  }
+
   static async createCustomer(
     email: string,
     name: string,
@@ -263,7 +277,7 @@ export class StripeManager {
 
     const sessionConfig = {
       customer: customerId,
-      payment_method_types: ['card', 'sepa_debit'],
+      payment_method_types: this.getPaymentMethodTypes(),
       line_items: [{
         price: priceId,
         quantity: 1
@@ -323,7 +337,7 @@ export class StripeManager {
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
-      payment_method_types: ['card', 'sepa_debit'],
+      payment_method_types: this.getPaymentMethodTypes(),
       locale: 'es', // Set Spanish locale
       line_items: [lineItemConfig],
       mode: 'payment',
