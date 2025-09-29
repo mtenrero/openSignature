@@ -74,6 +74,11 @@ interface BillingData {
     smsCharges: number
     totalExtraCost: number
   }
+  subscriptionDates?: {
+    currentPeriodStart: string
+    currentPeriodEnd: string
+    created: string
+  }
   hasPaymentMethod: boolean
 }
 
@@ -324,6 +329,7 @@ function BillingWalletPageContent() {
           plan: data.plan,
           currentUsage: data.usage,
           billing: data.billing,
+          subscriptionDates: data.subscriptionDates,
           hasPaymentMethod: !!data.user.stripeCustomerId
         })
       } else {
@@ -669,6 +675,25 @@ function BillingWalletPageContent() {
                         ? 'Tu suscripción está activa'
                         : 'Tu suscripción está inactiva'}
                     </Text>
+                    {billingData.subscriptionDates && billingData.subscriptionDates.currentPeriodEnd && (
+                      <Group gap="xs" mt="xs">
+                        <IconCalendar size={16} />
+                        <Text size="sm" c="dimmed">
+                          Renovación: {(() => {
+                            const endDate = new Date(billingData.subscriptionDates.currentPeriodEnd)
+                            // Verificar si la fecha es válida y no es 1970
+                            if (endDate.getFullYear() > 1970) {
+                              return endDate.toLocaleDateString('es-ES', {
+                                day: 'numeric',
+                                month: 'long',
+                                year: 'numeric'
+                              })
+                            }
+                            return 'Fecha no disponible'
+                          })()}
+                        </Text>
+                      </Group>
+                    )}
                   </div>
                   <Badge
                     color={billingData.user.subscriptionStatus === 'active' ? 'green' : 'red'}

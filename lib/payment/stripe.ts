@@ -13,7 +13,7 @@ if (!process.env.STRIPE_SECRET_KEY) {
 }
 
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2024-11-20.acacia'
+  apiVersion: '2025-08-27.basil'
 })
 
 export interface StripeCustomer {
@@ -569,7 +569,13 @@ export class StripeManager {
     try {
       event = stripe.webhooks.constructEvent(body, signature, process.env.STRIPE_WEBHOOK_SECRET)
     } catch (err) {
-      console.error('Webhook signature verification failed:', err)
+      console.error('🚫 Webhook signature verification failed:', {
+        error: err instanceof Error ? err.message : 'Unknown error',
+        signatureHeader: signature.substring(0, 20) + '...',
+        secretConfigured: !!process.env.STRIPE_WEBHOOK_SECRET,
+        secretPrefix: process.env.STRIPE_WEBHOOK_SECRET?.substring(0, 10) + '...',
+        bodyLength: body.length
+      })
       return { handled: false, message: 'Invalid signature' }
     }
 
@@ -613,6 +619,18 @@ export class StripeManager {
         await this.handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent)
         break
 
+      // Additional events that we can safely ignore but acknowledge
+      case 'charge.succeeded':
+      case 'charge.updated':
+      case 'payment_intent.created':
+      case 'payment_method.attached':
+      case 'customer.updated':
+      case 'invoice.updated':
+      case 'invoice.paid':
+      case 'invoice_payment.paid':
+        console.log(`📝 Acknowledged event: ${event.type} (no action required)`)
+        break
+
       default:
         console.log(`Unhandled event type: ${event.type}`)
         return { handled: false, message: 'Event type not handled' }
@@ -626,7 +644,11 @@ export class StripeManager {
       subscriptionId: subscription.id,
       customerId: subscription.customer,
       status: subscription.status,
-      metadata: subscription.metadata
+      metadata: subscription.metadata,
+      items: subscription.items.data.map(item => ({
+        price_id: item.price.id,
+        product_id: item.price.product
+      }))
     })
 
     const customer = await stripe.customers.retrieve(subscription.customer as string) as Stripe.Customer
@@ -634,18 +656,80 @@ export class StripeManager {
 
     console.log('📋 Customer details:', {
       customerId: customer.id,
+      email: customer.email,
+      name: customer.name,
       auth0UserId,
       customerMetadata: customer.metadata
     })
 
     if (!auth0UserId) {
-      console.error('❌ No Auth0 user ID found in customer metadata')
+      console.error('❌ No Auth0 user ID found in customer metadata. Available metadata:', customer.metadata)
+      console.error('❌ Customer email:', customer.email)
+      console.error('❌ This means the customer was not created through our system or metadata was not set correctly')
       return
     }
 
-    const planId = subscription.metadata?.planId || 'free'
+    // Try to get planId from metadata first, then from price metadata
+    let planId = subscription.metadata?.planId
+
+    // If no planId in subscription metadata, try to get it from the price
+    if (!planId && subscription.items.data.length > 0) {
+      const priceId = subscription.items.data[0].price.id
+      console.log(`🔍 No planId in subscription metadata, checking price ${priceId}`)
+
+      try {
+        const price = await stripe.prices.retrieve(priceId)
+        planId = price.metadata?.planId
+        console.log(`🔍 Found planId in price metadata: ${planId}`)
+      } catch (error) {
+        console.error('❌ Error retrieving price metadata:', error)
+      }
+    }
+
+    // If still no planId, try to map from product_id
+    if (!planId && subscription.items.data.length > 0) {
+      const productId = subscription.items.data[0].price.product as string
+      console.log(`🔍 No planId in price metadata, checking product ${productId}`)
+
+      // Map product IDs to plan IDs
+      const productToPlanMap: Record<string, string> = {
+        'plan_pyme': 'pyme',
+        'plan_pyme_advanced': 'pyme_advanced',
+        'plan_premium': 'premium',
+        'plan_enterprise': 'enterprise'
+      }
+
+      planId = productToPlanMap[productId]
+      if (planId) {
+        console.log(`🔍 Mapped product ${productId} to planId: ${planId}`)
+      }
+    }
+
+    // Final fallback
+    planId = planId || 'free'
 
     console.log(`🔄 Updating user ${auth0UserId} subscription to plan: ${planId}`)
+    console.log(`🔍 Subscription metadata:`, subscription.metadata)
+    console.log(`🔍 Subscription ID: ${subscription.id}`)
+    console.log(`🔍 All subscription data:`, {
+      id: subscription.id,
+      status: subscription.status,
+      metadata: subscription.metadata,
+      items: subscription.items.data.map(item => ({
+        price_id: item.price.id,
+        product_id: item.price.product
+      }))
+    })
+    console.log(`🔄 Subscription status: ${subscription.status}`)
+
+    // Safely handle date conversion
+    try {
+      const startDate = (subscription as any).current_period_start ? new Date((subscription as any).current_period_start * 1000).toISOString() : 'N/A'
+      const endDate = (subscription as any).current_period_end ? new Date((subscription as any).current_period_end * 1000).toISOString() : 'N/A'
+      console.log(`🔄 Current period: ${startDate} - ${endDate}`)
+    } catch (dateError) {
+      console.log(`🔄 Current period: Unable to parse dates`)
+    }
 
     try {
       await auth0UserManager.updateUserSubscription(
@@ -654,8 +738,27 @@ export class StripeManager {
         customer.id
       )
       console.log(`✅ Successfully updated subscription for user ${auth0UserId} to plan ${planId}`)
+
+      // Log the update details
+      console.log(`✅ Subscription update completed:`, {
+        auth0UserId,
+        newPlanId: planId,
+        stripeCustomerId: customer.id,
+        subscriptionId: subscription.id,
+        timestamp: new Date().toISOString()
+      })
     } catch (error) {
       console.error(`❌ Error updating subscription for user ${auth0UserId}:`, error)
+
+      // Log additional context for debugging
+      console.error(`❌ Update failed for:`, {
+        auth0UserId,
+        planId,
+        stripeCustomerId: customer.id,
+        subscriptionId: subscription.id,
+        subscriptionStatus: subscription.status,
+        errorDetails: error instanceof Error ? error.message : 'Unknown error'
+      })
       throw error
     }
   }

@@ -221,7 +221,7 @@ function SignInPageContent() {
                   }}
                   fullWidth
                 >
-                  Iniciar Sesión con Auth0
+                  Iniciar Sesión con Barvet Empresas
                 </Button>
 
                 <Text size="xs" c="dimmed" ta="center">

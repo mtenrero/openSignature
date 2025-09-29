@@ -13,7 +13,8 @@ export default auth((req) => {
     '/api/auth',
     '/api/status',
     '/api/sign-requests',
-    '/api/verify'
+    '/api/verify',
+    '/api/webhooks' // Allow all webhook endpoints (Stripe, etc.)
   ]
 
   // Check if current API route is public

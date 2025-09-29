@@ -73,18 +73,56 @@ export class UsageTracker {
       // Get usage from audit system (more accurate for billing)
       const auditSummary = await UsageAuditService.getUsageSummary(customerId, startOfMonth, endOfMonth)
 
-      // Fallback to collection counting if audit data is not available
-      if (auditSummary.contractsCreated === 0 && auditSummary.emailsSent === 0) {
-        // Count active contracts (draft + active status only)
-        const contractsCollection = await getContractsCollection()
-        const contractsCreated = await contractsCollection.countDocuments({
-          customerId: customerId,
-          status: { $in: ['draft', 'active'] }, // Only count non-archived contracts
-          createdAt: {
-            $gte: startOfMonth,
-            $lte: endOfMonth
-          }
-        })
+      console.log('📊 Audit summary for customer:', customerId, auditSummary)
+
+      // Fallback to collection counting if audit data is not available for contracts
+      // We need to get real contract count even if emails are tracked in audit
+      let needsFallbackForContracts = auditSummary.contractsCreated === 0
+
+      // Get real contract count from database since audit is missing this data
+      const contractsCollection = await getContractsCollection()
+
+      console.log('📊 Counting contracts for customer:', customerId)
+      console.log('📊 Date range:', { startOfMonth, endOfMonth })
+
+      // Debug: Get all contracts for this customer to understand the data
+      const allContracts = await contractsCollection.find({ customerId: customerId }).toArray()
+      console.log('📊 All contracts for customer:', allContracts.map(c => ({
+        id: c._id,
+        status: c.status,
+        createdAt: c.createdAt,
+        title: c.title
+      })))
+
+      const contractsCreated = await contractsCollection.countDocuments({
+        customerId: customerId,
+        status: { $in: ['draft', 'active'] }, // Only count non-archived contracts
+        createdAt: {
+          $gte: startOfMonth,
+          $lte: endOfMonth
+        }
+      })
+
+      console.log('📊 Contracts created this month:', contractsCreated)
+
+      // Count AI generations (contracts that used AI and are still active)
+      const aiGenerationsUsed = await contractsCollection.countDocuments({
+        customerId: customerId,
+        status: { $in: ['draft', 'active'] }, // Only count non-archived contracts
+        createdAt: {
+          $gte: startOfMonth,
+          $lte: endOfMonth
+        },
+        generatedWithAI: true // This field should be set when AI is used
+      })
+
+      // Use audit data for emails, SMS and local signatures if available, otherwise fallback
+      let emailSignaturesSent = auditSummary.emailsSent
+      let smsSignaturesSent = auditSummary.smssSent
+      let localSignaturesSent = auditSummary.localSignaturesSent
+
+      if (auditSummary.emailsSent === 0 && auditSummary.smssSent === 0 && auditSummary.localSignaturesSent === 0) {
+        console.log('📊 Using fallback collection counting for signatures (audit has no signature data)');
 
         // Count signature requests sent this month
         const signatureRequestsCollection = await getSignatureRequestsCollection()
@@ -96,10 +134,10 @@ export class UsageTracker {
           }
         }).toArray()
 
-        // Count email, SMS, and local signature requests
-        let emailSignaturesSent = 0
-        let smsSignaturesSent = 0
-        let localSignaturesSent = 0
+        // Reset counters
+        emailSignaturesSent = 0
+        smsSignaturesSent = 0
+        localSignaturesSent = 0
 
         signatureRequests.forEach(request => {
           if (request.signatureType === 'email') {
@@ -111,34 +149,23 @@ export class UsageTracker {
           }
           // Note: qr signatures are not counted in usage limits
         })
-
-        // Count AI generations (contracts that used AI and are still active)
-        const aiGenerationsUsed = await contractsCollection.countDocuments({
-          customerId: customerId,
-          status: { $in: ['draft', 'active'] }, // Only count non-archived contracts
-          createdAt: {
-            $gte: startOfMonth,
-            $lte: endOfMonth
-          },
-          generatedWithAI: true // This field should be set when AI is used
-        })
-
-        return {
-          contractsCreated,
-          aiGenerationsUsed,
-          emailSignaturesSent,
-          smsSignaturesSent,
-          localSignaturesSent
-        }
       }
 
-      // Use audit data (preferred for billing accuracy)
       return {
-        contractsCreated: auditSummary.contractsCreated,
-        aiGenerationsUsed: auditSummary.aiGenerations,
-        emailSignaturesSent: auditSummary.emailsSent,
-        smsSignaturesSent: auditSummary.smssSent,
-        localSignaturesSent: auditSummary.localSignaturesSent || 0
+        contractsCreated,
+        aiGenerationsUsed,
+        emailSignaturesSent,
+        smsSignaturesSent,
+        localSignaturesSent
+      }
+      // If we don't have any data, return the mixed approach result
+      console.log('📊 Using mixed data: real contracts from DB + audit data for signatures')
+      return {
+        contractsCreated,
+        aiGenerationsUsed,
+        emailSignaturesSent,
+        smsSignaturesSent,
+        localSignaturesSent
       }
 
     } catch (error) {

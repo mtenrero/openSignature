@@ -108,13 +108,88 @@ export async function GET(request: NextRequest) {
 
     // @ts-ignore - customerId is a custom property
     const customerId = session.customerId as string
-    
+
     // Get current usage
     const currentUsage = await UsageTracker.getCurrentUsage(customerId)
     const usageLimits = await UsageTracker.checkUsageLimits(customerId, subscriptionInfo.limits)
-    
+
     // Calculate monthly bill for pay-per-use plans
     const monthlyBill = await UsageTracker.calculateMonthlyBill(customerId, subscriptionInfo.limits)
+
+    // Get subscription dates from Stripe if user has an active subscription
+    let subscriptionDates = null
+    const stripeCustomerId = subscriptionInfo.user.user_metadata?.stripeCustomerId
+
+    if (stripeCustomerId && subscriptionInfo.plan.id !== 'free') {
+      try {
+        console.log('🔍 Fetching subscription dates for customer:', stripeCustomerId, 'plan:', subscriptionInfo.plan.id)
+        const { stripe } = await import('@/lib/payment/stripe')
+
+        // Get active subscriptions for this customer with expanded data
+        const subscriptions = await stripe.subscriptions.list({
+          customer: stripeCustomerId,
+          status: 'active',
+          limit: 1,
+          expand: ['data.latest_invoice']
+        })
+
+        console.log('📊 Found subscriptions:', subscriptions.data.length)
+
+        if (subscriptions.data.length > 0) {
+          const subscriptionId = subscriptions.data[0].id
+          console.log('🔍 Found subscription ID:', subscriptionId, '- fetching full details...')
+
+          // Get the full subscription details
+          const fullSubscription = await stripe.subscriptions.retrieve(subscriptionId)
+
+          console.log('🔍 Stripe subscription retrieved:', {
+            id: fullSubscription.id,
+            status: fullSubscription.status,
+            items: fullSubscription.items.data.length
+          })
+
+          // Try to get period dates from subscription items first (most reliable)
+          let periodStart: number | undefined
+          let periodEnd: number | undefined
+
+          if (fullSubscription.items.data && fullSubscription.items.data.length > 0) {
+            const firstItem = fullSubscription.items.data[0]
+            periodStart = (firstItem as any).current_period_start
+            periodEnd = (firstItem as any).current_period_end
+            console.log('🔍 Found period dates in subscription item:', {
+              current_period_start: periodStart,
+              current_period_end: periodEnd
+            })
+          }
+
+          // Fallback to subscription level if items don't have the dates
+          if (!periodStart || !periodEnd) {
+            periodStart = fullSubscription.current_period_start
+            periodEnd = fullSubscription.current_period_end
+            console.log('🔍 Using subscription level dates:', {
+              current_period_start: periodStart,
+              current_period_end: periodEnd
+            })
+          }
+
+          if (periodStart && periodEnd) {
+            subscriptionDates = {
+              currentPeriodStart: new Date(periodStart * 1000),
+              currentPeriodEnd: new Date(periodEnd * 1000),
+              created: new Date(fullSubscription.created * 1000)
+            }
+
+            console.log('📅 Processed subscription dates:', subscriptionDates)
+          } else {
+            console.log('⚠️ Could not find valid period dates in subscription or items')
+          }
+        } else {
+          console.log('❌ No active subscriptions found for customer:', stripeCustomerId)
+        }
+      } catch (error) {
+        console.warn('Could not fetch subscription dates from Stripe:', error)
+      }
+    }
 
     return NextResponse.json({
       user: {
@@ -144,6 +219,7 @@ export async function GET(request: NextRequest) {
       },
       usageLimits,
       billing: monthlyBill,
+      subscriptionDates,
       availablePlans: getVisiblePlans()
     })
 

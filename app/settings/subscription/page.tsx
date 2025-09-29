@@ -32,7 +32,8 @@ import {
   IconInfoCircle,
   IconArrowUp,
   IconCreditCard,
-  IconPhone
+  IconPhone,
+  IconCalendar
 } from '@tabler/icons-react'
 import { useSession } from 'next-auth/react'
 import { useSearchParams, useRouter } from 'next/navigation'
@@ -69,6 +70,11 @@ interface SubscriptionData {
   }>
   billing: {
     totalExtraCost: number
+  }
+  subscriptionDates?: {
+    currentPeriodStart: string
+    currentPeriodEnd: string
+    created: string
   }
   availablePlans: Array<{
     id: string
@@ -292,6 +298,25 @@ function SubscriptionPageContent() {
                 {formatPrice(subscriptionData.plan.price, subscriptionData.plan.currency)}
                 {subscriptionData.plan.price > 0 && <Text span c="dimmed" size="sm"> /mes</Text>}
               </Text>
+              {subscriptionData.subscriptionDates && subscriptionData.subscriptionDates.currentPeriodEnd && (
+                <Group gap="xs" mt="xs">
+                  <IconCalendar size={16} />
+                  <Text size="sm" c="dimmed">
+                    Renovación: {(() => {
+                      const endDate = new Date(subscriptionData.subscriptionDates.currentPeriodEnd)
+                      // Verificar si la fecha es válida y no es 1970
+                      if (endDate.getFullYear() > 1970) {
+                        return endDate.toLocaleDateString('es-ES', {
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric'
+                        })
+                      }
+                      return 'Fecha no disponible'
+                    })()}
+                  </Text>
+                </Group>
+              )}
             </div>
             {subscriptionData.plan.id !== 'enterprise' && (
               <Button
