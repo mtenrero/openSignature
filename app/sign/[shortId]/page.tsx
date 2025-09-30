@@ -241,6 +241,7 @@ export default function SignDocument() {
                         onSubmit={handleDynamicFieldsSubmit}
                         contractName={contract?.name}
                         lockedFields={lockedFields}
+                        mode="standalone"
                     />
                 )
 

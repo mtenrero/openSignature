@@ -7,6 +7,7 @@ import { auditTrailService } from '@/lib/auditTrail'
 import { extractClientIP } from '@/lib/deviceMetadata'
 import { UsageAuditService } from '@/lib/usage/usageAudit'
 import { UsageTracker } from '@/lib/subscription/usage'
+import { extractSignerInfo } from '@/lib/contractUtils'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { isSMSEnabled } from '@/lib/utils/smsConfig'
 
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { contractId, signatureType, signerName, signerEmail, signerPhone, clientName, clientTaxId } = body
+    const { contractId, signatureType, signerName, signerEmail, signerPhone, clientName, clientTaxId, dynamicFieldValues } = body
 
     if (!contractId || !signatureType) {
       return NextResponse.json({ 
@@ -101,51 +102,168 @@ export async function POST(request: NextRequest) {
       contentHash: Buffer.from(decryptedContract.content || '').toString('base64')
     }
 
-    // Generate unique short ID for the signature request
-    const shortId = nanoid(10)
-    
-    // Generate access key optimized for SMS (6 characters instead of 16)
-    const accessKey = Buffer.from(`${shortId}:${customerId}`).toString('base64').slice(0, 6)
-    
-    // Create signature request document
-    const signatureRequest = {
-      shortId,
-      contractId, // Keep reference to original contract
-      contractSnapshot, // 🔥 NEW: Immutable contract content snapshot
-      signatureType,
-      signerName: signerName || null,
-      signerEmail: signerEmail || null,
-      signerPhone: signerPhone || null,
-      // 🔥 NEW: Client information for contract binding
-      clientName: clientName || null,
-      clientTaxId: clientTaxId || null,
-      status: 'pending',
-      createdBy: session.user.id,
-      customerId,
-      businessID: customerId, // For tablet polling
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-      
-      // URLs for different signature methods (with access key)
-      signatureUrl: `${process.env.NEXTAUTH_URL}/sign/${shortId}?a=${accessKey}`,
-      
-      // Metadata
-      metadata: {
-        userAgent: request.headers.get('user-agent') || '',
-        ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '',
-        timestamp: new Date()
-      },
-
-      // Email tracking for reasonable use policy (max 5 emails per signature request)
-      emailTracking: {
-        emailsSent: 0,
-        emailHistory: []
+    // Extract signer info from dynamic fields if provided
+    let signerInfoFromFields: any = null
+    if (dynamicFieldValues && typeof dynamicFieldValues === 'object') {
+      try {
+        signerInfoFromFields = extractSignerInfo(dynamicFieldValues, decryptedContract.userFields || [])
+      } catch (e) {
+        console.warn('Failed to extract signer info from dynamicFieldValues:', e)
       }
     }
 
+    // Check if a signature request already exists for this contract + signer
     const collection = await getSignatureRequestsCollection()
-    const result = await collection.insertOne(mongoHelpers.addMetadata(signatureRequest, customerId))
+    const signerIdentifier = signerEmail || signerPhone || signerInfoFromFields?.clientEmail || signerInfoFromFields?.clientPhone
+
+    let existingRequest = null
+    if (signerIdentifier) {
+      const searchQuery: any = {
+        contractId,
+        customerId,
+        status: { $in: ['pending', 'signed'] } // Don't reuse expired/rejected
+      }
+
+      // Search by email or phone
+      if (signerEmail || signerInfoFromFields?.clientEmail) {
+        searchQuery.signerEmail = signerEmail || signerInfoFromFields?.clientEmail
+      } else if (signerPhone || signerInfoFromFields?.clientPhone) {
+        searchQuery.signerPhone = signerPhone || signerInfoFromFields?.clientPhone
+      }
+
+      existingRequest = await collection.findOne(searchQuery)
+
+      if (existingRequest) {
+        console.log(`[Signature Request] Found existing request for ${signerIdentifier}:`, {
+          id: existingRequest._id,
+          shortId: existingRequest.shortId,
+          status: existingRequest.status,
+          signatureType: existingRequest.signatureType,
+          createdAt: existingRequest.createdAt
+        })
+      }
+    }
+
+    // If existing request found, update it instead of creating new
+    if (existingRequest) {
+      const updateData: any = {
+        updatedAt: new Date(),
+        updatedBy: session.user.id,
+        signatureType, // Update to new signature type (email/sms/etc)
+      }
+
+      // Update signer info if provided
+      if (signerName || signerInfoFromFields?.clientName) {
+        updateData.signerName = signerName || signerInfoFromFields?.clientName
+      }
+      if (clientName || signerInfoFromFields?.clientName) {
+        updateData.clientName = clientName || signerInfoFromFields?.clientName
+      }
+      if (clientTaxId || signerInfoFromFields?.clientTaxId) {
+        updateData.clientTaxId = clientTaxId || signerInfoFromFields?.clientTaxId
+      }
+
+      // Update dynamic field values if provided
+      if (signerInfoFromFields?.allFields || dynamicFieldValues) {
+        updateData.dynamicFieldValues = signerInfoFromFields?.allFields || dynamicFieldValues
+        updateData.signerInfo = signerInfoFromFields
+      }
+
+      // Add audit trail entry for resend
+      const resendAuditEntry = {
+        timestamp: new Date(),
+        action: signatureType === 'email' ? 'email_reenviado' : 'sms_reenviado',
+        performedBy: session.user.id,
+        details: {
+          newSignatureType: signatureType,
+          previousSignatureType: existingRequest.signatureType,
+          reason: 'Nueva solicitud desde API - reutilizando solicitud existente'
+        }
+      }
+
+      await collection.updateOne(
+        { _id: existingRequest._id },
+        {
+          $set: updateData,
+          $push: { auditTrail: resendAuditEntry }
+        }
+      )
+
+      console.log(`[Signature Request] Updated existing request ${existingRequest.shortId}`)
+
+      // Reuse existing shortId and accessKey
+      const shortId = existingRequest.shortId
+      const accessKey = Buffer.from(`${shortId}:${customerId}`).toString('base64').slice(0, 6)
+
+      const signatureRequest = {
+        ...existingRequest,
+        ...updateData,
+        shortId,
+        signatureUrl: `${process.env.NEXTAUTH_URL}/sign/${shortId}?a=${accessKey}`,
+      }
+
+      // Continue with email/SMS sending logic using existing request
+      var result = { insertedId: existingRequest._id, acknowledged: true }
+      var shortId = existingRequest.shortId
+      var signatureRequest = {
+        ...existingRequest,
+        ...updateData,
+        shortId,
+        signatureUrl: `${process.env.NEXTAUTH_URL}/sign/${shortId}?a=${Buffer.from(`${shortId}:${customerId}`).toString('base64').slice(0, 6)}`,
+      }
+    } else {
+      // No existing request - create new one
+      console.log(`[Signature Request] No existing request found, creating new for ${signerIdentifier}`)
+
+      // Generate unique short ID for the signature request
+      var shortId = nanoid(10)
+
+      // Generate access key optimized for SMS (6 characters instead of 16)
+      const accessKey = Buffer.from(`${shortId}:${customerId}`).toString('base64').slice(0, 6)
+
+      // Create signature request document
+      var signatureRequest = {
+        shortId,
+        contractId, // Keep reference to original contract
+        contractSnapshot, // 🔥 NEW: Immutable contract content snapshot
+        signatureType,
+        signerName: signerName || signerInfoFromFields?.clientName || null,
+        signerEmail: signerEmail || signerInfoFromFields?.clientEmail || null,
+        signerPhone: signerPhone || signerInfoFromFields?.clientPhone || null,
+        // 🔥 NEW: Client information for contract binding
+        clientName: clientName || signerInfoFromFields?.clientName || null,
+        clientTaxId: clientTaxId || signerInfoFromFields?.clientTaxId || null,
+        status: 'pending',
+        createdBy: session.user.id,
+        customerId,
+        businessID: customerId, // For tablet polling
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+
+        // URLs for different signature methods (with access key)
+        signatureUrl: `${process.env.NEXTAUTH_URL}/sign/${shortId}?a=${accessKey}`,
+
+        // Store provided dynamic field values and extracted signer info (if any)
+        dynamicFieldValues: signerInfoFromFields?.allFields || (dynamicFieldValues || null),
+        signerInfo: signerInfoFromFields || null,
+
+        // Metadata
+        metadata: {
+          userAgent: request.headers.get('user-agent') || '',
+          ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '',
+          timestamp: new Date()
+        },
+
+        // Email tracking for reasonable use policy (max 5 emails per signature request)
+        emailTracking: {
+          emailsSent: 0,
+          emailHistory: []
+        }
+      }
+
+      var result = await collection.insertOne(mongoHelpers.addMetadata(signatureRequest, customerId))
+    }
 
     // Create audit trail for signature request creation
     const clientIP = extractClientIP(request)
@@ -414,7 +532,51 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        console.log(`[Signature Request] Sending SMS to ${signerPhone} with link: ${signatureRequest.signatureUrl}`)
+        console.log(`[Signature Request] Preparing to send SMS to ${signerPhone} with link: ${signatureRequest.signatureUrl}`)
+
+        // Build optimized SMS message (max 160 chars for 1 SMS)
+        const { buildSignatureSMS, calculateSMSSegments } = await import('@/lib/smsMessageBuilder')
+        const smsMessage = buildSignatureSMS(signatureRequest.signatureUrl, contract?.name)
+        const smsSegments = calculateSMSSegments(smsMessage)
+        const smsSender = process.env.SMS_SENDER_ID || 'oSign'
+
+        console.log(`[Signature Request] SMS message built:`, {
+          message: smsMessage,
+          length: smsMessage.length,
+          segments: smsSegments,
+          contractName: contract?.name
+        })
+
+        console.log(`[Signature Request] Calling sendSMS function with:`, {
+          sender: smsSender,
+          recipient: signerPhone,
+          messageLength: smsMessage.length,
+          smsSegments
+        })
+
+        try {
+          const { sendSMS } = await import('@/libs/sendSMS')
+          const smsResult = await sendSMS(smsSender, smsMessage, signerPhone)
+
+          console.log(`[Signature Request] SMS send result:`, {
+            success: smsResult.success,
+            provider: smsResult.provider,
+            status: smsResult.status,
+            requestId: smsResult.requestId,
+            error: smsResult.error
+          })
+
+          if (!smsResult.success) {
+            console.error(`[Signature Request] SMS sending failed:`, smsResult.error)
+            // Don't fail the request, just log the error
+            // The signature request was created successfully
+          } else {
+            console.log(`[Signature Request] ✅ SMS sent successfully via ${smsResult.provider}`)
+          }
+        } catch (sendError) {
+          console.error(`[Signature Request] Exception while sending SMS:`, sendError)
+          // Don't fail the request, just log the error
+        }
 
         // Record SMS sent in audit system
         const auditSubscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(session.user.id)
@@ -425,7 +587,7 @@ export async function POST(request: NextRequest) {
           customerId,
           userId: session.user.id,
           smsRecipient: signerPhone,
-          smsMessage: `Solicita tu firma en: ${signatureRequest.signatureUrl}`,
+          smsMessage,
           countryCode: 'ES', // Default to Spain
           cost: smsCost,
           metadata: {
@@ -436,7 +598,6 @@ export async function POST(request: NextRequest) {
           }
         })
 
-        // TODO: Actually implement SMS sending service
         console.log(`[Signature Request] SMS audit recorded for ${signerPhone}`)
       } catch (smsError) {
         console.error(`[Signature Request] Error with SMS to ${signerPhone}:`, smsError)

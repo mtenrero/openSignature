@@ -40,14 +40,16 @@ interface DynamicFieldsFormProps {
   loading?: boolean
   contractName?: string
   lockedFields?: string[]
+  mode?: 'standalone' | 'modal' // standalone: full UI with container & button, modal: just fields
 }
 
-export function DynamicFieldsForm({ 
-  fields, 
-  values, 
-  onValuesChange, 
-  onSubmit, 
+export function DynamicFieldsForm({
+  fields,
+  values,
+  onValuesChange,
+  onSubmit,
   onBack,
+  mode = 'modal',
   loading = false,
   contractName,
   lockedFields = []
@@ -251,6 +253,113 @@ export function DynamicFieldsForm({
     return null
   }
 
+  // Render fields only (for modal mode)
+  const fieldsContent = (
+    <Stack gap="sm">
+      {userInputFields.map((field, index) => {
+        const fieldError = errors[field.name]
+        const isLocked = lockedFields.includes(field.name)
+
+        return (
+          <Box key={field.id}>
+            {field.type === 'accept' ? (
+              <Checkbox
+                label={getFieldLabel(field.name)}
+                description={field.placeholder}
+                checked={values[field.name] === 'true'}
+                onChange={(event) =>
+                  handleFieldChange(field.name, event.currentTarget.checked ? 'true' : 'false')
+                }
+                error={fieldError}
+                size="sm"
+                disabled={isLocked}
+              />
+            ) : (
+              <Box>
+                <TextInput
+                  label={getFieldLabel(field.name)}
+                  placeholder={field.placeholder || `Ingresa tu ${getFieldLabel(field.name).toLowerCase()}`}
+                  value={values[field.name] || ''}
+                  onChange={(event) => handleFieldChange(field.name, event.target.value)}
+                  leftSection={isLocked ? <IconLock size={16} /> : getFieldIcon(field.type)}
+                  type={getFieldType(field.type)}
+                  required={field.required}
+                  error={fieldError}
+                  size="sm"
+                  disabled={isLocked}
+                  styles={{
+                    input: {
+                      fontSize: rem(16), // Prevent zoom on iOS
+                      backgroundColor: isLocked ? 'var(--mantine-color-gray-1)' : undefined,
+                      opacity: isLocked ? 0.8 : 1,
+                    }
+                  }}
+                />
+                {isLocked && (
+                  <Text size="xs" c="dimmed" mt={4}>
+                    Este dato fue proporcionado al solicitar la firma
+                  </Text>
+                )}
+              </Box>
+            )}
+
+            {index < userInputFields.length - 1 && (
+              <Divider mt="sm" variant="dashed" />
+            )}
+          </Box>
+        )
+      })}
+
+      {/* Validation Summary */}
+      {Object.keys(errors).length > 0 && (
+        <Alert
+          icon={<IconAlertTriangle size={16} />}
+          title="Campos incompletos"
+          color="red"
+          variant="light"
+        >
+          <Text size="sm">
+            Por favor, completa todos los campos obligatorios correctamente.
+          </Text>
+        </Alert>
+      )}
+    </Stack>
+  )
+
+  // Modal mode: just the fields
+  if (mode === 'modal') {
+    return (
+      <Stack gap="md">
+        {/* Mandatory Fields Warning */}
+        {mandatoryValidation && !mandatoryValidation.isValid && (
+          <Alert
+            icon={<IconAlertTriangle size={16} />}
+            title="Campos obligatorios faltantes"
+            color="red"
+            variant="light"
+          >
+            <Text size="sm">
+              Para cumplir con los requisitos legales, este contrato debe incluir los siguientes campos:
+            </Text>
+            <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
+              {mandatoryValidation.missingFields.map((field, index) => (
+                <li key={index} style={{ fontSize: '14px', color: '#d32f2f' }}>
+                  {field}
+                </li>
+              ))}
+            </ul>
+            <Text size="xs" c="dimmed" mt="xs">
+              Por favor, agrega estos campos en la configuración del contrato antes de continuar.
+            </Text>
+          </Alert>
+        )}
+
+        {fieldsContent}
+      </Stack>
+    )
+  }
+
+  // Standalone mode: full UI with container and button
   return (
     <Container size="sm" py="md">
       <Stack gap="lg">
@@ -272,10 +381,10 @@ export function DynamicFieldsForm({
 
         {/* Mandatory Fields Warning */}
         {mandatoryValidation && !mandatoryValidation.isValid && (
-          <Alert 
-            icon={<IconAlertTriangle size={16} />} 
-            title="Campos obligatorios faltantes" 
-            color="red" 
+          <Alert
+            icon={<IconAlertTriangle size={16} />}
+            title="Campos obligatorios faltantes"
+            color="red"
             variant="light"
           >
             <Text size="sm">
@@ -296,83 +405,14 @@ export function DynamicFieldsForm({
 
         {/* Form */}
         <Card shadow="sm" padding="lg" radius="md" withBorder>
-          <Stack gap="md">
-            {userInputFields.map((field, index) => {
-              const fieldError = errors[field.name]
-              const isLocked = lockedFields.includes(field.name)
-              
-              return (
-                <Box key={field.id}>
-                  {field.type === 'accept' ? (
-                    <Checkbox
-                      label={getFieldLabel(field.name)}
-                      description={field.placeholder}
-                      checked={values[field.name] === 'true'}
-                      onChange={(event) => 
-                        handleFieldChange(field.name, event.currentTarget.checked ? 'true' : 'false')
-                      }
-                      error={fieldError}
-                      size="sm"
-                      disabled={isLocked}
-                    />
-                  ) : (
-                    <Box>
-                      <TextInput
-                        label={getFieldLabel(field.name)}
-                        placeholder={field.placeholder || `Ingresa tu ${getFieldLabel(field.name).toLowerCase()}`}
-                        value={values[field.name] || ''}
-                        onChange={(event) => handleFieldChange(field.name, event.target.value)}
-                        leftSection={isLocked ? <IconLock size={16} /> : getFieldIcon(field.type)}
-                        type={getFieldType(field.type)}
-                        required={field.required}
-                        error={fieldError}
-                        size="sm"
-                        disabled={isLocked}
-                        styles={{
-                          input: {
-                            fontSize: rem(16), // Prevent zoom on iOS
-                            backgroundColor: isLocked ? 'var(--mantine-color-gray-1)' : undefined,
-                            opacity: isLocked ? 0.8 : 1,
-                          }
-                        }}
-                      />
-                      {isLocked && (
-                        <Text size="xs" c="dimmed" mt={4}>
-                          Este dato fue proporcionado al solicitar la firma
-                        </Text>
-                      )}
-                    </Box>
-                  )}
-                  
-                  {index < userInputFields.length - 1 && (
-                    <Divider mt="md" variant="dashed" />
-                  )}
-                </Box>
-              )
-            })}
-
-            {/* Validation Summary */}
-            {Object.keys(errors).length > 0 && (
-              <Alert 
-                icon={<IconAlertTriangle size={16} />} 
-                title="Campos incompletos" 
-                color="red" 
-                variant="light"
-                mt="md"
-              >
-                <Text size="sm">
-                  Por favor, completa todos los campos obligatorios correctamente.
-                </Text>
-              </Alert>
-            )}
-          </Stack>
+          {fieldsContent}
         </Card>
 
         {/* Action Buttons */}
         <Group justify="space-between" mt="lg">
           {onBack && (
-            <Button 
-              variant="subtle" 
+            <Button
+              variant="subtle"
               onClick={onBack}
               disabled={loading}
               size="sm"
@@ -380,7 +420,7 @@ export function DynamicFieldsForm({
               Volver
             </Button>
           )}
-          
+
           <Button
             onClick={handleSubmit}
             loading={loading}

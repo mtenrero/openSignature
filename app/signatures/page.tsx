@@ -8,6 +8,7 @@ import { notifications } from '@mantine/notifications'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { isSMSEnabledClient } from '@/lib/utils/smsConfig'
+import { DynamicFieldsForm } from '@/components/DynamicFieldsForm'
 
 function FirmasPageContent() {
   const [firmas, setFirmas] = useState([])
@@ -22,6 +23,7 @@ function FirmasPageContent() {
 
   // Check if SMS is enabled
   const smsEnabled = isSMSEnabledClient()
+  const [requestMethod, setRequestMethod] = useState<'email' | 'sms'>('email')
   const [smsModalOpened, setSmsModalOpened] = useState(false)
   const [smsFormData, setSmsFormData] = useState({ phone: '', name: '', contractId: '', contractName: '', signatureRequestId: '' })
   const [sendingSms, setSendingSms] = useState(false)
@@ -31,6 +33,9 @@ function FirmasPageContent() {
   const [loadingContracts, setLoadingContracts] = useState(false)
   const [contractSearchTerm, setContractSearchTerm] = useState('')
   const [contractDropdownOpened, setContractDropdownOpened] = useState(false)
+  const [prefillContract, setPrefillContract] = useState<any>(null)
+  const [dynamicValuesForNew, setDynamicValuesForNew] = useState<{[key:string]: string}>({})
+
   const router = useRouter()
   const searchParams = useSearchParams()
   const { data: session, status } = useSession()
@@ -352,26 +357,76 @@ function FirmasPageContent() {
 
   // Handle email signature request for existing pending requests
   const handleRequestEmailSignature = (firma: any) => {
-    setEmailFormData({
-      email: firma.signerEmail || '',
-      name: firma.signerName || firma.clientName || '',
-      contractId: firma.contractId,
-      contractName: firma.contractName,
-      signatureRequestId: firma.id
-    })
-    setEmailModalOpened(true)
+    setRequestMethod('email')
+    openPrefillModal(firma, 'email')
   }
 
   // Handle SMS signature request for existing pending requests
   const handleRequestSmsSignature = (firma: any) => {
-    setSmsFormData({
-      phone: firma.signerPhone || '',
-      name: firma.signerName || firma.clientName || '',
-      contractId: firma.contractId,
-      contractName: firma.contractName,
-      signatureRequestId: firma.id
-    })
-    setSmsModalOpened(true)
+    setRequestMethod('sms')
+    openPrefillModal(firma, 'sms')
+  }
+
+  const openPrefillModal = async (firma: any, method: 'email'|'sms') => {
+    try {
+      setDynamicValuesForNew({})
+
+      // Fetch contract fields to render the form
+      const response = await fetch(`/api/contracts/${firma.contractId}`)
+      if (response.ok) {
+        const contract = await response.json()
+        setPrefillContract(contract)
+      } else {
+        setPrefillContract(null)
+      }
+
+      // Open the unified modal directly with all information
+      if (method === 'email') {
+        setRequestMethod('email')
+        setEmailFormData({
+          email: firma.signerEmail || '',
+          name: firma.signerName || firma.clientName || '',
+          contractId: firma.contractId,
+          contractName: firma.contractName,
+          signatureRequestId: firma.id
+        })
+      } else {
+        setRequestMethod('sms')
+        setSmsFormData({
+          phone: firma.signerPhone || '',
+          name: firma.signerName || firma.clientName || '',
+          contractId: firma.contractId,
+          contractName: firma.contractName,
+          signatureRequestId: firma.id
+        })
+      }
+
+      setEmailModalOpened(true)
+    } catch (e) {
+      console.error('Failed to open prefill modal:', e)
+      // Fallback to direct modal
+      if (method === 'email') {
+        setRequestMethod('email')
+        setEmailFormData({
+          email: firma.signerEmail || '',
+          name: firma.signerName || firma.clientName || '',
+          contractId: firma.contractId,
+          contractName: firma.contractName,
+          signatureRequestId: firma.id
+        })
+        setEmailModalOpened(true)
+      } else {
+        setRequestMethod('sms')
+        setSmsFormData({
+          phone: firma.signerPhone || '',
+          name: firma.signerName || firma.clientName || '',
+          contractId: firma.contractId,
+          contractName: firma.contractName,
+          signatureRequestId: firma.id
+        })
+        setEmailModalOpened(true)
+      }
+    }
   }
 
   const handleSendEmailSignature = async () => {
@@ -427,7 +482,8 @@ function FirmasPageContent() {
             contractId: emailFormData.contractId,
             signatureType: 'email',
             signerEmail: emailFormData.email,
-            signerName: emailFormData.name
+            signerName: emailFormData.name,
+            ...(Object.keys(dynamicValuesForNew).length > 0 ? { dynamicFieldValues: dynamicValuesForNew } : {})
           })
         })
 
@@ -440,6 +496,7 @@ function FirmasPageContent() {
         // Close modal first
         setEmailModalOpened(false)
         setEmailFormData({ email: '', name: '', contractId: '', contractName: '', signatureRequestId: '' })
+        setDynamicValuesForNew({})
 
         // Show success notification
         notifications.show({
@@ -517,7 +574,8 @@ function FirmasPageContent() {
             contractId: smsFormData.contractId,
             signatureType: 'sms',
             signerPhone: smsFormData.phone,
-            signerName: smsFormData.name
+            signerName: smsFormData.name,
+            ...(Object.keys(dynamicValuesForNew).length > 0 ? { dynamicFieldValues: dynamicValuesForNew } : {})
           })
         })
 
@@ -530,6 +588,7 @@ function FirmasPageContent() {
         // Close modal first
         setSmsModalOpened(false)
         setSmsFormData({ phone: '', name: '', contractId: '', contractName: '', signatureRequestId: '' })
+        setDynamicValuesForNew({})
 
         // Show success notification
         notifications.show({
@@ -557,6 +616,7 @@ function FirmasPageContent() {
       setSendingSms(false)
     }
   }
+
 
   // Function to refresh signatures list without page reload
   const refreshSignaturesList = async () => {
@@ -1179,144 +1239,145 @@ function FirmasPageContent() {
           </Box>
         )}
 
-        {/* Email Signature Request Modal */}
+        {/* Email/SMS Request Modal */}
         <Modal
           opened={emailModalOpened}
           onClose={() => {
             setEmailModalOpened(false)
             setEmailFormData({ email: '', name: '', contractId: '', contractName: '', signatureRequestId: '' })
+            setSmsFormData({ phone: '', name: '', contractId: '', contractName: '', signatureRequestId: '' })
+            setDynamicValuesForNew({})
           }}
-          title="Solicitar Firma por Email"
+          title={requestMethod === 'email' ? 'Solicitar Firma por Email' : 'Solicitar Firma por SMS'}
           centered
           size="md"
         >
           <Stack gap="md">
             <Text size="sm" c="dimmed">
-              Envía una nueva solicitud de firma electrónica por email para el contrato: <strong>{emailFormData.contractName}</strong>
+              {requestMethod === 'email' ? (
+                <>Envía una nueva solicitud de firma electrónica por email para el contrato: <strong>{emailFormData.contractName}</strong></>
+              ) : (
+                <>Envía una nueva solicitud de firma electrónica por SMS para el contrato: <strong>{smsFormData.contractName}</strong></>
+              )}
             </Text>
 
-            <TextInput
-              label="Email del firmante"
-              placeholder="ejemplo@dominio.com"
-              value={emailFormData.email}
-              onChange={(event) => setEmailFormData(prev => ({ ...prev, email: event.target.value }))}
-              required
-              leftSection={<IconMail size={16} />}
-              disabled={!!emailFormData.signatureRequestId}
-              description={emailFormData.signatureRequestId ? "Email asociado a la solicitud original (no modificable)" : undefined}
-            />
+            {requestMethod === 'email' && (
+              <TextInput
+                label="Email del firmante"
+                placeholder="ejemplo@dominio.com"
+                value={emailFormData.email}
+                onChange={(event) => setEmailFormData(prev => ({ ...prev, email: event.target.value }))}
+                required
+                leftSection={<IconMail size={16} />}
+                disabled={!!emailFormData.signatureRequestId}
+                description={emailFormData.signatureRequestId ? "Email asociado a la solicitud original (no modificable)" : undefined}
+              />
+            )}
 
             <TextInput
               label="Nombre del firmante (opcional)"
               placeholder="Nombre completo"
-              value={emailFormData.name}
-              onChange={(event) => setEmailFormData(prev => ({ ...prev, name: event.target.value }))}
+              value={requestMethod === 'email' ? emailFormData.name : smsFormData.name}
+              onChange={(event) => (requestMethod === 'email' ? setEmailFormData(prev => ({ ...prev, name: event.target.value })) : setSmsFormData(prev => ({ ...prev, name: event.target.value })))}
               leftSection={<IconSignature size={16} />}
               disabled={!!emailFormData.signatureRequestId}
               description={emailFormData.signatureRequestId ? "Nombre asociado a la solicitud original (no modificable)" : undefined}
             />
 
-            <Alert color={emailFormData.signatureRequestId ? "orange" : "blue"} variant="light">
+            {requestMethod === 'sms' && (
+              <TextInput
+                label="Teléfono del firmante"
+                placeholder="+34 600 123 456"
+                value={smsFormData.phone}
+                onChange={(event) => setSmsFormData(prev => ({ ...prev, phone: event.target.value }))}
+                required
+                leftSection={<IconPhone size={16} />}
+                disabled={!!smsFormData.signatureRequestId}
+                description={smsFormData.signatureRequestId ? "Teléfono asociado a la solicitud original (no modificable)" : undefined}
+              />
+            )}
+
+            <Alert color={emailFormData.signatureRequestId ? (requestMethod === 'email' ? 'orange' : 'green') : (requestMethod === 'email' ? 'blue' : 'orange')} variant="light">
               <Text size="sm">
                 {emailFormData.signatureRequestId
-                  ? "Se reenviará la solicitud de firma existente conservando todos los campos personalizados y configuración original. El email incluirá el enlace único ya generado."
-                  : "Se creará una nueva solicitud de firma y se enviará un email con un enlace único y seguro. El email incluirá toda la información necesaria y cumplirá con los estándares eIDAS."
-                }
+                  ? (requestMethod === 'email' ? 'Se reenviará la solicitud de firma existente conservando todos los campos personalizados.' : 'Se reenviará la solicitud de firma existente por SMS (mismos datos).')
+                  : (requestMethod === 'email' ? 'Se creará una nueva solicitud de firma y se enviará un email con un enlace único y seguro.' : 'Se enviará un SMS con un enlace único y seguro. Puede tener coste adicional.')}
               </Text>
             </Alert>
 
-            <Group justify="flex-end" gap="sm">
-              <Button
-                variant="subtle"
-                onClick={() => {
-                  setEmailModalOpened(false)
-                  setEmailFormData({ email: '', name: '', contractId: '', contractName: '', signatureRequestId: '' })
+            {prefillContract && (
+              <Box
+                style={{
+                  maxHeight: '50vh',
+                  overflow: 'auto',
+                  marginBottom: '12px',
+                  backgroundColor: 'var(--mantine-color-gray-0)',
+                  borderRadius: '8px',
+                  padding: '16px'
                 }}
-                disabled={sendingEmail}
               >
-                Cancelar
+                <Stack gap="sm">
+                  <Box>
+                    <Text fw={600} size="sm" c="dimmed">Campos opcionales del contrato</Text>
+                    <Text size="xs" c="dimmed">Puedes pre-rellenar estos datos o dejar que el firmante los complete</Text>
+                  </Box>
+                  <DynamicFieldsForm
+                    fields={[...(prefillContract.dynamicFields||[]), ...(prefillContract.userFields||[])]}
+                    values={dynamicValuesForNew}
+                    onValuesChange={setDynamicValuesForNew}
+                    onSubmit={()=>{}}
+                    loading={false}
+                    contractName={prefillContract.name}
+                  />
+                </Stack>
+              </Box>
+            )}
+
+            <Group justify="center" gap="sm" style={{ position: 'sticky', bottom: 0, background: 'white', paddingTop: 12, borderTop: '1px solid var(--mantine-color-gray-3)' }}>
+              <Button
+                variant="outline"
+                fullWidth
+                disabled={requestMethod === 'email' ? !emailFormData.email : !smsFormData.phone}
+                loading={requestMethod === 'email' ? sendingEmail : sendingSms}
+                onClick={async ()=>{
+                  if (requestMethod === 'email') {
+                    await handleSendEmailSignature()
+                  } else {
+                    await handleSendSmsSignature()
+                  }
+                }}
+              >
+                Solicitar firma y datos
               </Button>
               <Button
-                onClick={handleSendEmailSignature}
-                loading={sendingEmail}
-                leftSection={<IconMail size={16} />}
-                disabled={!emailFormData.email}
+                fullWidth
+                disabled={
+                  (requestMethod === 'email' ? !emailFormData.email : !smsFormData.phone) ||
+                  !prefillContract ||
+                  !(prefillContract.dynamicFields || prefillContract.userFields)?.every((field: any) => {
+                    const value = dynamicValuesForNew[field.name]
+                    if (field.required) {
+                      return value && value.trim().length > 0
+                    }
+                    return true
+                  })
+                }
+                loading={requestMethod === 'email' ? sendingEmail : sendingSms}
+                onClick={async ()=>{
+                  if (requestMethod === 'email') {
+                    await handleSendEmailSignature()
+                  } else {
+                    await handleSendSmsSignature()
+                  }
+                }}
               >
-                {sendingEmail ? 'Enviando...' : 'Enviar Email'}
+                {emailFormData.signatureRequestId ? 'Reenviar' : 'Solicitar firma'}
               </Button>
             </Group>
           </Stack>
         </Modal>
 
-        {/* SMS Signature Request Modal */}
-        <Modal
-          opened={smsModalOpened}
-          onClose={() => {
-            setSmsModalOpened(false)
-            setSmsFormData({ phone: '', name: '', contractId: '', contractName: '', signatureRequestId: '' })
-          }}
-          title="Solicitar Firma por SMS"
-          centered
-          size="md"
-        >
-          <Stack gap="md">
-            <Text size="sm" c="dimmed">
-              Envía una solicitud de firma electrónica por SMS para el contrato: <strong>{smsFormData.contractName}</strong>
-            </Text>
-
-            <TextInput
-              label="Teléfono del firmante"
-              placeholder="+34 600 123 456"
-              value={smsFormData.phone}
-              onChange={(event) => setSmsFormData(prev => ({ ...prev, phone: event.target.value }))}
-              required
-              leftSection={<IconPhone size={16} />}
-              disabled={!!smsFormData.signatureRequestId}
-              description={smsFormData.signatureRequestId ? "Teléfono asociado a la solicitud original (no modificable)" : undefined}
-            />
-
-            <TextInput
-              label="Nombre del firmante (opcional)"
-              placeholder="Nombre completo"
-              value={smsFormData.name}
-              onChange={(event) => setSmsFormData(prev => ({ ...prev, name: event.target.value }))}
-              leftSection={<IconSignature size={16} />}
-              disabled={!!smsFormData.signatureRequestId}
-              description={smsFormData.signatureRequestId ? "Nombre asociado a la solicitud original (no modificable)" : undefined}
-            />
-
-            <Alert color={smsFormData.signatureRequestId ? "green" : "orange"} variant="light">
-              <Text size="sm">
-                {smsFormData.signatureRequestId
-                  ? "Se reenviará la solicitud de firma existente por SMS conservando todos los campos personalizados y configuración original. Se utilizará el enlace único ya generado."
-                  : "Se enviará un SMS con un enlace único y seguro. El SMS incluye un acceso directo al documento y cumple con los estándares eIDAS."
-                }
-                <strong> Los SMS tienen un coste adicional por mensaje.</strong>
-              </Text>
-            </Alert>
-
-            <Group justify="flex-end" gap="sm">
-              <Button
-                variant="subtle"
-                onClick={() => {
-                  setSmsModalOpened(false)
-                  setSmsFormData({ phone: '', name: '', contractId: '', contractName: '', signatureRequestId: '' })
-                }}
-                disabled={sendingSms}
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleSendSmsSignature}
-                loading={sendingSms}
-                leftSection={<IconPhone size={16} />}
-                disabled={!smsFormData.phone}
-              >
-                {sendingSms ? 'Enviando...' : 'Enviar SMS'}
-              </Button>
-            </Group>
-          </Stack>
-        </Modal>
+        {/* SMS Modal removed; unified above */}
       </Stack>
     </Container>
   )

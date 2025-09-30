@@ -6,6 +6,8 @@ import { auditTrailService } from '@/lib/auditTrail'
 import { extractClientIP } from '@/lib/deviceMetadata'
 import { getDatabase } from '@/lib/db/mongodb'
 import { getQualifiedTimestamp } from '@/lib/eidas/timestampClient'
+import { buildSignUrl } from '@/lib/sms/utils/url'
+import { getSmsProvider } from '@/lib/sms'
 
 export const runtime = 'nodejs'
 
@@ -154,13 +156,27 @@ export async function POST(request: NextRequest) {
       }
     })
 
+    // Send SMS if phone is provided
+    if (recipientPhone) {
+      const provider = getSmsProvider()
+      const signUrl = buildSignUrl(shortId, accessKey)
+      const brand = process.env.NEXT_PUBLIC_APP_NAME || 'oSign'
+      const senderId = process.env.SMS_SENDER_ID || brand
+      const message = `${brand}: Accede para firmar ${signUrl}`
+      try {
+        await provider.send(senderId, message, recipientPhone)
+      } catch (e) {
+        console.error('Failed to send sign SMS:', e)
+      }
+    }
+
     return NextResponse.json({
       id: result.insertedId,
       shortId,
       accessKey,
       status: 'pending',
       expiresAt: expiresAt.toISOString(),
-      signUrl: `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/sign/${shortId}?a=${accessKey}`
+      signUrl: buildSignUrl(shortId, accessKey)
     }, { status: 201 })
 
   } catch (error) {

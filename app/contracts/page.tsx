@@ -8,6 +8,8 @@ import { useRouter } from 'next/navigation'
 import { notifications } from '@mantine/notifications'
 import { useSession } from 'next-auth/react'
 import { isSMSEnabledClient } from '@/lib/utils/smsConfig'
+import { DynamicFieldsForm } from '@/components/DynamicFieldsForm'
+import { extractSignerInfo, validateMandatoryFields } from '@/lib/contractUtils'
 
 export default function DashboardPage() {
   const [contratos, setContratos] = useState([])
@@ -24,9 +26,13 @@ export default function DashboardPage() {
   const [pendingQrRequest, setPendingQrRequest] = useState({ contractId: '', contractName: '' })
   const [requestingSignature, setRequestingSignature] = useState(false)
   const [emailModalOpened, setEmailModalOpened] = useState(false)
+  const [requestMethod, setRequestMethod] = useState<'email' | 'sms' | 'local' | 'tablet' | 'qr'>('email')
   const [emailFormData, setEmailFormData] = useState({ email: '', name: '', contractId: '', contractName: '' })
-  const [smsModalOpened, setSmsModalOpened] = useState(false)
   const [smsFormData, setSmsFormData] = useState({ phone: '', name: '', contractId: '', contractName: '' })
+  const [fieldsModalOpened, setFieldsModalOpened] = useState(false)
+  const [pendingAction, setPendingAction] = useState<{ contract: any, method: 'email'|'sms'|'local'|'tablet'|'qr', withPrefill: boolean } | null>(null)
+  const [dynamicValues, setDynamicValues] = useState<{[key:string]: string}>({})
+  const [collecting, setCollecting] = useState(false)
   const [deleteModalOpened, setDeleteModalOpened] = useState(false)
   const [contractToDelete, setContractToDelete] = useState<any>(null)
   const [deleting, setDeleting] = useState(false)
@@ -218,8 +224,8 @@ export default function DashboardPage() {
     }
   }
 
-  // Handle email signature request creation
-  const handleEmailSignatureRequest = async () => {
+  // Helper to create signature request with optional dynamic field values
+  const createSignatureRequest = async (contractId: string, method: string, extra: any = {}) => {
     try {
       setRequestingSignature(true)
 
@@ -229,10 +235,9 @@ export default function DashboardPage() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          contractId: emailFormData.contractId,
-          signatureType: 'email',
-          signerEmail: emailFormData.email,
-          signerName: emailFormData.name
+          contractId,
+          signatureType: method,
+          ...extra
         })
       })
 
@@ -242,70 +247,56 @@ export default function DashboardPage() {
 
       const result = await response.json()
 
-      notifications.show({
-        title: 'Email de firma enviado',
-        message: `Se ha enviado la solicitud de firma por email a ${emailFormData.email} para ${emailFormData.contractName}`,
-        color: 'green',
-      })
-
-      setEmailModalOpened(false)
-      setEmailFormData({ email: '', name: '', contractId: '', contractName: '' })
+      return result
 
     } catch (error) {
-      console.error('Error creating email signature request:', error)
-      notifications.show({
-        title: 'Error',
-        message: 'No se pudo enviar el email de firma. Por favor, intente de nuevo.',
-        color: 'red',
-      })
+      console.error('Error creating signature request:', error)
+      notifications.show({ title: 'Error', message: 'No se pudo crear la solicitud de firma.', color: 'red' })
+      throw error
     } finally {
       setRequestingSignature(false)
     }
   }
 
+  // Handle email signature request creation
+  const handleEmailSignatureRequest = async () => {
+    const contractId = emailFormData.contractId
+    const extra: any = { signerEmail: emailFormData.email, signerName: emailFormData.name }
+    if (pendingAction?.withPrefill) {
+      extra.dynamicFieldValues = dynamicValues
+    }
+    const result = await createSignatureRequest(contractId, 'email', extra)
+    notifications.show({
+      title: 'Email de firma enviado',
+      message: `Se ha enviado la solicitud de firma por email a ${emailFormData.email} para ${emailFormData.contractName}`,
+      color: 'green',
+    })
+    setEmailModalOpened(false)
+    setEmailFormData({ email: '', name: '', contractId: '', contractName: '' })
+    setFieldsModalOpened(false)
+    setDynamicValues({})
+    setPendingAction(null)
+    return result
+  }
+
   // Handle SMS signature request creation
   const handleSmsSignatureRequest = async () => {
-    try {
-      setRequestingSignature(true)
-
-      const response = await fetch('/api/signature-requests', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          contractId: smsFormData.contractId,
-          signatureType: 'sms',
-          signerPhone: smsFormData.phone,
-          signerName: smsFormData.name
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to create signature request')
-      }
-
-      const result = await response.json()
-
-      notifications.show({
-        title: 'SMS de firma enviado',
-        message: `Se ha enviado la solicitud de firma por SMS a ${smsFormData.phone} para ${smsFormData.contractName}`,
-        color: 'green',
-      })
-
-      setSmsModalOpened(false)
-      setSmsFormData({ phone: '', name: '', contractId: '', contractName: '' })
-
-    } catch (error) {
-      console.error('Error creating SMS signature request:', error)
-      notifications.show({
-        title: 'Error',
-        message: 'No se pudo enviar el SMS de firma. Por favor, intente de nuevo.',
-        color: 'red',
-      })
-    } finally {
-      setRequestingSignature(false)
+    const contractId = smsFormData.contractId
+    const extra: any = { signerPhone: smsFormData.phone, signerName: smsFormData.name }
+    if (pendingAction?.withPrefill) {
+      extra.dynamicFieldValues = dynamicValues
     }
+    const result = await createSignatureRequest(contractId, 'sms', extra)
+    notifications.show({
+      title: 'SMS de firma enviado',
+      message: `Se ha enviado la solicitud de firma por SMS a ${smsFormData.phone} para ${smsFormData.contractName}`,
+      color: 'green',
+    })
+    setSmsFormData({ phone: '', name: '', contractId: '', contractName: '' })
+    setFieldsModalOpened(false)
+    setDynamicValues({})
+    setPendingAction(null)
+    return result
   }
 
   // Handle QR confirmation
@@ -325,36 +316,37 @@ export default function DashboardPage() {
     try {
       setRequestingSignature(true)
       
-      const response = await fetch('/api/signature-requests', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          contractId,
-          signatureType
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to create signature request')
+      const response = await fetch(`/api/contracts?limit=1&status=all`)
+      let selected = contratos.find((c: any) => c.id === contractId)
+      if (!selected) {
+        selected = (await response.json()).contracts?.find((c: any) => c.id === contractId)
       }
 
-      const result = await response.json()
+      // Decide if we should show prefill modal
+      const showPrefillModalDefault = true
+      setPendingAction({ contract: selected, method: signatureType as any, withPrefill: false })
+      if (showPrefillModalDefault) {
+        setFieldsModalOpened(true)
+        setCollecting(false)
+        setDynamicValues({})
+        return
+      }
       
       if (signatureType === 'qr') {
         // Show QR modal with the signature URL
-        const qrCode = await generateQRCode(result.signatureUrl)
+        const createRes = await createSignatureRequest(contractId, 'qr')
+        const qrCode = await generateQRCode(createRes.signatureUrl)
         setCurrentQrData({
           url: qrCode,
           contractName,
-          signatureUrl: result.signatureUrl
+          signatureUrl: createRes.signatureUrl
         })
         setQrModalOpened(true)
       } else if (signatureType === 'local') {
         // For local signature, open the sign URL in a new tab
-        if (result.signatureUrl) {
-          window.open(result.signatureUrl, '_blank')
+        const createRes = await createSignatureRequest(contractId, 'local')
+        if (createRes.signatureUrl) {
+          window.open(createRes.signatureUrl, '_blank')
           notifications.show({
             title: 'Firma Local',
             message: `Se ha abierto la página de firma para ${contractName}`,
@@ -377,7 +369,7 @@ export default function DashboardPage() {
         })
       } else {
         // Generic success message
-        console.log(`Signature request created: ${result.signatureUrl}`)
+        console.log(`Signature request created`)
         notifications.show({
           title: 'Solicitud creada',
           message: `Se ha creado la solicitud de firma para ${contractName}`,
@@ -395,6 +387,121 @@ export default function DashboardPage() {
     } finally {
       setRequestingSignature(false)
     }
+  }
+
+  // Prefill modal content
+  const renderFieldsModal = () => {
+    if (!pendingAction?.contract) return null
+    const contract = pendingAction.contract
+    const userFields = contract.userFields || []
+    const dynamicFields = contract.dynamicFields || []
+    const fields = [...dynamicFields, ...userFields]
+
+    return (
+      <Modal
+        opened={fieldsModalOpened}
+        onClose={() => { setFieldsModalOpened(false); setPendingAction(null); setDynamicValues({}) }}
+        title="Datos opcionales del contrato"
+        centered
+        size="lg"
+      >
+        <Stack gap="md">
+          <Text size="sm" c="dimmed">
+            Puedes pre-rellenar datos ahora o dejar que el firmante los complete.
+          </Text>
+
+          <DynamicFieldsForm
+            fields={fields}
+            values={dynamicValues}
+            onValuesChange={setDynamicValues}
+            onSubmit={async () => {
+              setCollecting(true)
+              const extra: any = { dynamicFieldValues: dynamicValues }
+              const method = pendingAction.method
+              const contractId = pendingAction.contract.id
+
+              if (method === 'qr') {
+                const createRes = await createSignatureRequest(contractId, 'qr', extra)
+                const qrCode = await generateQRCode(createRes.signatureUrl)
+                setCurrentQrData({ url: qrCode, contractName: pendingAction.contract.name, signatureUrl: createRes.signatureUrl })
+                setQrModalOpened(true)
+              } else if (method === 'local') {
+                const createRes = await createSignatureRequest(contractId, 'local', extra)
+                if (createRes.signatureUrl) window.open(createRes.signatureUrl, '_blank')
+              } else if (method === 'email') {
+                setPendingAction({ ...pendingAction, withPrefill: true })
+                setFieldsModalOpened(false)
+                setEmailModalOpened(true)
+                setCollecting(false)
+                return
+              } else if (method === 'sms') {
+                setPendingAction({ ...pendingAction, withPrefill: true })
+                setFieldsModalOpened(false)
+                setRequestMethod('sms')
+                setEmailModalOpened(true)
+                setCollecting(false)
+                return
+              } else if (method === 'tablet') {
+                await createSignatureRequest(contractId, 'tablet', extra)
+              }
+
+              setCollecting(false)
+              setFieldsModalOpened(false)
+              setDynamicValues({})
+              setPendingAction(null)
+            }}
+            onBack={() => {
+              setFieldsModalOpened(false)
+              setPendingAction(null)
+              setDynamicValues({})
+            }}
+            loading={collecting}
+            contractName={pendingAction.contract.name}
+          />
+
+          <Group justify="space-between">
+            <Button variant="subtle" onClick={() => { setFieldsModalOpened(false); setPendingAction(null); setDynamicValues({}) }}>
+              Cancelar
+            </Button>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                // Saltar pre-relleno y enviar directo
+                const method = pendingAction.method
+                const contractId = pendingAction.contract.id
+                if (method === 'qr') {
+                  const createRes = await createSignatureRequest(contractId, 'qr')
+                  const qrCode = await generateQRCode(createRes.signatureUrl)
+                  setCurrentQrData({ url: qrCode, contractName: pendingAction.contract.name, signatureUrl: createRes.signatureUrl })
+                  setQrModalOpened(true)
+                } else if (method === 'local') {
+                  const createRes = await createSignatureRequest(contractId, 'local')
+                  if (createRes.signatureUrl) window.open(createRes.signatureUrl, '_blank')
+                } else if (method === 'email') {
+                  setEmailFormData(prev => ({ ...prev, contractId, contractName: pendingAction.contract.name }))
+                  setFieldsModalOpened(false)
+                  setEmailModalOpened(true)
+                  return
+                } else if (method === 'sms') {
+                  setSmsFormData(prev => ({ ...prev, contractId, contractName: pendingAction.contract.name }))
+                  setFieldsModalOpened(false)
+                  setRequestMethod('sms')
+                  setEmailModalOpened(true)
+                  return
+                } else if (method === 'tablet') {
+                  await createSignatureRequest(contractId, 'tablet')
+                }
+
+                setFieldsModalOpened(false)
+                setPendingAction(null)
+              }}
+            >
+              Enviar sin rellenar
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    )
   }
 
   if (loading) {
@@ -648,12 +755,14 @@ export default function DashboardPage() {
                         <Menu.Item
                           leftSection={<IconMail size={14} />}
                           onClick={() => {
+                            setRequestMethod('email')
                             setEmailFormData({
                               email: '',
                               name: '',
                               contractId: contrato.id,
                               contractName: contrato.name
                             })
+                            setSmsFormData({ phone: '', name: '', contractId: contrato.id, contractName: contrato.name })
                             setEmailModalOpened(true)
                           }}
                         >
@@ -663,13 +772,15 @@ export default function DashboardPage() {
                           <Menu.Item
                             leftSection={<IconPhone size={14} />}
                             onClick={() => {
+                              setRequestMethod('sms')
                               setSmsFormData({
                                 phone: '',
                                 name: '',
                                 contractId: contrato.id,
                                 contractName: contrato.name
                               })
-                              setSmsModalOpened(true)
+                              setEmailFormData({ email: '', name: '', contractId: contrato.id, contractName: contrato.name })
+                              setEmailModalOpened(true)
                             }}
                           >
                             Mandar por SMS
@@ -677,20 +788,35 @@ export default function DashboardPage() {
                         )}
                         <Menu.Item
                           leftSection={<IconSignature size={14} />}
-                          onClick={() => handleSignatureRequest(contrato.id, contrato.name, 'local')}
+                          onClick={() => {
+                            setRequestMethod('local')
+                            setEmailFormData({ email: '', name: '', contractId: contrato.id, contractName: contrato.name })
+                            setSmsFormData({ phone: '', name: '', contractId: contrato.id, contractName: contrato.name })
+                            setEmailModalOpened(true)
+                          }}
                         >
                           Firma Local
                         </Menu.Item>
                         <Menu.Item
                           leftSection={<IconDeviceTablet size={14} />}
-                          onClick={() => handleSignatureRequest(contrato.id, contrato.name, 'tablet')}
+                          onClick={() => {
+                            setRequestMethod('tablet')
+                            setEmailFormData({ email: '', name: '', contractId: contrato.id, contractName: contrato.name })
+                            setSmsFormData({ phone: '', name: '', contractId: contrato.id, contractName: contrato.name })
+                            setEmailModalOpened(true)
+                          }}
                         >
                           Firmar en Tableta
                         </Menu.Item>
                         <Menu.Divider />
                         <Menu.Item
                           leftSection={<IconQrcode size={14} />}
-                          onClick={() => handleQrConfirmation(contrato.id, contrato.name)}
+                          onClick={() => {
+                            setRequestMethod('qr')
+                            setEmailFormData({ email: '', name: '', contractId: contrato.id, contractName: contrato.name })
+                            setSmsFormData({ phone: '', name: '', contractId: contrato.id, contractName: contrato.name })
+                            setEmailModalOpened(true)
+                          }}
                         >
                           Mostrar QR para Firma Remota
                         </Menu.Item>
@@ -963,6 +1089,9 @@ export default function DashboardPage() {
           </Card>
         </SimpleGrid>
 
+        {/* Prefill Fields Modal (opcional) */}
+        {renderFieldsModal()}
+
         {/* QR Confirmation Modal */}
         <Modal
           opened={qrConfirmModalOpened}
@@ -1092,140 +1221,211 @@ export default function DashboardPage() {
           </Stack>
         </Modal>
 
-        {/* Email Signature Request Modal */}
+        {/* Unified Signature Request Modal */}
         <Modal
           opened={emailModalOpened}
           onClose={() => {
             setEmailModalOpened(false)
             setEmailFormData({ email: '', name: '', contractId: '', contractName: '' })
+            setSmsFormData({ phone: '', name: '', contractId: '', contractName: '' })
+            setDynamicValues({})
           }}
-          title="Enviar Solicitud de Firma por Email"
+          title={
+            requestMethod === 'email' ? 'Enviar Solicitud de Firma por Email' :
+            requestMethod === 'sms' ? 'Enviar Solicitud de Firma por SMS' :
+            requestMethod === 'qr' ? 'Generar QR para Firma' :
+            requestMethod === 'local' ? 'Iniciar Firma Local' :
+            'Iniciar Firma en Tableta'
+          }
           centered
           size="md"
         >
+          {(() => {
+            // Validate required fields for the signature request
+            const hasRequiredSignatureFields = (() => {
+              if (requestMethod === 'email') {
+                return emailFormData.email.trim().length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailFormData.email)
+              } else if (requestMethod === 'sms') {
+                return smsFormData.phone.trim().length > 0
+              }
+              // For qr, local, tablet no required fields
+              return true
+            })()
+
+            // Get contract fields
+            const contractFields = [...(contratos.find((c:any)=>c.id===emailFormData.contractId)?.dynamicFields||[]), ...(contratos.find((c:any)=>c.id===emailFormData.contractId)?.userFields||[])]
+
+            // Check if all contract fields are filled
+            const allContractFieldsFilled = contractFields.every(field => {
+              const value = dynamicValues[field.name]
+              if (field.required) {
+                return value && value.trim().length > 0
+              }
+              return true // Non-required fields don't block
+            })
+
+            return (
           <Stack gap="md">
             <Text size="sm" c="dimmed">
-              Envía una solicitud de firma electrónica por email para el contrato: <strong>{emailFormData.contractName}</strong>
+              {requestMethod === 'email' && (
+                <>Envía una solicitud de firma electrónica por email para el contrato: <strong>{emailFormData.contractName}</strong></>
+              )}
+              {requestMethod === 'sms' && (
+                <>Envía una solicitud de firma electrónica por SMS para el contrato: <strong>{smsFormData.contractName}</strong></>
+              )}
+              {requestMethod === 'qr' && (
+                <>Genera un código QR con enlace de firma para: <strong>{emailFormData.contractName}</strong></>
+              )}
+              {requestMethod === 'local' && (
+                <>Abre la página de firma local para: <strong>{emailFormData.contractName}</strong></>
+              )}
+              {requestMethod === 'tablet' && (
+                <>Envía la solicitud a la tableta registrada para: <strong>{emailFormData.contractName}</strong></>
+              )}
             </Text>
 
-            <TextInput
-              label="Email del firmante"
-              placeholder="ejemplo@dominio.com"
-              value={emailFormData.email}
-              onChange={(event) => setEmailFormData(prev => ({ ...prev, email: event.target.value }))}
-              required
-              leftSection={<IconMail size={16} />}
-            />
+            {requestMethod === 'email' && (
+              <TextInput
+                label="Email del firmante"
+                placeholder="ejemplo@dominio.com"
+                value={emailFormData.email}
+                onChange={(event) => setEmailFormData(prev => ({ ...prev, email: event.target.value }))}
+                required
+                leftSection={<IconMail size={16} />}
+              />
+            )}
 
-            <TextInput
-              label="Nombre del firmante (opcional)"
-              placeholder="Nombre completo"
-              value={emailFormData.name}
-              onChange={(event) => setEmailFormData(prev => ({ ...prev, name: event.target.value }))}
-              leftSection={<IconSignature size={16} />}
-            />
+            {(requestMethod === 'email' || requestMethod === 'sms') && (
+              <TextInput
+                label="Nombre del firmante (opcional)"
+                placeholder="Nombre completo"
+                value={requestMethod === 'email' ? emailFormData.name : smsFormData.name}
+                onChange={(event) => (requestMethod === 'email' 
+                  ? setEmailFormData(prev => ({ ...prev, name: event.target.value }))
+                  : setSmsFormData(prev => ({ ...prev, name: event.target.value })))}
+                leftSection={<IconSignature size={16} />}
+              />
+            )}
 
-            <Alert color="blue" variant="light">
-              <Text size="sm">
-                Se enviará un email con un enlace único y seguro para la firma del contrato. 
-                El email incluirá toda la información necesaria y cumplirá con los estándares eIDAS.
-              </Text>
-            </Alert>
+            {requestMethod === 'sms' && (
+              <TextInput
+                label="Teléfono del firmante"
+                placeholder="+34 612 345 678"
+                value={smsFormData.phone}
+                onChange={(event) => setSmsFormData(prev => ({ ...prev, phone: event.target.value }))}
+                required
+                leftSection={<IconPhone size={16} />}
+              />
+            )}
 
-            <Group justify="flex-end" gap="sm">
+            <Box
+              style={{
+                maxHeight: '50vh',
+                overflow: 'auto',
+                marginBottom: '12px',
+                backgroundColor: 'var(--mantine-color-gray-0)',
+                borderRadius: '8px',
+                padding: '16px'
+              }}
+            >
+              <Stack gap="sm">
+                <Box>
+                  <Text fw={600} size="sm" c="dimmed">Campos opcionales del contrato</Text>
+                  <Text size="xs" c="dimmed">Puedes pre-rellenar estos datos o dejar que el firmante los complete</Text>
+                </Box>
+                <DynamicFieldsForm
+                  fields={[...(contratos.find((c:any)=>c.id===emailFormData.contractId)?.dynamicFields||[]), ...(contratos.find((c:any)=>c.id===emailFormData.contractId)?.userFields||[])]}
+                  values={dynamicValues}
+                  onValuesChange={setDynamicValues}
+                  onSubmit={()=>{}}
+                  loading={false}
+                  contractName={emailFormData.contractName}
+                />
+              </Stack>
+            </Box>
+
+            <Group justify="center" gap="sm" style={{ position: 'sticky', bottom: 0, background: 'white', paddingTop: 12, borderTop: '1px solid var(--mantine-color-gray-3)' }}>
               <Button
-                variant="subtle"
-                onClick={() => {
+                variant="outline"
+                fullWidth
+                disabled={!hasRequiredSignatureFields || requestingSignature}
+                loading={requestingSignature}
+                onClick={async ()=>{
+                  if (requestMethod === 'email') {
+                    await createSignatureRequest(emailFormData.contractId, 'email', { signerEmail: emailFormData.email, signerName: emailFormData.name })
+                    notifications.show({ title: 'Email de firma enviado', message: `Se ha enviado la solicitud por email a ${emailFormData.email} para ${emailFormData.contractName}`, color: 'green' })
+                  } else if (requestMethod === 'sms') {
+                    await createSignatureRequest(smsFormData.contractId, 'sms', { signerPhone: smsFormData.phone, signerName: smsFormData.name })
+                    notifications.show({ title: 'SMS de firma enviado', message: `Se ha enviado la solicitud por SMS a ${smsFormData.phone} para ${smsFormData.contractName}`, color: 'green' })
+                  } else if (requestMethod === 'qr') {
+                    const createRes = await createSignatureRequest(emailFormData.contractId, 'qr')
+                    const qrCode = await generateQRCode(createRes.signatureUrl)
+                    setCurrentQrData({ url: qrCode, contractName: emailFormData.contractName, signatureUrl: createRes.signatureUrl })
+                    setQrModalOpened(true)
+                  } else if (requestMethod === 'local') {
+                    const createRes = await createSignatureRequest(emailFormData.contractId, 'local')
+                    if (createRes.signatureUrl) window.open(createRes.signatureUrl, '_blank')
+                  } else if (requestMethod === 'tablet') {
+                    await createSignatureRequest(emailFormData.contractId, 'tablet')
+                    notifications.show({ title: 'Solicitud creada', message: `Solicitud enviada para ${emailFormData.contractName}`, color: 'green' })
+                  }
                   setEmailModalOpened(false)
-                  setEmailFormData({ email: '', name: '', contractId: '', contractName: '' })
+                  setDynamicValues({})
                 }}
-                disabled={requestingSignature}
               >
-                Cancelar
+                Solicitar firma y datos
               </Button>
               <Button
-                onClick={handleEmailSignatureRequest}
+                fullWidth
+                disabled={!hasRequiredSignatureFields || !allContractFieldsFilled || requestingSignature}
                 loading={requestingSignature}
-                leftSection={<IconMail size={16} />}
-                disabled={!emailFormData.email}
+                onClick={async ()=>{
+                  if (requestMethod === 'email') {
+                    await createSignatureRequest(emailFormData.contractId, 'email', { signerEmail: emailFormData.email, signerName: emailFormData.name, dynamicFieldValues: dynamicValues })
+                    notifications.show({ title: 'Email de firma enviado', message: `Se ha enviado la solicitud por email a ${emailFormData.email} para ${emailFormData.contractName}`, color: 'green' })
+                  } else if (requestMethod === 'sms') {
+                    await createSignatureRequest(smsFormData.contractId, 'sms', { signerPhone: smsFormData.phone, signerName: smsFormData.name, dynamicFieldValues: dynamicValues })
+                    notifications.show({ title: 'SMS de firma enviado', message: `Se ha enviado la solicitud por SMS a ${smsFormData.phone} para ${smsFormData.contractName}`, color: 'green' })
+                  } else if (requestMethod === 'qr') {
+                    const createRes = await createSignatureRequest(emailFormData.contractId, 'qr', { dynamicFieldValues: dynamicValues })
+                    const qrCode = await generateQRCode(createRes.signatureUrl)
+                    setCurrentQrData({ url: qrCode, contractName: emailFormData.contractName, signatureUrl: createRes.signatureUrl })
+                    setQrModalOpened(true)
+                  } else if (requestMethod === 'local') {
+                    const createRes = await createSignatureRequest(emailFormData.contractId, 'local', { dynamicFieldValues: dynamicValues })
+                    if (createRes.signatureUrl) window.open(createRes.signatureUrl, '_blank')
+                  } else if (requestMethod === 'tablet') {
+                    await createSignatureRequest(emailFormData.contractId, 'tablet', { dynamicFieldValues: dynamicValues })
+                    notifications.show({ title: 'Solicitud creada', message: `Solicitud enviada para ${emailFormData.contractName}`, color: 'green' })
+                  }
+                  setEmailModalOpened(false)
+                  setDynamicValues({})
+                }}
               >
-                {requestingSignature ? 'Enviando...' : 'Enviar Email'}
+                Solicitar firma
               </Button>
             </Group>
-          </Stack>
-        </Modal>
 
-        {/* SMS Signature Request Modal */}
-        <Modal
-          opened={smsModalOpened}
-          onClose={() => {
-            setSmsModalOpened(false)
-            setSmsFormData({ phone: '', name: '', contractId: '', contractName: '' })
-          }}
-          title="Enviar Solicitud de Firma por SMS"
-          centered
-          size="md"
-        >
-          <Stack gap="md">
-            <Text size="sm" c="dimmed">
-              Envía una solicitud de firma electrónica por SMS para el contrato: <strong>{smsFormData.contractName}</strong>
-            </Text>
-
-            <TextInput
-              label="Teléfono del firmante"
-              placeholder="+34 612 345 678"
-              value={smsFormData.phone}
-              onChange={(event) => setSmsFormData(prev => ({ ...prev, phone: event.target.value }))}
-              required
-              leftSection={<IconPhone size={16} />}
-            />
-
-            <TextInput
-              label="Nombre del firmante (opcional)"
-              placeholder="Nombre completo"
-              value={smsFormData.name}
-              onChange={(event) => setSmsFormData(prev => ({ ...prev, name: event.target.value }))}
-              leftSection={<IconSignature size={16} />}
-            />
-
-            <Alert color="blue" variant="light">
-              <Text size="sm">
-                Se enviará un SMS con un enlace único y seguro para la firma del contrato.
-                El SMS incluirá toda la información necesaria y cumplirá con los estándares eIDAS.
-              </Text>
-            </Alert>
-
-            {!smsEnabled && (
-              <Alert color="orange" variant="light">
+            {requestMethod === 'email' && (
+              <Alert color="blue" variant="light">
                 <Text size="sm">
-                  ⚠️ La funcionalidad de SMS está desactivada en este entorno.
-                  Se simulará el envío pero no se enviará ningún SMS real.
+                  Se enviará un email con un enlace único y seguro para la firma del contrato.
                 </Text>
               </Alert>
             )}
-
-            <Group justify="flex-end" gap="sm">
-              <Button
-                variant="subtle"
-                onClick={() => {
-                  setSmsModalOpened(false)
-                  setSmsFormData({ phone: '', name: '', contractId: '', contractName: '' })
-                }}
-                disabled={requestingSignature}
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleSmsSignatureRequest}
-                loading={requestingSignature}
-                leftSection={<IconPhone size={16} />}
-                disabled={!smsFormData.phone}
-              >
-                {requestingSignature ? 'Enviando...' : 'Enviar SMS'}
-              </Button>
-            </Group>
+            {requestMethod === 'sms' && (
+              <Alert color="orange" variant="light">
+                <Text size="sm">
+                  Los SMS tienen un coste adicional por mensaje.
+                </Text>
+              </Alert>
+            )}
           </Stack>
+            )
+          })()}
         </Modal>
+
+        {/* SMS Modal removed; unified in previous modal */}
 
         {/* Delete Confirmation Modal */}
         <Modal

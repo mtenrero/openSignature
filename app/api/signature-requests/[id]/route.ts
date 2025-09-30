@@ -247,8 +247,72 @@ export async function PATCH(
           }
         }
       } else if (updateData.signatureType === 'sms' && updateData.signerPhone) {
-        console.log(`Resending SMS to ${updateData.signerPhone} with link: ${updateData.signatureUrl}`)
-        // SMS resending logic remains the same (no limit for now)
+        console.log(`[Resend] Preparing to send SMS to ${updateData.signerPhone} with link: ${updateData.signatureUrl}`)
+
+        // Build optimized SMS message (max 160 chars for 1 SMS)
+        const { buildSignatureSMS, calculateSMSSegments } = await import('@/lib/smsMessageBuilder')
+
+        // Get contract name from snapshot or fetch from contract
+        let contractName = currentRequest.contractSnapshot?.name || currentRequest.contractName
+
+        // If still not available, fetch from contract collection
+        if (!contractName && currentRequest.contractId) {
+          try {
+            const { getContractsCollection } = await import('@/lib/db/mongodb')
+            const contractsCollection = await getContractsCollection()
+            const contract = await contractsCollection.findOne({ _id: new ObjectId(currentRequest.contractId) })
+            contractName = contract?.name
+            console.log('[Resend] Fetched contract name from DB:', contractName)
+          } catch (e) {
+            console.warn('[Resend] Could not fetch contract name:', e)
+          }
+        }
+
+        const smsMessage = buildSignatureSMS(updateData.signatureUrl, contractName)
+        const smsSegments = calculateSMSSegments(smsMessage)
+        const smsSender = process.env.SMS_SENDER_ID || 'oSign'
+
+        console.log(`[Resend] SMS message built:`, {
+          message: smsMessage,
+          length: smsMessage.length,
+          segments: smsSegments,
+          contractName: contractName || 'not found'
+        })
+
+        console.log(`[Resend] Calling sendSMS function with:`, {
+          sender: smsSender,
+          recipient: updateData.signerPhone,
+          messageLength: smsMessage.length,
+          smsSegments
+        })
+
+        try {
+          const { sendSMS } = await import('@/libs/sendSMS')
+          const smsResult = await sendSMS(smsSender, smsMessage, updateData.signerPhone)
+
+          console.log(`[Resend] SMS send result:`, {
+            success: smsResult.success,
+            provider: smsResult.provider,
+            status: smsResult.status,
+            requestId: smsResult.requestId,
+            error: smsResult.error
+          })
+
+          // Update audit entry with SMS result
+          auditEntry.details.smsSent = smsResult.success
+          if (smsResult.success) {
+            console.log(`[Resend] ✅ SMS sent successfully via ${smsResult.provider}`)
+            auditEntry.details.smsProvider = smsResult.provider
+            auditEntry.details.smsRequestId = smsResult.requestId
+          } else {
+            console.error(`[Resend] SMS sending failed:`, smsResult.error)
+            auditEntry.details.smsError = smsResult.error
+          }
+        } catch (sendError: any) {
+          console.error(`[Resend] Exception while sending SMS:`, sendError)
+          auditEntry.details.smsSent = false
+          auditEntry.details.smsError = sendError?.message || 'Unknown error'
+        }
       }
 
     } else {

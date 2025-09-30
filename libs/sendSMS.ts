@@ -1,67 +1,45 @@
-import axios from "axios"
+import { getSmsProvider } from "@/lib/sms"
 
-function getToken(): string {
-    return process.env.SMS_TOKEN
-}
+/**
+ * Sends an SMS using the configured provider
+ * @param sender - Sender ID (text or phone number)
+ * @param message - SMS message content
+ * @param recipient - Recipient phone number
+ * @returns SmsSendResult with success status and details
+ * @throws Error if SMS sending fails
+ */
+export async function sendSMS(sender: string, message: string, recipient: string) {
+    console.log('[sendSMS] Wrapper called', { sender, recipient, messageLength: message.length })
 
-function getAuth(): string {
-    return Buffer.from(getToken() + ":").toString("base64")
-}
+    try {
+        const provider = getSmsProvider()
+        console.log('[sendSMS] Using provider:', provider.name)
 
-function determinePrefix(phone: string) {
-    const defaultPrefix = process.env.PHONE_PREFIX || 34
+        const result = await provider.send(sender, message, recipient)
 
-    if (phone.length <= 9) {
-        return defaultPrefix + phone
-    } else {
-        return phone
-    }
-}
-
-function SMSpayload(sender, message, recipient): string {
-    return JSON.stringify({
-        sender: sender,
-        message: message,
-        recipients: [
-          { msisdn: determinePrefix(recipient) },
-        ],
-    })
-}
-
-export async function sendSMS(sender, message, recipient) {
-    // Check if SMS is disabled via environment variable
-    const isSMSDisabled = process.env.DISABLE_SMS === 'true'
-
-    if (isSMSDisabled) {
-        console.log('📱 SMS disabled via DISABLE_SMS environment variable')
-        console.log(`   Sender: ${sender}`)
-        console.log(`   Message: ${message}`)
-        console.log(`   Recipient: ${recipient}`)
-
-        // Return a mock success response
-        return Promise.resolve({
-            success: true,
-            message: 'SMS sending disabled',
-            mockSent: true
+        console.log('[sendSMS] Provider result:', {
+            success: result.success,
+            provider: result.provider,
+            status: result.status,
+            requestId: result.requestId,
+            hasError: !!result.error
         })
-    }
 
-    return new Promise<string>((resolve, reject) => {
-        axios({
-            method: 'post',
-            url: 'https://gatewayapi.com/rest/mtsms',
-            data: SMSpayload(sender, message, recipient),
-            headers: { "Authorization": `Basic ${getAuth()}`, "Content-Type": "application/json"}
-        }).then(response => {
-            console.log(response)
-            if (response.status === 200) {
-                resolve(response.data)
-            } else {
-                reject(response)
-            }
-        }).catch(err => {
-            console.log(err)
-            reject(err)
+        if (!result.success) {
+            const errorMsg = result.error || 'SMS send failed without specific error'
+            console.error('[sendSMS] SMS sending failed:', errorMsg)
+            throw new Error(errorMsg)
+        }
+
+        console.log('[sendSMS] ✅ SMS sent successfully via', result.provider)
+        return result
+
+    } catch (error: any) {
+        console.error('[sendSMS] Exception in wrapper:', {
+            message: error?.message,
+            name: error?.name,
+            stack: error?.stack?.split('\n')[0]
         })
-    })
+        throw error
+    }
 }
