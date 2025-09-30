@@ -1,6 +1,6 @@
-# Auth0 Setup Guide for OpenSignature
+# Auth0 Setup Guide for oSign.EU
 
-This guide will help you configure Auth0 properly for OpenSignature's subscription management system.
+This guide will help you configure Auth0 properly for oSign.EU's subscription management system.
 
 ## Problem
 
@@ -26,7 +26,7 @@ You need to create or configure a Machine-to-Machine application in Auth0 for Ma
    - Go to **Applications** in the sidebar
    - Click **+ Create Application**
    - Choose **Machine to Machine Applications**
-   - Name it: `OpenSignature Management API`
+   - Name it: `oSign.EU Management API`
    - Click **Create**
 
 3. **Configure API Access**
@@ -59,7 +59,7 @@ If you prefer to use your existing application:
 
 1. **Go to Your Application**
    - In Auth0 Dashboard, go to **Applications**
-   - Select your existing OpenSignature application
+   - Select your existing oSign.EU application
 
 2. **Enable Management API**
    - Go to the **APIs** tab
@@ -103,7 +103,7 @@ You should see:
 
 ## What This Enables
 
-With proper Auth0 Management API access, OpenSignature can:
+With proper Auth0 Management API access, oSign.EU can:
 
 - 📊 **Subscription Management**: Read and update user subscription plans
 - 👤 **User Metadata**: Store subscription status, Stripe customer IDs

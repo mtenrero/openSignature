@@ -48,9 +48,9 @@ const initializePouchDB = async () => {
     PouchDB.plugin(PouchDBAuth)
 
     // Create database instances
-    _contractsDB = new PouchDB(buildCouchDBUrl('opensignature_contracts'))
-    _signaturesDB = new PouchDB(buildCouchDBUrl('opensignature_signatures'))
-    _templatesDB = new PouchDB(buildCouchDBUrl('opensignature_templates'))
+    _contractsDB = new PouchDB(buildCouchDBUrl('oSign.EU_contracts'))
+    _signaturesDB = new PouchDB(buildCouchDBUrl('oSign.EU_signatures'))
+    _templatesDB = new PouchDB(buildCouchDBUrl('oSign.EU_templates'))
 
     pouchInitialized = true
     console.log('✅ PouchDB initialized successfully with CouchDB')

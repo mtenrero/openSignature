@@ -19,16 +19,16 @@ module.exports = {
   couchdb: {
     url: 'http://localhost:5984',
     databases: {
-      users: 'opensignature_users',
-      contracts: 'opensignature_contracts',
-      signatures: 'opensignature_signatures',
-      templates: 'opensignature_templates'
+      users: 'oSign.EU_users',
+      contracts: 'oSign.EU_contracts',
+      signatures: 'oSign.EU_signatures',
+      templates: 'oSign.EU_templates'
     }
   },
 
   // Application Configuration
   app: {
-    brand: 'OpenSignature',
+    brand: 'oSign.EU',
     nodeEnv: 'development'
   }
 }

@@ -70,7 +70,7 @@ async function testEmailService() {
           <h1>Solicitud de Firma Electrónica</h1>
           <p>Estimado/a ${recipientName},</p>
           <p>Se solicita firmar el contrato: ${contractName}</p>
-          <p>Sistema OpenSignature</p>
+          <p>Sistema oSign.EU</p>
         </body>
         </html>
         `.trim();

@@ -56,9 +56,9 @@ class ScalewayEmailService {
       // Generate compliance headers
       const complianceHeaders = {
         'X-Auto-Response-Suppress': 'All',
-        'X-Entity-Ref-ID': `opensignature-${Date.now()}`,
+        'X-Entity-Ref-ID': `oSign.EU-${Date.now()}`,
         'List-Unsubscribe': '<mailto:unsubscribe@osign.eu>',
-        'X-Mailer': 'OpenSignature eIDAS System',
+        'X-Mailer': 'oSign.EU eIDAS System',
         'X-Priority': '3',
         'X-MSMail-Priority': 'Normal',
         'X-Originating-IP': '[127.0.0.1]',
@@ -71,7 +71,7 @@ class ScalewayEmailService {
       const payload = {
         from: {
           email: this.config.fromEmail,
-          name: this.config.fromName || 'OpenSignature'
+          name: this.config.fromName || 'oSign.EU'
         },
         to: request.to.map(email => ({ email })),
         cc: request.cc?.map(email => ({ email })) || [],
@@ -166,12 +166,12 @@ class ScalewayEmailService {
     // Create custom email request with sender name override if provided
     const emailRequest: SendEmailRequest = {
       to: [recipientEmail],
-      subject: `[OpenSignature] Solicitud de Firma Electrónica: ${contractDetails.name}`,
+      subject: `[oSign.EU] Solicitud de Firma Electrónica: ${contractDetails.name}`,
       htmlContent,
       textContent,
       headers: {
-        'X-OpenSignature-Type': 'signature-request',
-        'X-OpenSignature-Contract-ID': contractDetails.id,
+        'X-oSign.EU-Type': 'signature-request',
+        'X-oSign.EU-Contract-ID': contractDetails.id,
         'X-Message-Type': 'signature-request',
         'X-Business-Purpose': 'Electronic document signature request'
       }
@@ -240,13 +240,13 @@ class ScalewayEmailService {
 
     return this.sendEmail({
       to: [recipientEmail],
-      subject: `[OpenSignature] Confirmación de Firma Completada: ${contractDetails.name}`,
+      subject: `[oSign.EU] Confirmación de Firma Completada: ${contractDetails.name}`,
       htmlContent,
       textContent,
       attachments,
       headers: {
-        'X-OpenSignature-Type': 'signature-completed',
-        'X-OpenSignature-Contract-ID': contractDetails.id,
+        'X-oSign.EU-Type': 'signature-completed',
+        'X-oSign.EU-Contract-ID': contractDetails.id,
         'X-Message-Type': 'transaction-confirmation',
         'X-Business-Purpose': 'Electronic signature completion notification'
       }
@@ -320,7 +320,7 @@ export function createScalewayEmailService(): ScalewayEmailService | null {
       apiKey: process.env.SCALEWAY_KEY_ID || '',
       secretKey: process.env.SCALEWAY_KEY_SECRET || '',
       fromEmail: 'noreply@osign.eu',
-      fromName: 'OpenSignature',
+      fromName: 'oSign.EU',
       projectId: process.env.SCALEWAY_PROJECT_ID || '',
       region: process.env.SCALEWAY_REGION || 'fr-par'
     }

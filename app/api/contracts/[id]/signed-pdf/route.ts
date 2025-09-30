@@ -156,7 +156,7 @@ export async function GET(
       processedContent,
       sesSignature,
       {
-        companyName: 'OpenSignature',
+        companyName: 'oSign.EU',
         baseUrl: process.env.NEXTAUTH_URL || 'http://localhost:3000',
         auditTrailId: decryptedSignature.auditTrailId || contractId
       }

@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 /**
- * Script de prueba para las APIs de OpenSignature
+ * Script de prueba para las APIs de oSign.EU
  * Ejecutar con: node test-api.js
  */
 
 const API_BASE = 'http://localhost:3000/api'
 
 async function testAPI() {
-  console.log('🚀 Probando APIs de OpenSignature...\n')
+  console.log('🚀 Probando APIs de oSign.EU...\n')
 
   try {
     // 1. Probar que la API de contratos responde (debería redirigir a login)

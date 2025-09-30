@@ -1,4 +1,4 @@
-# OpenSignature - Plataforma de Firma Digital
+# oSign.EU - Plataforma de Firma Digital
 
 Una plataforma completa de firma digital construida con Next.js, PouchDB/CouchDB, NextAuth y Auth0.
 
@@ -39,10 +39,10 @@ brew install couchdb
 brew services start couchdb
 
 # Crear bases de datos
-curl -X PUT http://localhost:5984/opensignature_users
-curl -X PUT http://localhost:5984/opensignature_contracts
-curl -X PUT http://localhost:5984/opensignature_signatures
-curl -X PUT http://localhost:5984/opensignature_templates
+curl -X PUT http://localhost:5984/oSign.EU_users
+curl -X PUT http://localhost:5984/oSign.EU_contracts
+curl -X PUT http://localhost:5984/oSign.EU_signatures
+curl -X PUT http://localhost:5984/oSign.EU_templates
 ```
 
 ### 3. Configurar Auth0
@@ -73,9 +73,9 @@ COUCHDB_USERNAME=admin
 COUCHDB_PASSWORD=password
 
 # Application Configuration
-BRAND=OpenSignature
+BRAND=oSign.EU
 NODE_ENV=development
-NEXT_PUBLIC_APP_NAME=OpenSignature
+NEXT_PUBLIC_APP_NAME=oSign.EU
 ```
 
 **Variables importantes:**
@@ -342,4 +342,4 @@ curl http://admin:password@localhost:5984/
 
 ---
 
-**OpenSignature** - Firma digital segura y confiable para todos.
+**oSign.EU** - Firma digital segura y confiable para todos.

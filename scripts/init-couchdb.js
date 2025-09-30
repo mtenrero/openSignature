@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Script para inicializar bases de datos de CouchDB para OpenSignature
+ * Script para inicializar bases de datos de CouchDB para oSign.EU
  * Ejecutar con: node scripts/init-couchdb.js
  */
 
@@ -23,10 +23,10 @@ const buildAuthUrl = (url) => {
 }
 
 const DATABASES = [
-  'opensignature_users',
-  'opensignature_contracts',
-  'opensignature_signatures',
-  'opensignature_templates'
+  'oSign.EU_users',
+  'oSign.EU_contracts',
+  'oSign.EU_signatures',
+  'oSign.EU_templates'
 ]
 
 async function createDatabase(dbName) {
@@ -53,7 +53,7 @@ async function createIndexes(dbName) {
     const baseUrl = buildAuthUrl(`${COUCHDB_URL}/${dbName}`)
 
     // Índices para contratos
-    if (dbName === 'opensignature_contracts') {
+    if (dbName === 'oSign.EU_contracts') {
       const contractIndexes = [
         {
           index: { fields: ['userId', 'status', 'createdAt'] },
@@ -67,7 +67,7 @@ async function createIndexes(dbName) {
     }
 
     // Índices para firmas
-    if (dbName === 'opensignature_signatures') {
+    if (dbName === 'oSign.EU_signatures') {
       const signatureIndexes = [
         {
           index: { fields: ['contractId', 'userId', 'status', 'createdAt'] },
@@ -81,7 +81,7 @@ async function createIndexes(dbName) {
     }
 
     // Índices para usuarios
-    if (dbName === 'opensignature_users') {
+    if (dbName === 'oSign.EU_users') {
       const userIndexes = [
         {
           index: { fields: ['email'] },
@@ -101,7 +101,7 @@ async function createIndexes(dbName) {
 }
 
 async function initCouchDB() {
-  console.log('🚀 Iniciando configuración de CouchDB para OpenSignature')
+  console.log('🚀 Iniciando configuración de CouchDB para oSign.EU')
   console.log(`📍 URL de CouchDB: ${COUCHDB_URL}`)
   if (COUCHDB_USERNAME && COUCHDB_PASSWORD) {
     console.log(`👤 Usando autenticación: ${COUCHDB_USERNAME}`)

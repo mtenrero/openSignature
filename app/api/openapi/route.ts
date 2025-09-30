@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
   const openapi = {
     openapi: '3.0.3',
     info: {
-      title: 'OpenSignature API',
+      title: 'oSign.EU API',
       version: '1.0.0',
       description:
         'Official, session- or API-key–authenticated endpoints for contracts, signature requests and verification.'

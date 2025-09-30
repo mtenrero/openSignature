@@ -411,7 +411,7 @@ export class IntegrityReportGenerator {
         285,
         { align: 'center' }
       )
-      doc.text('OpenSignature Platform - Documento de Verificación de Integridad', 105, 290, { align: 'center' })
+      doc.text('oSign.EU Platform - Documento de Verificación de Integridad', 105, 290, { align: 'center' })
     }
     
     // Convert to buffer

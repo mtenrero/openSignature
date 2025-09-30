@@ -8,7 +8,7 @@ let verificationTokens: any[] = []
 
 // Database configuration
 const COUCHDB_URL = process.env.COUCHDB_URL || 'http://localhost:5984'
-const DB_NAME = 'opensignature_users'
+const DB_NAME = 'oSign.EU_users'
 
 // Lazy load PouchDB to avoid SSR issues
 let PouchDB: any = null

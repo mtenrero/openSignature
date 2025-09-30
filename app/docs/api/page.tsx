@@ -10,7 +10,7 @@ export default async function ApiDocsPage() {
 
   return (
     <div style={{ padding: 16 }}>
-      <h1 style={{ marginBottom: 16 }}>OpenSignature API</h1>
+      <h1 style={{ marginBottom: 16 }}>oSign.EU API</h1>
       <p style={{ marginBottom: 8 }}>
         Autenticación: sesión de usuario o API Key mediante cabecera Authorization Bearer.
       </p>

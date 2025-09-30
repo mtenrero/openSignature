@@ -199,11 +199,11 @@ export class SignedContractPDFGenerator {
           margin: 50,
           info: {
             Title: `Contrato Firmado - ${signature.document.originalName}`,
-            Author: options.companyName || 'OpenSignature',
+            Author: options.companyName || 'oSign.EU',
             Subject: 'Contrato con Firma Electrónica Simple (SES) - eIDAS Compliant',
             Keywords: 'eIDAS, SES, Firma Electrónica, Contrato',
-            Creator: 'OpenSignature eIDAS System',
-            Producer: 'OpenSignature PDF Generator'
+            Creator: 'oSign.EU eIDAS System',
+            Producer: 'oSign.EU PDF Generator'
           }
         }
 
@@ -281,7 +281,7 @@ export class SignedContractPDFGenerator {
     // Company name
     doc.fontSize(20)
        .fillColor('#2c3e50')
-       .text(options.companyName || 'OpenSignature', 50, options.companyLogo ? 170 : 50)
+       .text(options.companyName || 'oSign.EU', 50, options.companyLogo ? 170 : 50)
     
     // Document title
     doc.fontSize(24)
@@ -624,7 +624,7 @@ RESPONSABILIDAD
 La validez legal de esta firma está respaldada por el cumplimiento de los requisitos técnicos y procedimentales establecidos en eIDAS para firmas electrónicas simples.
 
 Generado el ${new Date().toLocaleString('es-ES')}
-Sistema: OpenSignature eIDAS Compliant
+Sistema: oSign.EU eIDAS Compliant
     `.trim()
     
     doc.fontSize(10)

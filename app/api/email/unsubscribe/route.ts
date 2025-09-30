@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Unsubscribe - OpenSignature</title>
+      <title>Unsubscribe - oSign.EU</title>
       <style>
         body {
           font-family: Inter, Arial, sans-serif;
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     </head>
     <body>
       <div class="container">
-        <div class="header">📧 OpenSignature</div>
+        <div class="header">📧 oSign.EU</div>
         
         <div class="message">
           <h2 style="color: #2c3e50;">Gestión de Comunicaciones</h2>
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
           <div class="notice">
             <p><strong>Información importante:</strong></p>
             <p>
-              Los emails de OpenSignature son comunicaciones transaccionales relacionadas con 
+              Los emails de oSign.EU son comunicaciones transaccionales relacionadas con 
               procesos de firma electrónica específicos. Estos emails se envían únicamente 
               cuando usted o su organización solicita firmar un documento electrónico.
             </p>
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
         </div>
         
         <div class="contact-info">
-          <p><strong>OpenSignature - Sistema de Firma Electrónica</strong></p>
+          <p><strong>oSign.EU - Sistema de Firma Electrónica</strong></p>
           <p>📧 Email: soporte@osign.eu</p>
           <p>🔒 Cumplimiento GDPR y eIDAS</p>
           <p>🇪🇺 Procesamiento legítimo conforme a normativa europea</p>

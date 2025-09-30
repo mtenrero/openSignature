@@ -285,7 +285,7 @@ export async function POST(request: NextRequest) {
               name: contractSnapshot.name,
               id: contractId,
               content: contractSnapshot.content,
-              companyName: process.env.COMPANY_NAME || 'OpenSignature'
+              companyName: process.env.COMPANY_NAME || 'oSign.EU'
             },
             signatureRequest.signatureUrl,
             senderName, // requestorName

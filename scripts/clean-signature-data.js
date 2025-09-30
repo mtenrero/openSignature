@@ -147,7 +147,7 @@ async function cleanSignatureData() {
 }
 
 // Run the cleanup
-console.log('🧹 OpenSignature Data Cleanup Script')
+console.log('🧹 oSign.EU Data Cleanup Script')
 console.log('====================================')
 console.log('This script will remove all signature-related data for testing.')
 console.log('')

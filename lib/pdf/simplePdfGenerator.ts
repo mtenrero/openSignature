@@ -164,7 +164,7 @@ export class SimplePDFGenerator {
     doc.setTextColor(255, 255, 255) // White text
     doc.setFontSize(14)
     doc.setFont('helvetica', 'bold')
-    doc.text('OpenSignature', 40, 12)
+    doc.text('oSign.EU', 40, 12)
     
     // Contract title in header
     doc.setFontSize(10)
@@ -434,7 +434,7 @@ export class SimplePDFGenerator {
     doc.text('CUMPLE CON REGLAMENTO eIDAS (UE) 910/2014', 105, 147, { align: 'center' })
     doc.setFontSize(9)
     doc.setFont('helvetica', 'normal')
-    doc.text('OpenSignature: Plataforma de Firma Electronica', 105, 155, { align: 'center' })
+    doc.text('oSign.EU: Plataforma de Firma Electronica', 105, 155, { align: 'center' })
   }
   
   
@@ -661,7 +661,7 @@ export class SimplePDFGenerator {
     doc.setFontSize(9)
     doc.setFont('helvetica', 'normal')
     doc.text('Esta firma cumple con el Reglamento eIDAS (UE) 910/2014', 107, 222, { align: 'center' })
-    doc.text('OpenSignature: Plataforma de Firma Electronica', 107, 228, { align: 'center' })
+    doc.text('oSign.EU: Plataforma de Firma Electronica', 107, 228, { align: 'center' })
   }
   
   /**

@@ -16,7 +16,7 @@ on:
 env:
   REGISTRY: docker.io
   # github.repository as <account>/<repo>
-  IMAGE_NAME: tenrero/openSignature
+  IMAGE_NAME: tenrero/oSign.EU
 
 
 jobs:

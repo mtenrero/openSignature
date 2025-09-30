@@ -644,7 +644,7 @@ export async function PUT(
               signatureRequest.contractSnapshot?.content || '',
               sesSignature,
               {
-                companyName: process.env.COMPANY_NAME || 'OpenSignature',
+                companyName: process.env.COMPANY_NAME || 'oSign.EU',
                 baseUrl: process.env.NEXTAUTH_URL || 'https://osign.eu'
               }
             )
@@ -678,7 +678,7 @@ export async function PUT(
               name: signatureRequest.contractSnapshot?.name || 'Contrato',
               id: signatureRequest.contractId,
               content: signatureRequest.contractSnapshot?.content || '',
-              companyName: process.env.COMPANY_NAME || 'OpenSignature',
+              companyName: process.env.COMPANY_NAME || 'oSign.EU',
               verificationUrl
             },
             {

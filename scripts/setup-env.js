@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Script de configuración de entorno para OpenSignature
+ * Script de configuración de entorno para oSign.EU
  * Ejecutar con: node scripts/setup-env.js
  */
 
@@ -31,7 +31,7 @@ function askQuestion(rl, question, defaultValue = '') {
 }
 
 async function setupEnvironment() {
-  console.log('🚀 Configuración de entorno para OpenSignature')
+  console.log('🚀 Configuración de entorno para oSign.EU')
   console.log('===============================================')
   console.log('')
 
@@ -67,8 +67,8 @@ async function setupEnvironment() {
 
     console.log('')
     console.log('⚙️  Configuración de la aplicación:')
-    const brand = await askQuestion(rl, 'BRAND', 'OpenSignature')
-    const appName = await askQuestion(rl, 'NEXT_PUBLIC_APP_NAME', 'OpenSignature')
+    const brand = await askQuestion(rl, 'BRAND', 'oSign.EU')
+    const appName = await askQuestion(rl, 'NEXT_PUBLIC_APP_NAME', 'oSign.EU')
 
     // Crear contenido del archivo .env.local
     const envContent = `# Archivo generado automáticamente por setup-env.js

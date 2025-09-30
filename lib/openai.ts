@@ -38,7 +38,7 @@ export function createSystemPrompt(): string {
   return `Eres un experto legal especializado en la elaboración de contratos legalmente vinculantes según la legislación española. Tu tarea es generar contratos completos y jurídicamente válidos basados en las instrucciones del usuario, utilizando como base templates y modelos de contratos estándar.
 
 CONTEXTO TÉCNICO:
-- Sistema de firma digital OpenSignature para España
+- Sistema de firma digital oSign.EU para España
 - Variables del sistema: Se referencian como {{variable:nombreVariable}}
 - Campos dinámicos: Se referencian como {{dynamic:nombreCampo}}
 - Formato de respuesta: JSON estricto
@@ -212,7 +212,7 @@ export async function generateContract(request: ContractGenerationRequest): Prom
     
     if (request.mode === 'adapt' && request.existingContent) {
       userPrompt = `
-MODO ADAPTACIÓN: Convierte el siguiente contrato existente al formato del sistema OpenSignature.
+MODO ADAPTACIÓN: Convierte el siguiente contrato existente al formato del sistema oSign.EU.
 
 CONTRATO EXISTENTE:
 "${request.existingContent}"

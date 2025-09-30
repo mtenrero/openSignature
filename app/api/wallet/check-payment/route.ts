@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 
     // Check if this is a wallet top-up payment that succeeded
     if (paymentIntent.status === 'succeeded' && paymentIntent.metadata?.type === 'wallet_topup') {
-      const customerId = paymentIntent.metadata.openSignatureCustomerId
+      const customerId = paymentIntent.metadata.oSign.EUCustomerId
       const amountInCents = parseInt(paymentIntent.metadata.amountInCents || '0')
 
       // @ts-ignore - customerId is a custom property

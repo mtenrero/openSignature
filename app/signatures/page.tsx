@@ -346,7 +346,7 @@ function FirmasPageContent() {
     handleCopyLink(signatureUrl)
   }
 
-  const handleOpenSignature = (signatureUrl: string) => {
+  const handleoSign.EU = (signatureUrl: string) => {
     window.open(signatureUrl, '_blank')
   }
 
@@ -1050,7 +1050,7 @@ function FirmasPageContent() {
                       <ActionIcon
                         variant="light"
                         color="orange"
-                        onClick={() => handleOpenSignature(firma.signatureUrl)}
+                        onClick={() => handleoSign.EU(firma.signatureUrl)}
                         title="Abrir enlace de firma"
                       >
                         <IconExternalLink size={16} />
@@ -1130,7 +1130,7 @@ function FirmasPageContent() {
                           </Menu.Item>
                           <Menu.Item
                             leftSection={<IconExternalLink size={14} />}
-                            onClick={() => handleOpenSignature(firma.signatureUrl)}
+                            onClick={() => handleoSign.EU(firma.signatureUrl)}
                           >
                             Abrir enlace de firma
                           </Menu.Item>

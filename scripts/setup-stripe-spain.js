@@ -56,7 +56,7 @@ async function setupSpanishBilling() {
       // Note: Company information is typically configured in the Stripe Dashboard
       // This is more for reference of what should be configured
       console.log('   📋 Configurar en el Dashboard de Stripe:');
-      console.log('   - Nombre: OpenSignature - Servicios de Firma Digital');
+      console.log('   - Nombre: oSign.EU - Servicios de Firma Digital');
       console.log('   - País: España (ES)');
       console.log('   - Moneda principal: EUR');
       console.log('   - Idioma de facturas: Español');
@@ -118,7 +118,7 @@ async function setupSpanishBilling() {
     console.log('   3. Configuración de webhooks para eventos de facturas');
     console.log('   4. Verificar configuración de automatic tax');
 
-    console.log('\n✅ OpenSignature está configurado para cumplir con la normativa española');
+    console.log('\n✅ oSign.EU está configurado para cumplir con la normativa española');
 
   } catch (error) {
     console.error('❌ Error configurando Stripe:', error.message);

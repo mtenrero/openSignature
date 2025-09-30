@@ -4,7 +4,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Project Overview
 
-OpenSignature is a digital signature platform built with Next.js that provides legally compliant electronic signatures with eIDAS (European Electronic Identification and Trust Services) compliance. The platform supports multiple signature methods including handwritten signatures, SMS verification, and email-based signing.
+oSign.EU is a digital signature platform built with Next.js that provides legally compliant electronic signatures with eIDAS (European Electronic Identification and Trust Services) compliance. The platform supports multiple signature methods including handwritten signatures, SMS verification, and email-based signing.
 
 **Key Technologies:**
 - Next.js 15+ with App Router
@@ -77,9 +77,9 @@ node scripts/migrate-customer-data.js
 - **Customer Isolation**: All data is partitioned by customer ID extracted from Auth0 tokens
 
 **Database Schema:**
-- `opensignature_contracts`: Contract documents and metadata
-- `opensignature_signatures`: Signature records with eIDAS compliance data
-- `opensignature_templates`: Reusable contract templates
+- `oSign.EU_contracts`: Contract documents and metadata
+- `oSign.EU_signatures`: Signature records with eIDAS compliance data
+- `oSign.EU_templates`: Reusable contract templates
 
 ### eIDAS Compliance System
 The platform implements Simple Electronic Signature (SES) compliance under the eIDAS regulation:
@@ -141,9 +141,9 @@ COUCHDB_USERNAME=admin  # optional
 COUCHDB_PASSWORD=password  # optional
 
 # Application
-BRAND=OpenSignature
+BRAND=oSign.EU
 NODE_ENV=development
-NEXT_PUBLIC_APP_NAME=OpenSignature
+NEXT_PUBLIC_APP_NAME=oSign.EU
 ```
 
 ### Auth0 Configuration Requirements

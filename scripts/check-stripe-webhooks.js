@@ -66,7 +66,7 @@ async function createWebhook(url) {
     const webhook = await stripe.webhookEndpoints.create({
       url: url,
       enabled_events: REQUIRED_EVENTS,
-      description: 'openSignature subscription and payment webhook'
+      description: 'oSign.EU subscription and payment webhook'
     })
 
     console.log(`✅ Created webhook endpoint: ${webhook.id}`)

@@ -370,7 +370,7 @@ export default function SignUpPage() {
 
         {/* Benefits Section */}
         <Card shadow="sm" padding="lg" radius="md" withBorder mt="xl" bg="green.0">
-          <Title order={3} mb="md" ta="center">¿Por qué elegir openSignature?</Title>
+          <Title order={3} mb="md" ta="center">¿Por qué elegir oSign.EU?</Title>
           <Stack gap="sm">
             <Group gap="xs">
               <IconCheck color="green" size={16} />

@@ -235,7 +235,7 @@ export const EmailTemplate: React.FC<EmailTemplateProps> = ({
           {/* Header */}
           <div style={headerStyles}>
             <h1 style={companyNameStyles}>
-              {contractDetails.companyName || 'OpenSignature'}
+              {contractDetails.companyName || 'oSign.EU'}
             </h1>
             <p style={titleStyles}>
               Sistema de Firma Electrónica eIDAS
@@ -250,7 +250,7 @@ export const EmailTemplate: React.FC<EmailTemplateProps> = ({
           {/* Footer */}
           <div style={footerStyles}>
             <p style={{ margin: '0 0 10px 0' }}>
-              Este email ha sido generado automáticamente por OpenSignature
+              Este email ha sido generado automáticamente por oSign.EU
             </p>
             <p style={{ margin: '0 0 15px 0', fontSize: '12px', opacity: '0.8' }}>
               Sistema de Firma Electrónica conforme a eIDAS • Plena validez legal en la UE
@@ -265,7 +265,7 @@ export const EmailTemplate: React.FC<EmailTemplateProps> = ({
               opacity: '0.7' 
             }}>
               <p style={{ margin: '0 0 8px 0' }}>
-                <strong>OpenSignature</strong> | Sistema de Firma Electrónica<br />
+                <strong>oSign.EU</strong> | Sistema de Firma Electrónica<br />
                 {type === 'signature-request' 
                   ? 'Este email ha sido enviado como parte del proceso de firma electrónica solicitado.'
                   : 'Este email de confirmación ha sido enviado automáticamente tras completarse la firma.'
@@ -314,7 +314,7 @@ export const renderEmailTemplate = (props: EmailTemplateProps): string => {
 function generateSimpleEmailTemplate(props: EmailTemplateProps): string {
   const { type, contractDetails, signerDetails, signingUrl } = props
   
-  const companyName = contractDetails.companyName || 'OpenSignature'
+  const companyName = contractDetails.companyName || 'oSign.EU'
   
   if (type === 'signature-request') {
     return `
@@ -369,7 +369,7 @@ function generateSimpleEmailTemplate(props: EmailTemplateProps): string {
             <!-- Anti-spam compliance footer -->
             <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #7f8c8d; font-size: 11px; color: #95a5a6;">
               <p style="margin: 0 0 8px 0;">
-                <strong>OpenSignature</strong> | Sistema de Firma Electrónica<br>
+                <strong>oSign.EU</strong> | Sistema de Firma Electrónica<br>
                 Este email ha sido enviado como parte del proceso de firma electrónica solicitado.
               </p>
               
@@ -446,7 +446,7 @@ function generateSimpleEmailTemplate(props: EmailTemplateProps): string {
             <!-- Anti-spam compliance footer -->
             <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #7f8c8d; font-size: 11px; color: #95a5a6;">
               <p style="margin: 0 0 8px 0;">
-                <strong>OpenSignature</strong> | Sistema de Firma Electrónica<br>
+                <strong>oSign.EU</strong> | Sistema de Firma Electrónica<br>
                 Este email de confirmación ha sido enviado automáticamente tras completarse la firma.
               </p>
               

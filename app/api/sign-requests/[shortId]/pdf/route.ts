@@ -229,7 +229,7 @@ export async function GET(
         processedContent,
         sesSignature,
         {
-          companyName: 'OpenSignature',
+          companyName: 'oSign.EU',
           baseUrl: process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000',
           auditTrailId: signatureRequest.contractId,
           contractTitle: signatureRequest.contractSnapshot?.name || 'Contrato'

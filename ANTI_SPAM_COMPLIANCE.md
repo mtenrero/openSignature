@@ -27,7 +27,7 @@ List-Unsubscribe: <mailto:unsubscribe@osign.eu>
 ```
 
 #### **Elementos Requeridos:**
-- ✅ **Subject lines claros**: `[OpenSignature] Solicitud de Firma Electrónica`
+- ✅ **Subject lines claros**: `[oSign.EU] Solicitud de Firma Electrónica`
 - ✅ **From address identificable**: `noreply@osign.eu`
 - ✅ **Propósito transparente**: Firma electrónica de documentos
 - ✅ **Información de contacto**: Incluida en footer
@@ -37,8 +37,8 @@ List-Unsubscribe: <mailto:unsubscribe@osign.eu>
 
 #### **Headers Específicos:**
 ```
-X-Mailer: OpenSignature eIDAS System
-X-Entity-Ref-ID: opensignature-[timestamp]
+X-Mailer: oSign.EU eIDAS System
+X-Entity-Ref-ID: oSign.EU-[timestamp]
 X-Message-Type: signature-request | transaction-confirmation
 ```
 
@@ -53,7 +53,7 @@ X-Message-Type: signature-request | transaction-confirmation
 ```html
 <!-- Anti-spam compliance footer -->
 <div style="compliance-styles">
-  <p><strong>OpenSignature</strong> | Sistema de Firma Electrónica</p>
+  <p><strong>oSign.EU</strong> | Sistema de Firma Electrónica</p>
   <p>📧 Email enviado desde: noreply@osign.eu</p>
   <p>🔒 Cumplimiento GDPR y eIDAS | 📋 Procesamiento legítimo de datos</p>
   <p>Información de opt-out y confidencialidad</p>
@@ -87,7 +87,7 @@ X-Message-Type: signature-request | transaction-confirmation
 X-Priority: 3
 X-MSMail-Priority: Normal
 X-Originating-IP: [127.0.0.1]
-X-Entity-Ref-ID: opensignature-[timestamp]
+X-Entity-Ref-ID: oSign.EU-[timestamp]
 ```
 
 #### **Propósito:**
@@ -100,11 +100,11 @@ X-Entity-Ref-ID: opensignature-[timestamp]
 
 #### **Tipos de Mensaje:**
 1. **signature-request**: Solicitud de firma
-   - Subject: `[OpenSignature] Solicitud de Firma Electrónica: [Contrato]`
+   - Subject: `[oSign.EU] Solicitud de Firma Electrónica: [Contrato]`
    - Propósito: Invitación a firmar documento
 
 2. **transaction-confirmation**: Confirmación de firma
-   - Subject: `[OpenSignature] Confirmación de Firma Completada: [Contrato]`
+   - Subject: `[oSign.EU] Confirmación de Firma Completada: [Contrato]`
    - Propósito: Confirmación y entrega de documento firmado
 
 ### 🔐 **Data Protection Measures**
