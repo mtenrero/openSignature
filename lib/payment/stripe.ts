@@ -331,7 +331,7 @@ export class StripeManager {
   static async createWalletTopUpSession(
     customerId: string,
     amountInCents: number,
-    oSign.EUCustomerId: string,
+    oSignEUCustomerId: string,
     successUrl: string,
     cancelUrl: string
   ): Promise<Stripe.Checkout.Session> {
@@ -360,14 +360,14 @@ export class StripeManager {
       cancel_url: cancelUrl,
       metadata: {
         type: 'wallet_topup',
-        oSign.EUCustomerId,
+        oSignEUCustomerId,
         amountInCents: amountInCents.toString(),
         taxMode: 'automatic'
       },
       payment_intent_data: {
         metadata: {
           type: 'wallet_topup',
-          oSign.EUCustomerId,
+          oSignEUCustomerId,
           amountInCents: amountInCents.toString(),
           taxMode: 'automatic'
         }
@@ -387,7 +387,7 @@ export class StripeManager {
             type: 'wallet_topup',
             amountInCents: amountInCents.toString(),
             taxMode: 'automatic',
-            oSign.EUCustomerId
+            oSignEUCustomerId
           },
           custom_fields: [
             {
@@ -884,7 +884,7 @@ export class StripeManager {
   private static async handleCheckoutComplete(session: Stripe.Checkout.Session): Promise<void> {
     // Handle wallet top-up payments
     if (session.metadata?.type === 'wallet_topup') {
-      const customerId = session.metadata.oSign.EUCustomerId
+      const customerId = session.metadata.oSignEUCustomerId
       const amountInCents = parseInt(session.metadata.amountInCents || '0')
 
       if (!customerId || !amountInCents) {
@@ -933,7 +933,7 @@ export class StripeManager {
 
     // Check if this is a wallet top-up payment
     if (paymentIntent.metadata?.type === 'wallet_topup') {
-      const customerId = paymentIntent.metadata.oSign.EUCustomerId
+      const customerId = paymentIntent.metadata.oSignEUCustomerId
       const amountInCents = parseInt(paymentIntent.metadata.amountInCents || '0')
 
       if (!customerId || !amountInCents) {
@@ -985,7 +985,7 @@ export class StripeManager {
 
     // Handle pending payment failure
     if (paymentIntent.metadata?.type === 'wallet_topup') {
-      const customerId = paymentIntent.metadata.oSign.EUCustomerId
+      const customerId = paymentIntent.metadata.oSignEUCustomerId
       const amountInCents = parseInt(paymentIntent.metadata.amountInCents || '0')
 
       console.error(`Wallet top-up payment failed for customer ${customerId}, amount: ${VirtualWallet.formatAmount(amountInCents)}, reason: ${paymentIntent.last_payment_error?.message || 'Unknown'}`)
@@ -1017,7 +1017,7 @@ export class StripeManager {
 
         // If no pending payment exists, create one (this happens for SEPA payments)
         if (!pendingPayment) {
-          const customerId = paymentIntent.metadata.oSign.EUCustomerId
+          const customerId = paymentIntent.metadata.oSignEUCustomerId
           const amountInCents = parseInt(paymentIntent.metadata.amountInCents || '0')
 
           // Expand payment intent to get charges for payment method detection
@@ -1062,7 +1062,7 @@ export class StripeManager {
     // For SEPA, this usually means additional verification is needed
     // We'll log this but generally don't need to take action
     if (paymentIntent.metadata?.type === 'wallet_topup') {
-      const customerId = paymentIntent.metadata.oSign.EUCustomerId
+      const customerId = paymentIntent.metadata.oSignEUCustomerId
       console.log(`Payment requires additional action for customer ${customerId}: ${paymentIntent.id}`)
     }
   }
@@ -1072,7 +1072,7 @@ export class StripeManager {
 
     // Handle canceled payments similar to failed ones
     if (paymentIntent.metadata?.type === 'wallet_topup') {
-      const customerId = paymentIntent.metadata.oSign.EUCustomerId
+      const customerId = paymentIntent.metadata.oSignEUCustomerId
       const amountInCents = parseInt(paymentIntent.metadata.amountInCents || '0')
 
       console.log(`Wallet top-up payment canceled for customer ${customerId}, amount: ${VirtualWallet.formatAmount(amountInCents)}`)
@@ -1097,7 +1097,7 @@ export class StripeManager {
 
     // This is typically for SEPA payments that succeed after initial processing
     if (checkoutSession.metadata?.type === 'wallet_topup') {
-      const customerId = checkoutSession.metadata.oSign.EUCustomerId
+      const customerId = checkoutSession.metadata.oSignEUCustomerId
       const amountInCents = parseInt(checkoutSession.metadata.amountInCents || '0')
 
       console.log(`Async payment succeeded for customer ${customerId}, amount: ${VirtualWallet.formatAmount(amountInCents)}`)

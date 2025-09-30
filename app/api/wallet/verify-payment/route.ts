@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
 
     // If payment is successful OR if it's a pending SEPA payment and it's a wallet topup
     if ((isPaymentSuccessful || isSepaPaymentPending) && checkoutSession.metadata?.type === 'wallet_topup') {
-      const customerId = checkoutSession.metadata.oSign.EUCustomerId
+      const customerId = checkoutSession.metadata.oSignEUCustomerId
       const amountInCents = parseInt(checkoutSession.metadata.amountInCents || '0')
 
       try {
