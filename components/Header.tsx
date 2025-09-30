@@ -346,6 +346,24 @@ export function Header() {
                     >
                       Perfil
                     </Menu.Item>
+                  <Menu.Item
+                    leftSection={<IconFileText size={14} />}
+                    onClick={() => router.push('/docs/api')}
+                  >
+                    Docs API
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={<IconFileText size={14} />}
+                    onClick={() => window.open('/api/openapi', '_blank')}
+                  >
+                    OpenAPI JSON
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={<IconFileText size={14} />}
+                    onClick={() => window.open('/api/docs/index', '_blank')}
+                  >
+                    Índice IA
+                  </Menu.Item>
                     <Menu.Item
                       leftSection={<IconCreditCard size={14} />}
                       onClick={() => router.push('/settings/subscription')}

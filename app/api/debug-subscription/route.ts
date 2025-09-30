@@ -63,6 +63,32 @@ export async function GET(request: NextRequest) {
 
       console.log('🐛 Debug: Fetching Stripe subscriptions for customer:', stripeCustomerId)
 
+      // First check if the customer exists
+      try {
+        await stripe.customers.retrieve(stripeCustomerId)
+      } catch (customerError: any) {
+        if (customerError.code === 'resource_missing') {
+          console.warn(`⚠️ [DEBUG] Stripe customer ${stripeCustomerId} not found (likely test data). Clearing from user metadata.`)
+
+          // Clear the invalid Stripe customer ID from user metadata
+          const currentMetadata = subscriptionInfo.user.user_metadata || {}
+          const newMetadata = { ...currentMetadata }
+          delete newMetadata.stripeCustomerId
+
+          await auth0UserManager.updateUserMetadata(subscriptionInfo.user.user_id, newMetadata)
+          console.log(`✅ [DEBUG] Cleared invalid Stripe customer ID for user ${subscriptionInfo.user.email}`)
+
+          return NextResponse.json({
+            message: 'Invalid Stripe customer ID found and cleared',
+            action: 'Removed test environment customer ID from user metadata',
+            previousStripeCustomerId: stripeCustomerId,
+            planId: subscriptionInfo.plan.id,
+            recommendation: 'User will get a new production Stripe customer ID when they next interact with billing'
+          })
+        }
+        throw customerError
+      }
+
       const subscriptions = await stripe.subscriptions.list({
         customer: stripeCustomerId,
         status: 'active',
