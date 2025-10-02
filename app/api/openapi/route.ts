@@ -49,28 +49,93 @@ export async function GET(request: NextRequest) {
     info: {
       title: 'oSign.EU API',
       version: '1.0.0',
-      description:
-        'Official, session- or API-key–authenticated endpoints for contracts, signature requests and verification.'
+      description: `
+# oSign.EU API Documentation
+
+Official REST API for electronic signature management.
+
+## Authentication
+
+This API uses **OAuth 2.0 Client Credentials** flow for authentication.
+
+### Step 1: Obtain Access Token
+
+Make a POST request to \`/api/oauth/token\` with your credentials:
+
+\`\`\`bash
+curl -X POST https://osign.eu/api/oauth/token \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "grant_type": "client_credentials",
+    "client_id": "YOUR_CLIENT_ID",
+    "client_secret": "YOUR_CLIENT_SECRET",
+    "audience": "https://osign.eu"
+  }'
+\`\`\`
+
+Response:
+\`\`\`json
+{
+  "access_token": "eyJhbGc...",
+  "token_type": "Bearer",
+  "expires_in": 86400
+}
+\`\`\`
+
+### Step 2: Use Access Token
+
+Include the access token in the Authorization header for all API requests:
+
+\`\`\`bash
+curl https://osign.eu/api/contracts \\
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+\`\`\`
+
+### Getting Credentials
+
+Contact support to obtain your \`client_id\` and \`client_secret\`.
+
+## Rate Limiting
+
+API requests are rate-limited based on your subscription plan.
+
+## Support
+
+For API support, contact: api@osign.eu
+      `
     },
     servers,
     components: {
       securitySchemes: {
-        OAuth2: {
-          type: 'oauth2',
-          flows: {
-            clientCredentials: {
-              tokenUrl: `${baseUrl()}/api/oauth/token`,
-              scopes: {
-                'contracts:read': 'Read contracts',
-                'contracts:write': 'Create and modify contracts',
-                'signatures:read': 'Read signatures',
-                'signatures:write': 'Create signatures'
-              }
-            }
-          },
-          description: 'OAuth 2.0 client credentials flow. Use your application credentials to obtain access tokens for API authentication.'
-        },
-        ApiKeyAuth: { type: 'http', scheme: 'bearer', description: 'API Key authentication (deprecated, use OAuth2)' }
+        BearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: `
+**How to authenticate:**
+
+1. Get your access token from \`/api/oauth/token\`:
+   \`\`\`bash
+   curl -X POST ${baseUrl()}/api/oauth/token \\
+     -H "Content-Type: application/json" \\
+     -d '{
+       "grant_type": "client_credentials",
+       "client_id": "YOUR_CLIENT_ID",
+       "client_secret": "YOUR_CLIENT_SECRET",
+       "audience": "https://osign.eu"
+     }'
+   \`\`\`
+
+2. Copy the \`access_token\` from the response
+
+3. Click "Authorize" button and paste the token (without "Bearer" prefix)
+
+4. The token will be automatically included in all requests as:
+   \`Authorization: Bearer YOUR_TOKEN\`
+
+**Token expires in 24 hours.** Request a new token when needed.
+          `
+        }
       },
       schemas: {
         Error: {
@@ -123,7 +188,7 @@ export async function GET(request: NextRequest) {
         }
       }
     },
-    security: [{ OAuth2: [] }],
+    security: [{ BearerAuth: [] }],
     paths: {
       '/api/oauth/token': {
         post: {
@@ -233,7 +298,7 @@ export async function GET(request: NextRequest) {
       '/api/contracts': {
         get: {
           summary: 'List contracts',
-          security: [{ OAuth2: [] }],
+          security: [{ BearerAuth: [] }],
           parameters: [
             { name: 'status', in: 'query', schema: { type: 'string' } },
             { name: 'limit', in: 'query', schema: { type: 'integer', default: 50 } },
@@ -249,7 +314,7 @@ export async function GET(request: NextRequest) {
         },
         post: {
           summary: 'Create contract',
-          security: [{ OAuth2: [] }],
+          security: [{ BearerAuth: [] }],
           requestBody: {
             required: true,
             content: {
@@ -272,7 +337,7 @@ export async function GET(request: NextRequest) {
       '/api/signature-requests': {
         get: {
           summary: 'List signature requests',
-          security: [{ OAuth2: [] }],
+          security: [{ BearerAuth: [] }],
           parameters: [
             { name: 'status', in: 'query', schema: { type: 'string' } },
             { name: 'contractId', in: 'query', schema: { type: 'string' } }
@@ -281,7 +346,7 @@ export async function GET(request: NextRequest) {
         },
         post: {
           summary: 'Create signature request',
-          security: [{ OAuth2: [] }],
+          security: [{ BearerAuth: [] }],
           requestBody: {
             required: true,
             content: {
@@ -306,20 +371,20 @@ export async function GET(request: NextRequest) {
       '/api/signature-requests/{id}': {
         get: {
           summary: 'Get signature request',
-          security: [{ OAuth2: [] }],
+          security: [{ BearerAuth: [] }],
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
           responses: { '200': { description: 'OK' }, '404': { description: 'Not found' } }
         },
         patch: {
           summary: 'Update signature request (archive/resend)',
-          security: [{ OAuth2: [] }],
+          security: [{ BearerAuth: [] }],
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
           requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { action: { type: 'string', enum: ['archive', 'resend'] } } } } } },
           responses: { '200': { description: 'OK' } }
         },
         delete: {
           summary: 'Delete/discard signature request',
-          security: [{ OAuth2: [] }],
+          security: [{ BearerAuth: [] }],
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
           responses: { '200': { description: 'OK' } }
         }
@@ -327,7 +392,7 @@ export async function GET(request: NextRequest) {
       '/api/signature-requests/{id}/archive': {
         post: {
           summary: 'Archive signature request and process refund if applicable',
-          security: [{ OAuth2: [] }],
+          security: [{ BearerAuth: [] }],
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
           responses: { '200': { description: 'OK' } }
         }
@@ -335,12 +400,12 @@ export async function GET(request: NextRequest) {
       '/api/sign-requests': {
         get: {
           summary: 'List sign requests (legacy/internal)',
-          security: [{ OAuth2: [] }],
+          security: [{ BearerAuth: [] }],
           responses: { '200': { description: 'OK' } }
         },
         post: {
           summary: 'Create sign request (legacy/internal)',
-          security: [{ OAuth2: [] }],
+          security: [{ BearerAuth: [] }],
           requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { contractId: { type: 'string' }, recipientEmail: { type: 'string' }, recipientPhone: { type: 'string' } }, required: ['contractId'] } } } },
           responses: { '201': { description: 'Created' } }
         }
@@ -377,7 +442,7 @@ export async function GET(request: NextRequest) {
       '/api/signatures': {
         get: {
           summary: 'List signatures',
-          security: [{ OAuth2: [] }],
+          security: [{ BearerAuth: [] }],
           parameters: [
             { name: 'contractId', in: 'query', schema: { type: 'string' } },
             { name: 'status', in: 'query', schema: { type: 'string' } }
@@ -386,7 +451,7 @@ export async function GET(request: NextRequest) {
         },
         post: {
           summary: 'Create signature (server-to-server)',
-          security: [{ OAuth2: [] }, { ApiKeyAuth: [] }],
+          security: [{ BearerAuth: [] }],
           requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { contractId: { type: 'string' }, signature: { type: 'string' } }, required: ['contractId', 'signature'] } } } },
           responses: { '201': { description: 'Created' } }
         }
