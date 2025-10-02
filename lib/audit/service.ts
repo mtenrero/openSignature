@@ -4,7 +4,6 @@
  */
 
 import { getDatabase } from '@/lib/db/mongodb'
-import * as geoip from 'geoip-lite'
 import crypto from 'crypto'
 import type {
   AuditEvent,
@@ -14,6 +13,9 @@ import type {
   GeoLocation,
   SignatureChannel
 } from './types'
+
+// Dynamic import for geoip-lite to avoid build-time issues
+let geoipModule: any = null
 
 /**
  * Extrae la IP real del request considerando proxies y load balancers
@@ -50,16 +52,26 @@ export function extractIpAddress(request: Request | { headers: Headers }): strin
  * Resuelve ubicación geográfica desde IP
  */
 export function resolveGeoLocation(ip: string): GeoLocation {
-  const geo = geoip.lookup(ip)
-
   const location: GeoLocation = { ip }
 
-  if (geo) {
-    location.country = geo.country
-    location.region = geo.region
-    location.city = geo.city
-    location.timezone = geo.timezone
-    location.ll = geo.ll
+  try {
+    // Dynamic import to avoid build errors
+    if (!geoipModule) {
+      geoipModule = require('geoip-lite')
+    }
+
+    const geo = geoipModule.lookup(ip)
+
+    if (geo) {
+      location.country = geo.country
+      location.region = geo.region
+      location.city = geo.city
+      location.timezone = geo.timezone
+      location.ll = geo.ll
+    }
+  } catch (error) {
+    // GeoIP not available, return IP only
+    console.warn('GeoIP lookup failed:', error)
   }
 
   return location
