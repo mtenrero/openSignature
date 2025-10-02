@@ -11,6 +11,8 @@ export default auth((req) => {
   // Public API routes that don't require authentication
   const publicApiRoutes = [
     '/api/auth',
+    '/api/oauth/token', // OAuth2 token endpoint (client_credentials flow)
+    '/api/openapi', // OpenAPI specification
     '/api/status',
     '/api/sign-requests',
     '/api/verify',

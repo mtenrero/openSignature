@@ -15,6 +15,7 @@ import { auditTrailService } from '@/lib/auditTrail'
 import { extractSignerInfo } from '@/lib/contractUtils'
 import { extractClientIP } from '@/lib/deviceMetadata'
 import { getQualifiedTimestamp } from '@/lib/eidas/timestampClient'
+import { getCombinedAuditTrail } from '@/lib/audit/integration'
 
 // GET /api/signatures - Get all signatures for the authenticated user
 export async function GET(request: NextRequest) {
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
     const decryptedSignatures = await Promise.all(signatures.map(async (doc) => {
       const decrypted = CustomerEncryption.decryptSensitiveFields(doc, customerId)
       const cleaned = mongoHelpers.cleanDocument(decrypted)
-      
+
       // Get contract name
       let contractName = 'Contrato'
       if (cleaned.contractId) {
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
             _id: new ObjectId(cleaned.contractId),
             customerId: customerId
           })
-          
+
           if (contract) {
             const decryptedContract = CustomerEncryption.decryptSensitiveFields(contract, customerId)
             contractName = decryptedContract.name || 'Contrato'
@@ -93,10 +94,26 @@ export async function GET(request: NextRequest) {
           console.warn('Failed to fetch contract name for signature:', doc._id, error)
         }
       }
-      
+
+      // Get combined audit trail (new system + old system)
+      let auditTrail = cleaned.auditTrail
+      try {
+        const combinedTrail = await getCombinedAuditTrail({
+          signRequestId: cleaned.id || cleaned._id,
+          contractId: cleaned.contractId,
+          oldAuditTrail: cleaned.auditTrail
+        })
+        if (combinedTrail && combinedTrail.length > 0) {
+          auditTrail = combinedTrail
+        }
+      } catch (error) {
+        console.warn('Failed to get combined audit trail, using old trail:', error)
+      }
+
       return {
         ...cleaned,
-        contractName
+        contractName,
+        auditTrail
       }
     }))
 
