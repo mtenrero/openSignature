@@ -1,10 +1,22 @@
 /**
+ * Removes accents and diacritics from a string to ensure ASCII-only SMS
+ * This keeps messages within the 160-character SMS limit (vs 70 for unicode)
+ *
+ * @param str - The string to normalize
+ * @returns ASCII-only string without accents
+ */
+function removeAccents(str: string): string {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
+
+/**
  * Builds an optimized SMS message for signature requests
  * Ensures the message stays within 160 characters (1 SMS) to minimize costs
+ * Removes accents from contract names to avoid unicode SMS (70 char limit)
  *
  * @param signatureUrl - The URL for signing
  * @param contractName - Optional contract name to include
- * @returns Formatted SMS message within 160 characters
+ * @returns Formatted SMS message within 160 characters (ASCII-only)
  */
 export function buildSignatureSMS(signatureUrl: string, contractName?: string): string {
   const MAX_LENGTH = 160
@@ -17,8 +29,11 @@ export function buildSignatureSMS(signatureUrl: string, contractName?: string): 
     return baseTemplate.substring(0, MAX_LENGTH)
   }
 
+  // Normalize contract name (remove accents for ASCII-only SMS)
+  const normalizedName = removeAccents(contractName)
+
   // Template with contract name
-  const templateWithName = `Se solicita su firma en el contrato "${contractName}": ${signatureUrl}`
+  const templateWithName = `Se solicita su firma en el contrato "${normalizedName}": ${signatureUrl}`
 
   // If it fits, return it
   if (templateWithName.length <= MAX_LENGTH) {
@@ -26,10 +41,10 @@ export function buildSignatureSMS(signatureUrl: string, contractName?: string): 
   }
 
   // Calculate available space for contract name
-  // Format: Se solicita su firma en el contrato "NAME…": URL
+  // Format: Se solicita su firma en el contrato "NAME...": URL
   const prefix = 'Se solicita su firma en el contrato "'
   const suffix = `": ${signatureUrl}`
-  const ellipsis = '…' // Single character ellipsis (not three dots)
+  const ellipsis = '..' // ASCII ellipsis (not unicode …)
   const fixedLength = prefix.length + suffix.length + ellipsis.length
   const availableForName = MAX_LENGTH - fixedLength
 
@@ -38,8 +53,8 @@ export function buildSignatureSMS(signatureUrl: string, contractName?: string): 
     return baseTemplate.substring(0, MAX_LENGTH)
   }
 
-  // Truncate contract name and add ellipsis
-  const truncatedName = contractName.substring(0, availableForName)
+  // Truncate normalized contract name and add ellipsis
+  const truncatedName = normalizedName.substring(0, availableForName)
   const message = `${prefix}${truncatedName}${ellipsis}${suffix}`
 
   // Final safety check
