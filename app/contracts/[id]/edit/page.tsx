@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Container, Title, Button, Card, TextInput, Textarea, Stack, Group, Tabs, Select, ActionIcon, Modal, Box, Text, Loader, Badge, Menu, Alert, Divider, SegmentedControl } from '@mantine/core'
+import { Container, Title, Button, Card, TextInput, Textarea, Stack, Group, Tabs, Select, ActionIcon, Modal, Box, Text, Loader, Badge, Menu, Alert, Divider, SegmentedControl, Checkbox } from '@mantine/core'
 import { IconDeviceFloppy, IconPlus, IconTrash, IconEye, IconArrowLeft, IconEdit, IconCode, IconChevronDown, IconCheck, IconArchive, IconRefresh, IconRobot, IconWand, IconSparkles } from '@tabler/icons-react'
 import { useRouter, useParams } from 'next/navigation'
 import { notifications } from '@mantine/notifications'
@@ -876,18 +876,36 @@ export default function ContractEditorPage() {
 
         {/* Contract Info */}
         <Card shadow="sm" padding="lg" radius="md" withBorder>
-          <Group grow>
-            <TextInput
-              label="Nombre del contrato"
-              value={contrato.name}
-              onChange={(event) => setContrato({ ...contrato, name: event.target.value })}
+          <Stack gap="md">
+            <Group grow>
+              <TextInput
+                label="Nombre del contrato"
+                value={contrato.name}
+                onChange={(event) => setContrato({ ...contrato, name: event.target.value })}
+              />
+              <TextInput
+                label="Descripción"
+                value={contrato.description}
+                onChange={(event) => setContrato({ ...contrato, description: event.target.value })}
+              />
+            </Group>
+
+            <Divider label="Configuración de Seguridad" labelPosition="center" />
+
+            <Checkbox
+              label="Verificación OTP obligatoria - Requiere código de verificación vía SMS/email antes de firmar"
+              description={isSMSDisabled ? "SMS está deshabilitado en la configuración del sistema" : "El firmante recibirá un código de verificación temporal (válido 10min) que deberá introducir antes de poder firmar"}
+              checked={(contrato.parameters?.requireDoubleSignatureSMS || false) && !isSMSDisabled}
+              disabled={isSMSDisabled}
+              onChange={(event) => setContrato({
+                ...contrato,
+                parameters: {
+                  ...contrato.parameters,
+                  requireDoubleSignatureSMS: event.currentTarget.checked
+                } as ContractParameters
+              })}
             />
-            <TextInput
-              label="Descripción"
-              value={contrato.description}
-              onChange={(event) => setContrato({ ...contrato, description: event.target.value })}
-            />
-          </Group>
+          </Stack>
         </Card>
 
         <Tabs value={activeTab} onChange={setActiveTab}>

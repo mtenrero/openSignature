@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSignatureRequestsCollection, getContractsCollection, getVariablesCollection, CustomerEncryption } from '@/lib/db/mongodb'
+import { getSignatureRequestsCollection, getContractsCollection, getVariablesCollection, CustomerEncryption, getDatabase } from '@/lib/db/mongodb'
 import { ObjectId } from 'mongodb'
 import crypto from 'crypto'
 import { extractClientIP, createSignatureMetadata } from '@/lib/deviceMetadata'
@@ -8,6 +8,7 @@ import { extractSignerInfo } from '@/lib/contractUtils'
 import { getQualifiedTimestamp } from '@/lib/eidas/timestampClient'
 import { UsageAuditService } from '@/lib/usage/usageAudit'
 import { auth0UserManager } from '@/lib/auth/userManagement'
+import type { OTPRecord } from '@/lib/otp'
 
 export const runtime = 'nodejs'
 
@@ -344,7 +345,9 @@ export async function GET(
           // These should come from dynamicFieldValues when signing, not from templateData
         }
       },
-      accountVariableValues
+      accountVariableValues,
+      // ✅ Indicate if OTP verification is required
+      requiresOTP: contractData.parameters?.requireDoubleSignatureSMS || false
     })
 
   } catch (error) {
@@ -412,12 +415,72 @@ export async function PUT(
     
     if (!isValidAccessKey) {
       return NextResponse.json(
-        { 
+        {
           error: 'Código de acceso no válido',
           code: 'INVALID_ACCESS_KEY'
         },
         { status: 403 }
       )
+    }
+
+    // ✅ CHECK OTP VERIFICATION if requireDoubleSignatureSMS is enabled
+    let requireDoubleSignatureSMS = false
+
+    if (signatureRequest.contractSnapshot?.parameters?.requireDoubleSignatureSMS) {
+      requireDoubleSignatureSMS = true
+    } else {
+      // Fallback to fetching contract if snapshot doesn't exist
+      const contractsCollection = await getContractsCollection()
+      const contract = await contractsCollection.findOne({
+        _id: new ObjectId(signatureRequest.contractId)
+      })
+
+      if (contract?.parameters?.requireDoubleSignatureSMS) {
+        requireDoubleSignatureSMS = true
+      }
+    }
+
+    // If OTP is required, verify it before allowing signature
+    if (requireDoubleSignatureSMS) {
+      const db = await getDatabase()
+      const otpCollection = db.collection('otp_verifications')
+      const otpRecord = await otpCollection.findOne({ shortId }) as OTPRecord | null
+
+      if (!otpRecord) {
+        return NextResponse.json(
+          {
+            error: 'Se requiere verificación OTP. Por favor, solicita un código de verificación.',
+            code: 'OTP_REQUIRED',
+            requiresOTP: true
+          },
+          { status: 403 }
+        )
+      }
+
+      if (!otpRecord.verified) {
+        return NextResponse.json(
+          {
+            error: 'Debes verificar el código OTP antes de firmar.',
+            code: 'OTP_NOT_VERIFIED',
+            requiresOTP: true
+          },
+          { status: 403 }
+        )
+      }
+
+      // Check if OTP is still valid (within 10 minutes)
+      if (new Date() > otpRecord.expiresAt) {
+        return NextResponse.json(
+          {
+            error: 'El código OTP ha expirado. Por favor, solicita uno nuevo.',
+            code: 'OTP_EXPIRED',
+            requiresOTP: true
+          },
+          { status: 403 }
+        )
+      }
+
+      console.log('[OTP] Verification passed for signature:', shortId)
     }
 
     // Debug: Log dynamic field values

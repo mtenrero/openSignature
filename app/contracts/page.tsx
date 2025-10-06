@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { Box, Container, Title, Text, Button, Group, Card, Stack, SimpleGrid, Badge, ActionIcon, Menu, TextInput, Select, Loader, Alert, Modal, Image } from '@mantine/core'
-import { IconPlus, IconSearch, IconDots, IconEdit, IconEye, IconCopy, IconTrash, IconFileText, IconAlertTriangle, IconSignature, IconMail, IconPhone, IconDeviceTablet, IconQrcode, IconList, IconCards, IconX } from '@tabler/icons-react'
+import { IconPlus, IconSearch, IconDots, IconEdit, IconEye, IconCopy, IconTrash, IconFileText, IconAlertTriangle, IconSignature, IconMail, IconPhone, IconDeviceTablet, IconQrcode, IconList, IconCards, IconX, IconUser } from '@tabler/icons-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { notifications } from '@mantine/notifications'
@@ -42,6 +42,17 @@ export default function DashboardPage() {
   const [permanentlyDismissedBanners, setPermanentlyDismissedBanners] = useState<Set<string>>(new Set())
   const router = useRouter()
   const { data: session, status } = useSession()
+
+  // Sincronizar cambios en dynamicValues.clientName de vuelta al campo "Nombre del firmante"
+  useEffect(() => {
+    if (dynamicValues.clientName) {
+      if (requestMethod === 'email' && emailFormData.name !== dynamicValues.clientName) {
+        setEmailFormData(prev => ({ ...prev, name: dynamicValues.clientName }))
+      } else if (requestMethod === 'sms' && smsFormData.name !== dynamicValues.clientName) {
+        setSmsFormData(prev => ({ ...prev, name: dynamicValues.clientName }))
+      }
+    }
+  }, [dynamicValues.clientName, requestMethod])
 
   useEffect(() => {
     const fetchContratos = async () => {
@@ -1285,25 +1296,53 @@ export default function DashboardPage() {
             </Text>
 
             {requestMethod === 'email' && (
-              <TextInput
-                label="Email del firmante"
-                placeholder="ejemplo@dominio.com"
-                value={emailFormData.email}
-                onChange={(event) => setEmailFormData(prev => ({ ...prev, email: event.target.value }))}
-                required
-                leftSection={<IconMail size={16} />}
-              />
+              <>
+                <TextInput
+                  label="Email del firmante"
+                  placeholder="ejemplo@dominio.com"
+                  value={emailFormData.email}
+                  onChange={(event) => setEmailFormData(prev => ({ ...prev, email: event.target.value }))}
+                  required
+                  leftSection={<IconMail size={16} />}
+                />
+                <TextInput
+                  label="Nombre del firmante (opcional)"
+                  placeholder="Nombre completo"
+                  value={emailFormData.name}
+                  onChange={(event) => {
+                    const name = event.target.value
+                    setEmailFormData(prev => ({ ...prev, name }))
+                    // Sincronizar con clientName en dynamicValues
+                    setDynamicValues(prev => ({ ...prev, clientName: name }))
+                  }}
+                  leftSection={<IconUser size={16} />}
+                />
+              </>
             )}
 
             {requestMethod === 'sms' && (
-              <TextInput
-                label="Teléfono del firmante"
-                placeholder="+34 612 345 678"
-                value={smsFormData.phone}
-                onChange={(event) => setSmsFormData(prev => ({ ...prev, phone: event.target.value }))}
-                required
-                leftSection={<IconPhone size={16} />}
-              />
+              <>
+                <TextInput
+                  label="Teléfono del firmante"
+                  placeholder="+34 612 345 678"
+                  value={smsFormData.phone}
+                  onChange={(event) => setSmsFormData(prev => ({ ...prev, phone: event.target.value }))}
+                  required
+                  leftSection={<IconPhone size={16} />}
+                />
+                <TextInput
+                  label="Nombre del firmante (opcional)"
+                  placeholder="Nombre completo"
+                  value={smsFormData.name}
+                  onChange={(event) => {
+                    const name = event.target.value
+                    setSmsFormData(prev => ({ ...prev, name }))
+                    // Sincronizar con clientName en dynamicValues
+                    setDynamicValues(prev => ({ ...prev, clientName: name }))
+                  }}
+                  leftSection={<IconUser size={16} />}
+                />
+              </>
             )}
 
             <Box
@@ -1318,11 +1357,30 @@ export default function DashboardPage() {
             >
               <Stack gap="sm">
                 <Box>
-                  <Text fw={600} size="sm" c="dimmed">Campos opcionales del contrato</Text>
-                  <Text size="xs" c="dimmed">Puedes pre-rellenar estos datos o dejar que el firmante los complete</Text>
+                  <Text fw={600} size="sm" c="dimmed">Datos adicionales (opcional)</Text>
+                  <Text size="xs" c="dimmed">Pre-rellena los datos que conozcas. El firmante completará el resto</Text>
                 </Box>
                 <DynamicFieldsForm
-                  fields={[...(contratos.find((c:any)=>c.id===emailFormData.contractId)?.dynamicFields||[]), ...(contratos.find((c:any)=>c.id===emailFormData.contractId)?.userFields||[])]}
+                  fields={
+                    [...(contratos.find((c:any)=>c.id===emailFormData.contractId)?.dynamicFields||[]), ...(contratos.find((c:any)=>c.id===emailFormData.contractId)?.userFields||[])]
+                    .filter(field => {
+                      // Excluir campos de identidad del firmante según el método
+                      // Solo excluir el email del cliente si se está enviando por email
+                      if (requestMethod === 'email' && (field.name === 'clientEmail' || field.name === 'email')) {
+                        return false
+                      }
+                      // Solo excluir el teléfono del cliente si se está enviando por SMS
+                      if (requestMethod === 'sms' && (field.name === 'clientPhone' || field.name === 'phone' || field.name === 'telefono')) {
+                        return false
+                      }
+                      // Excluir el nombre del cliente porque ya está en "Nombre del firmante"
+                      if (field.name === 'clientName' || field.name === 'nombre') {
+                        return false
+                      }
+                      // Para local y tablet, mostrar todos los campos opcionales excepto nombre
+                      return true
+                    })
+                  }
                   values={dynamicValues}
                   onValuesChange={setDynamicValues}
                   onSubmit={()=>{}}
@@ -1332,62 +1390,57 @@ export default function DashboardPage() {
               </Stack>
             </Box>
 
-            <Group justify="center" gap="sm" style={{ position: 'sticky', bottom: 0, background: 'white', paddingTop: 12, borderTop: '1px solid var(--mantine-color-gray-3)' }}>
+            <Group justify="center" style={{ position: 'sticky', bottom: 0, background: 'white', paddingTop: 12, borderTop: '1px solid var(--mantine-color-gray-3)' }}>
               <Button
-                variant="outline"
                 fullWidth
                 disabled={!hasRequiredSignatureFields || requestingSignature}
                 loading={requestingSignature}
                 onClick={async ()=>{
-                  if (requestMethod === 'email') {
-                    await createSignatureRequest(emailFormData.contractId, 'email', { signerEmail: emailFormData.email })
-                    notifications.show({ title: 'Email de firma enviado', message: `Se ha enviado la solicitud por email a ${emailFormData.email} para ${emailFormData.contractName}`, color: 'green' })
-                  } else if (requestMethod === 'sms') {
-                    await createSignatureRequest(smsFormData.contractId, 'sms', { signerPhone: smsFormData.phone })
-                    notifications.show({ title: 'SMS de firma enviado', message: `Se ha enviado la solicitud por SMS a ${smsFormData.phone} para ${smsFormData.contractName}`, color: 'green' })
-                  } else if (requestMethod === 'qr') {
-                    const createRes = await createSignatureRequest(emailFormData.contractId, 'qr')
-                    const qrCode = await generateQRCode(createRes.signatureUrl)
-                    setCurrentQrData({ url: qrCode, contractName: emailFormData.contractName, signatureUrl: createRes.signatureUrl })
-                    setQrModalOpened(true)
-                  } else if (requestMethod === 'local') {
-                    const createRes = await createSignatureRequest(emailFormData.contractId, 'local')
-                    if (createRes.signatureUrl) window.open(createRes.signatureUrl, '_blank')
-                  } else if (requestMethod === 'tablet') {
-                    await createSignatureRequest(emailFormData.contractId, 'tablet')
-                    notifications.show({ title: 'Solicitud creada', message: `Solicitud enviada para ${emailFormData.contractName}`, color: 'green' })
+                  try {
+                    // Preparar datos con todos los valores disponibles (API decidirá qué usar)
+                    const allDynamicValues = { ...dynamicValues }
+
+                    if (requestMethod === 'email') {
+                      await createSignatureRequest(emailFormData.contractId, 'email', {
+                        signerEmail: emailFormData.email,
+                        signerName: emailFormData.name || undefined,
+                        dynamicFieldValues: Object.keys(allDynamicValues).length > 0 ? allDynamicValues : undefined
+                      })
+                      notifications.show({ title: 'Email de firma enviado', message: `Se ha enviado la solicitud por email a ${emailFormData.email} para ${emailFormData.contractName}`, color: 'green' })
+                    } else if (requestMethod === 'sms') {
+                      await createSignatureRequest(smsFormData.contractId, 'sms', {
+                        signerPhone: smsFormData.phone,
+                        signerName: smsFormData.name || undefined,
+                        dynamicFieldValues: Object.keys(allDynamicValues).length > 0 ? allDynamicValues : undefined
+                      })
+                      notifications.show({ title: 'SMS de firma enviado', message: `Se ha enviado la solicitud por SMS a ${smsFormData.phone} para ${smsFormData.contractName}`, color: 'green' })
+                    } else if (requestMethod === 'qr') {
+                      const createRes = await createSignatureRequest(emailFormData.contractId, 'qr', {
+                        dynamicFieldValues: Object.keys(allDynamicValues).length > 0 ? allDynamicValues : undefined
+                      })
+                      const qrCode = await generateQRCode(createRes.signatureUrl)
+                      setCurrentQrData({ url: qrCode, contractName: emailFormData.contractName, signatureUrl: createRes.signatureUrl })
+                      setQrModalOpened(true)
+                    } else if (requestMethod === 'local') {
+                      const createRes = await createSignatureRequest(emailFormData.contractId, 'local', {
+                        dynamicFieldValues: Object.keys(allDynamicValues).length > 0 ? allDynamicValues : undefined
+                      })
+                      if (createRes.signatureUrl) window.open(createRes.signatureUrl, '_blank')
+                      notifications.show({ title: 'Firma local iniciada', message: `Se ha abierto la página de firma para ${emailFormData.contractName}`, color: 'green' })
+                    } else if (requestMethod === 'tablet') {
+                      await createSignatureRequest(emailFormData.contractId, 'tablet', {
+                        dynamicFieldValues: Object.keys(allDynamicValues).length > 0 ? allDynamicValues : undefined
+                      })
+                      notifications.show({ title: 'Solicitud creada', message: `Solicitud enviada para ${emailFormData.contractName}`, color: 'green' })
+                    }
+                    // Solo cerrar el modal si todo fue exitoso
+                    setEmailModalOpened(false)
+                    setDynamicValues({})
+                  } catch (error) {
+                    // Error already handled by createSignatureRequest
+                    // No cerramos el modal para que el usuario vea el error y pueda reintentar
+                    console.error('Error in signature request:', error)
                   }
-                  setEmailModalOpened(false)
-                  setDynamicValues({})
-                }}
-              >
-                Solicitar firma y datos
-              </Button>
-              <Button
-                fullWidth
-                disabled={!hasRequiredSignatureFields || !allContractFieldsFilled || requestingSignature}
-                loading={requestingSignature}
-                onClick={async ()=>{
-                  if (requestMethod === 'email') {
-                    await createSignatureRequest(emailFormData.contractId, 'email', { signerEmail: emailFormData.email, dynamicFieldValues: dynamicValues })
-                    notifications.show({ title: 'Email de firma enviado', message: `Se ha enviado la solicitud por email a ${emailFormData.email} para ${emailFormData.contractName}`, color: 'green' })
-                  } else if (requestMethod === 'sms') {
-                    await createSignatureRequest(smsFormData.contractId, 'sms', { signerPhone: smsFormData.phone, dynamicFieldValues: dynamicValues })
-                    notifications.show({ title: 'SMS de firma enviado', message: `Se ha enviado la solicitud por SMS a ${smsFormData.phone} para ${smsFormData.contractName}`, color: 'green' })
-                  } else if (requestMethod === 'qr') {
-                    const createRes = await createSignatureRequest(emailFormData.contractId, 'qr', { dynamicFieldValues: dynamicValues })
-                    const qrCode = await generateQRCode(createRes.signatureUrl)
-                    setCurrentQrData({ url: qrCode, contractName: emailFormData.contractName, signatureUrl: createRes.signatureUrl })
-                    setQrModalOpened(true)
-                  } else if (requestMethod === 'local') {
-                    const createRes = await createSignatureRequest(emailFormData.contractId, 'local', { dynamicFieldValues: dynamicValues })
-                    if (createRes.signatureUrl) window.open(createRes.signatureUrl, '_blank')
-                  } else if (requestMethod === 'tablet') {
-                    await createSignatureRequest(emailFormData.contractId, 'tablet', { dynamicFieldValues: dynamicValues })
-                    notifications.show({ title: 'Solicitud creada', message: `Solicitud enviada para ${emailFormData.contractName}`, color: 'green' })
-                  }
-                  setEmailModalOpened(false)
-                  setDynamicValues({})
                 }}
               >
                 Solicitar firma

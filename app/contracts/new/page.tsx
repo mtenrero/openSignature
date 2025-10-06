@@ -165,8 +165,8 @@ export default function NewContractPage() {
           </Title>
           <Stack gap="md">
             <Checkbox
-              label="Requerir doble firma por SMS (mayor garantía legal)"
-              description={isSMSDisabled ? "SMS está deshabilitado en la configuración del sistema" : "El firmante recibirá un código por SMS además de la firma digital"}
+              label="🔐 Verificación OTP obligatoria - Requiere código de verificación vía SMS/email antes de firmar"
+              description={isSMSDisabled ? "SMS está deshabilitado en la configuración del sistema" : "El firmante recibirá un código de verificación temporal (válido 10min) que deberá introducir antes de poder firmar"}
               checked={parameters.requireDoubleSignatureSMS && !isSMSDisabled}
               disabled={isSMSDisabled}
               onChange={(event) => setParameters({

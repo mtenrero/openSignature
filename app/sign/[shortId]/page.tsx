@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from "react"
-import { Box, Container, Title, Text, Button, Card, Stack, Group, Alert, Checkbox, Center, Loader, rem } from '@mantine/core'
+import { Box, Container, Title, Text, Button, Card, Stack, Group, Alert, Checkbox, Center, Loader, rem, PinInput, Modal } from '@mantine/core'
 import { IconAlertTriangle, IconCheck, IconSignature, IconArrowLeft, IconEye, IconDownload } from '@tabler/icons-react'
 import { useRouter } from "next/navigation"
 import axios from "axios"
@@ -28,6 +28,14 @@ export default function SignDocument() {
     const [error, setError] = useState('')
     const [dynamicFieldValues, setDynamicFieldValues] = useState<{[key: string]: string}>({})
     const [completed, setCompleted] = useState(false)
+    const [otpCode, setOtpCode] = useState('')
+    const [otpSent, setOtpSent] = useState(false)
+    const [sendingOtp, setSendingOtp] = useState(false)
+    const [verifyingOtp, setVerifyingOtp] = useState(false)
+    const [otpVerified, setOtpVerified] = useState(false)
+    const [requiresOtp, setRequiresOtp] = useState(false)
+    const [otpMethod, setOtpMethod] = useState<'email' | 'sms'>('email')
+    const [availableOtpMethods, setAvailableOtpMethods] = useState({ email: false, sms: false })
     const router = useRouter()
 
     // Get data from context (passed from layout)
@@ -120,6 +128,75 @@ export default function SignDocument() {
         setCurrentStep(currentStep + 1)
     }
 
+    const handleRequestOtp = async (method?: 'email' | 'sms') => {
+        if (!shortId || !accessKey) {
+            setError('Error en la solicitud')
+            return
+        }
+
+        setSendingOtp(true)
+        setError('')
+
+        try {
+            const methodParam = method ? `&method=${method}` : ''
+            const response = await axios.post(`/api/sign-requests/${shortId}/otp?a=${accessKey}${methodParam}`)
+
+            setOtpSent(true)
+            setRequiresOtp(true)
+            setOtpMethod(response.data.deliveryMethod)
+
+            if (response.data.availableMethods) {
+                setAvailableOtpMethods(response.data.availableMethods)
+            }
+        } catch (err) {
+            console.error('Error requesting OTP:', err)
+            const errorMessage = err.response?.data?.error || 'Error al enviar el código de verificación'
+            setError(errorMessage)
+        } finally {
+            setSendingOtp(false)
+        }
+    }
+
+    const handleVerifyOtp = async () => {
+        if (!otpCode || otpCode.length !== 6) {
+            setError('Por favor, introduce un código de 6 dígitos')
+            return
+        }
+
+        setVerifyingOtp(true)
+        setError('')
+
+        try {
+            // First, verify the OTP code
+            const verifyResponse = await axios.put(`/api/sign-requests/${shortId}/otp?a=${accessKey}`, {
+                code: otpCode
+            })
+
+            if (verifyResponse.data.success) {
+                setOtpVerified(true)
+
+                // Now complete the signature with the stored signature data
+                const client = axios.create()
+                axiosRetry(client, { retries: 3 })
+
+                const signResponse = await client.put(`/api/sign-requests/${shortId}?a=${accessKey}`, {
+                    signature: signatureData,
+                    dynamicFieldValues: dynamicFieldValues
+                })
+
+                // Mark as completed - this will show success screen
+                setCompleted(true)
+                setRequiresOtp(false) // Close OTP modal
+            }
+        } catch (err) {
+            console.error('Error verifying OTP or signing:', err)
+            const errorMessage = err.response?.data?.error || 'Error al verificar el código. Por favor, inténtalo de nuevo.'
+            setError(errorMessage)
+        } finally {
+            setVerifyingOtp(false)
+        }
+    }
+
     const handleSign = async () => {
         if (!signatureData) {
             setError('Por favor, firma el contrato antes de continuar')
@@ -139,13 +216,6 @@ export default function SignDocument() {
         setSigning(true)
         setError('')
 
-        // Debug: Log what we're sending to the backend
-        console.log('[SIGN DEBUG] Sending to backend:', {
-            shortId,
-            accessKey,
-            dynamicFieldValues
-        })
-
         try {
             const client = axios.create()
             axiosRetry(client, { retries: 3 })
@@ -159,12 +229,21 @@ export default function SignDocument() {
             setCompleted(true)
         } catch (err) {
             console.error('Error signing contract:', err)
-            const errorMessage = err.response?.data?.error || 'Ocurrió un error al firmar el contrato. Por favor, intenta nuevamente.'
-            setError(errorMessage)
+
+            // Check if OTP is required
+            if (err.response?.data?.code === 'OTP_REQUIRED' || err.response?.data?.requiresOTP) {
+                setRequiresOtp(true)
+                // Automatically request OTP
+                await handleRequestOtp()
+            } else {
+                const errorMessage = err.response?.data?.error || 'Ocurrió un error al firmar el contrato. Por favor, intenta nuevamente.'
+                setError(errorMessage)
+            }
         } finally {
             setSigning(false)
         }
     }
+
 
     // Show loading state if no sign data
     if (!signData) {
@@ -445,13 +524,96 @@ export default function SignDocument() {
                                 <Button
                                     onClick={handleSign}
                                     disabled={!acceptChecked || !signatureData}
-                                    loading={signing}
+                                    loading={signing || sendingOtp}
                                     leftSection={<IconSignature size={16} />}
                                     size="md"
                                 >
                                     Firmar Contrato
                                 </Button>
                             </Group>
+
+                            {/* OTP Verification Modal */}
+                            <Modal
+                                opened={requiresOtp && !otpVerified}
+                                onClose={() => {}}
+                                title="Verificación de seguridad"
+                                closeOnClickOutside={false}
+                                closeOnEscape={false}
+                                withCloseButton={false}
+                                centered
+                            >
+                                <Stack gap="md">
+                                    {otpSent ? (
+                                        <>
+                                            <Alert color="blue" variant="light">
+                                                <Text size="sm">
+                                                    Hemos enviado un código de 6 dígitos a tu {otpMethod === 'email' ? 'correo electrónico' : 'teléfono'}.
+                                                    Por favor, introdúcelo a continuación para completar la firma.
+                                                </Text>
+                                            </Alert>
+
+                                            <Box>
+                                                <Text size="sm" fw={500} mb="xs">Código de verificación:</Text>
+                                                <Center>
+                                                    <PinInput
+                                                        length={6}
+                                                        type="number"
+                                                        value={otpCode}
+                                                        onChange={setOtpCode}
+                                                        size="lg"
+                                                        placeholder="0"
+                                                    />
+                                                </Center>
+                                            </Box>
+
+                                            <Button
+                                                onClick={handleVerifyOtp}
+                                                disabled={otpCode.length !== 6}
+                                                loading={verifyingOtp}
+                                                fullWidth
+                                            >
+                                                Verificar y Firmar
+                                            </Button>
+
+                                            <Group grow>
+                                                <Button
+                                                    variant="subtle"
+                                                    onClick={() => handleRequestOtp(otpMethod)}
+                                                    loading={sendingOtp}
+                                                >
+                                                    Reenviar por {otpMethod === 'email' ? 'Email' : 'SMS'}
+                                                </Button>
+                                                {availableOtpMethods.email && availableOtpMethods.sms && (
+                                                    <Button
+                                                        variant="outline"
+                                                        onClick={() => handleRequestOtp(otpMethod === 'email' ? 'sms' : 'email')}
+                                                        loading={sendingOtp}
+                                                    >
+                                                        Enviar por {otpMethod === 'email' ? 'SMS' : 'Email'}
+                                                    </Button>
+                                                )}
+                                            </Group>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Alert color="blue" variant="light">
+                                                <Text size="sm">
+                                                    Para completar la firma, necesitamos verificar tu identidad.
+                                                    Te enviaremos un código de seguridad.
+                                                </Text>
+                                            </Alert>
+
+                                            <Button
+                                                onClick={() => handleRequestOtp()}
+                                                loading={sendingOtp}
+                                                fullWidth
+                                            >
+                                                Enviar código de verificación
+                                            </Button>
+                                        </>
+                                    )}
+                                </Stack>
+                            </Modal>
                         </Stack>
                     </Container>
                 )

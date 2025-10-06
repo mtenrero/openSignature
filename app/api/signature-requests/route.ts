@@ -112,46 +112,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if a signature request already exists for this contract + signer
-    const collection = await getSignatureRequestsCollection()
-    const signerIdentifier = signerEmail || signerPhone || signerInfoFromFields?.clientEmail || signerInfoFromFields?.clientPhone
-
-    let existingRequest = null
-    if (signerIdentifier) {
-      const searchQuery: any = {
-        contractId,
-        customerId,
-        status: 'pending' // Only reuse pending requests, not signed/expired/rejected
-      }
-
-      // Search by email or phone
-      if (signerEmail || signerInfoFromFields?.clientEmail) {
-        searchQuery.signerEmail = signerEmail || signerInfoFromFields?.clientEmail
-      } else if (signerPhone || signerInfoFromFields?.clientPhone) {
-        searchQuery.signerPhone = signerPhone || signerInfoFromFields?.clientPhone
-      }
-
-      console.log(`[Signature Request] Searching for existing request with query:`, searchQuery)
-
-      existingRequest = await collection.findOne(searchQuery)
-
-      if (existingRequest) {
-        console.log(`[Signature Request] Found existing request for ${signerIdentifier}:`, {
-          id: existingRequest._id,
-          shortId: existingRequest.shortId,
-          status: existingRequest.status,
-          signatureType: existingRequest.signatureType,
-          createdAt: existingRequest.createdAt,
-          expiresAt: existingRequest.expiresAt,
-          customerId: existingRequest.customerId
-        })
-      } else {
-        console.log(`[Signature Request] No existing request found for ${signerIdentifier}`)
-      }
+    // If signerName is provided but not in dynamicFieldValues, add it as clientName
+    if (signerName && dynamicFieldValues && !dynamicFieldValues.clientName) {
+      dynamicFieldValues.clientName = signerName
     }
 
-    // If existing request found, update it instead of creating new
-    if (existingRequest) {
+    // Always create a new signature request (no reusing of existing requests)
+    const collection = await getSignatureRequestsCollection()
+    console.log(`[Signature Request] Creating new signature request for contract ${contractId}`)
+
+    // Skip the existing request check - always create new
+    const existingRequest = null
+
+    if (false) { // Disabled: never reuse existing requests
       const updateData: any = {
         updatedAt: new Date(),
         updatedBy: userId,
@@ -170,10 +143,22 @@ export async function POST(request: NextRequest) {
         updateData.clientTaxId = clientTaxId || signerInfoFromFields?.clientTaxId
       }
 
-      // Update dynamic field values if provided
+      // Update dynamic field values if provided, but preserve already locked fields
       if (signerInfoFromFields?.allFields || dynamicFieldValues) {
-        updateData.dynamicFieldValues = signerInfoFromFields?.allFields || dynamicFieldValues
-        updateData.signerInfo = signerInfoFromFields
+        // Merge new values with existing ones, but keep existing values (locked fields)
+        const existingDynamicFieldValues = existingRequest.dynamicFieldValues || {}
+        const newDynamicFieldValues = signerInfoFromFields?.allFields || dynamicFieldValues || {}
+
+        // Preserve existing values (they are locked and should not be overwritten)
+        updateData.dynamicFieldValues = {
+          ...newDynamicFieldValues,
+          ...existingDynamicFieldValues // Existing values take precedence
+        }
+
+        // Update signerInfo only if not already set
+        if (!existingRequest.signerInfo && signerInfoFromFields) {
+          updateData.signerInfo = signerInfoFromFields
+        }
       }
 
       // Add audit record entry for resend (structured format)
@@ -248,14 +233,44 @@ export async function POST(request: NextRequest) {
         signatureUrl: `${process.env.NEXTAUTH_URL}/sign/${shortId}?a=${accessKey}`,
       }
     } else {
-      // No existing request - create new one
-      console.log(`[Signature Request] No existing request found, creating new for ${signerIdentifier}`)
+      // Always create new request
+      console.log(`[Signature Request] Creating new signature request for contract ${contractId}`)
 
-      // Generate unique short ID for the signature request
-      var shortId = nanoid(10)
+      // Generate unique short ID for the signature request (ensure it doesn't exist)
+      let shortId = nanoid(10)
+      let attempts = 0
+      const maxAttempts = 5
+
+      while (attempts < maxAttempts) {
+        const existingWithShortId = await collection.findOne({ shortId })
+        if (!existingWithShortId) {
+          console.log(`[Signature Request] Generated unique shortId: ${shortId}`)
+          break
+        }
+        console.warn(`[Signature Request] ShortId collision detected: ${shortId}, generating new one...`)
+        shortId = nanoid(10)
+        attempts++
+      }
+
+      if (attempts >= maxAttempts) {
+        console.error(`[Signature Request] Failed to generate unique shortId after ${maxAttempts} attempts`)
+        return NextResponse.json({
+          success: false,
+          error: 'Failed to generate unique identifier',
+          errorCode: 'SHORTID_GENERATION_FAILED'
+        }, { status: 500 })
+      }
 
       // Generate access key optimized for SMS (6 characters instead of 16)
       const accessKey = Buffer.from(`${shortId}:${customerId}`).toString('base64').slice(0, 6)
+
+      // Initialize dynamicFieldValues with signer data if not already provided
+      const finalDynamicFieldValues = signerInfoFromFields?.allFields || dynamicFieldValues || {}
+
+      // Ensure signerName is mapped to clientName in dynamicFieldValues
+      if (signerName && !finalDynamicFieldValues.clientName) {
+        finalDynamicFieldValues.clientName = signerName
+      }
 
       // Create signature request document
       var signatureRequest = {
@@ -267,7 +282,7 @@ export async function POST(request: NextRequest) {
         signerEmail: signerEmail || signerInfoFromFields?.clientEmail || null,
         signerPhone: signerPhone || signerInfoFromFields?.clientPhone || null,
         // 🔥 NEW: Client information for contract binding
-        clientName: clientName || signerInfoFromFields?.clientName || null,
+        clientName: clientName || signerName || signerInfoFromFields?.clientName || null,
         clientTaxId: clientTaxId || signerInfoFromFields?.clientTaxId || null,
         status: 'pending',
         createdBy: userId,
@@ -281,7 +296,7 @@ export async function POST(request: NextRequest) {
         signatureUrl: `${process.env.NEXTAUTH_URL}/sign/${shortId}?a=${accessKey}`,
 
         // Store provided dynamic field values and extracted signer info (if any)
-        dynamicFieldValues: signerInfoFromFields?.allFields || (dynamicFieldValues || null),
+        dynamicFieldValues: Object.keys(finalDynamicFieldValues).length > 0 ? finalDynamicFieldValues : null,
         signerInfo: signerInfoFromFields || null,
 
         // Metadata
@@ -557,26 +572,6 @@ export async function POST(request: NextRequest) {
               extraCost: smsValidation.extraCost
             }, { status: 403 })
           }
-
-          // SMS always requires debit
-          if (smsValidation.shouldDebit && smsValidation.extraCost) {
-            const debitResult = await UsageTracker.debitOperationCost(
-              customerId,
-              'sms_signature',
-              smsValidation.extraCost,
-              `SMS firma a ${signerPhone}`,
-              result.insertedId.toString()
-            )
-
-            if (!debitResult.success) {
-              console.error(`[Signature Request] Failed to debit SMS cost: ${debitResult.error}`)
-              return NextResponse.json({
-                success: false,
-                error: debitResult.error || 'Error processing payment for SMS signature',
-                errorCode: 'PAYMENT_ERROR'
-              }, { status: 500 })
-            }
-          }
         }
 
         console.log(`[Signature Request] Preparing to send SMS to ${signerPhone} with link: ${signatureRequest.signatureUrl}`)
@@ -601,6 +596,8 @@ export async function POST(request: NextRequest) {
           smsSegments
         })
 
+        let smsWasSentSuccessfully = false
+
         try {
           const { sendSMS } = await import('@/libs/sendSMS')
           const smsResult = await sendSMS(smsSender, smsMessage, signerPhone)
@@ -615,37 +612,73 @@ export async function POST(request: NextRequest) {
 
           if (!smsResult.success) {
             console.error(`[Signature Request] SMS sending failed:`, smsResult.error)
-            // Don't fail the request, just log the error
-            // The signature request was created successfully
+            // SMS failed - return error to user
+            return NextResponse.json({
+              success: false,
+              error: smsResult.error || 'No se pudo enviar el SMS. Por favor, intenta de nuevo.',
+              errorCode: 'SMS_SEND_FAILED',
+              details: smsResult
+            }, { status: 500 })
           } else {
             console.log(`[Signature Request] ✅ SMS sent successfully via ${smsResult.provider}`)
+            smsWasSentSuccessfully = true
           }
-        } catch (sendError) {
+        } catch (sendError: any) {
           console.error(`[Signature Request] Exception while sending SMS:`, sendError)
-          // Don't fail the request, just log the error
+          // SMS failed with exception - return error to user
+          return NextResponse.json({
+            success: false,
+            error: sendError?.message || 'Error al enviar el SMS. Por favor, intenta de nuevo.',
+            errorCode: 'SMS_EXCEPTION'
+          }, { status: 500 })
         }
 
-        // Record SMS sent in audit system
-        const auditSubscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(userId)
-        const planId = auditSubscriptionInfo?.plan?.id || 'free'
-        const smsCost = auditSubscriptionInfo?.limits?.smsCost || 0
+        // Only charge and record usage if SMS was sent successfully
+        if (smsWasSentSuccessfully && smsSubscriptionInfo) {
+          const smsValidation = await UsageTracker.canPerformAction(
+            customerId,
+            smsSubscriptionInfo.limits,
+            'sms_signature'
+          )
 
-        await UsageAuditService.recordSmsSent({
-          customerId,
-          userId: userId, // Use userId from authContext instead of session.user.id
-          smsRecipient: signerPhone,
-          smsMessage,
-          countryCode: 'ES', // Default to Spain
-          cost: smsCost,
-          metadata: {
-            ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip'),
-            userAgent: request.headers.get('user-agent'),
-            apiCall: true,
-            signatureRequestId: result.insertedId.toString()
+          // Charge for the SMS
+          if (smsValidation.shouldDebit && smsValidation.extraCost) {
+            const debitResult = await UsageTracker.debitOperationCost(
+              customerId,
+              'sms_signature',
+              smsValidation.extraCost,
+              `SMS firma a ${signerPhone}`,
+              result.insertedId.toString()
+            )
+
+            if (!debitResult.success) {
+              console.error(`[Signature Request] Failed to debit SMS cost: ${debitResult.error}`)
+              // SMS was sent but payment failed - log warning but don't fail
+              console.warn(`[Signature Request] ⚠️ SMS sent but payment failed - manual reconciliation may be needed`)
+            }
           }
-        })
 
-        console.log(`[Signature Request] SMS audit recorded for ${signerPhone}`)
+          // Record SMS sent in audit system
+          const planId = smsSubscriptionInfo?.plan?.id || 'free'
+          const smsCost = smsSubscriptionInfo?.limits?.smsCost || 0
+
+          await UsageAuditService.recordSmsSent({
+            customerId,
+            userId: userId,
+            smsRecipient: signerPhone,
+            smsMessage,
+            countryCode: 'ES', // Default to Spain
+            cost: smsCost,
+            metadata: {
+              ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip'),
+              userAgent: request.headers.get('user-agent'),
+              apiCall: true,
+              signatureRequestId: result.insertedId.toString()
+            }
+          })
+
+          console.log(`[Signature Request] SMS audit recorded for ${signerPhone}`)
+        }
       } catch (smsError) {
         console.error(`[Signature Request] Error with SMS to ${signerPhone}:`, smsError)
       }
