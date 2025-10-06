@@ -151,24 +151,17 @@ export async function GET(request: NextRequest) {
 // POST /api/contracts - Create a new contract
 export async function POST(request: NextRequest) {
   try {
-    // Use NextAuth v5 auth function
-    const session = await auth()
+    // Get authentication context (supports both session and OAuth JWT)
+    const authContext = await getAuthContext(request)
 
-    if (!session?.user?.id) {
+    if (!authContext) {
       return NextResponse.json(
         { error: 'Unauthorized - Please sign in' },
         { status: 401 }
       )
     }
 
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json(
-        { error: 'Customer ID not found in session' },
-        { status: 401 }
-      )
-    }
+    const { userId, customerId } = authContext
 
     const body = await request.json()
 
@@ -184,7 +177,7 @@ export async function POST(request: NextRequest) {
     let subscriptionInfo
     let validationResult
     try {
-      subscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(session.user.id)
+      subscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(userId)
       if (subscriptionInfo) {
         validationResult = await UsageTracker.canPerformAction(
           customerId,
@@ -256,7 +249,7 @@ export async function POST(request: NextRequest) {
 
     // Record contract creation in audit system
     try {
-      const subscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(session.user.id)
+      const subscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(userId)
       const planId = subscriptionInfo?.plan?.id || 'free'
 
       // Check if this was an extra contract (over plan limits)
@@ -267,7 +260,7 @@ export async function POST(request: NextRequest) {
 
       await UsageAuditService.recordContractCreation({
         customerId,
-        userId: session.user.id,
+        userId,
         contractId: result.insertedId.toString(),
         contractTitle: body.name.trim(),
         planId,
