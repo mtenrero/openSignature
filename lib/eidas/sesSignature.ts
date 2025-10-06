@@ -3,7 +3,7 @@
  * eIDAS compliant for basic signature levels without qualified certificates
  */
 
-import crypto from 'crypto'
+import * as crypto from 'crypto'
 import { v4 as uuidv4 } from 'uuid'
 import { DeviceMetadata } from '../deviceMetadata'
 
@@ -58,6 +58,7 @@ export interface SESSignature {
     source: string
     token?: string // RFC 3161 timestamp token
     verified: boolean
+    serialNumber?: string // TSA serial number
   }
   
   // Device and environment metadata

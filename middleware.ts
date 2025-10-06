@@ -1,8 +1,29 @@
 import { auth } from '@/lib/auth/config'
 import { NextResponse } from 'next/server'
+import { extractBearerToken, validateJWT } from '@/lib/auth/jwt'
 
-export default auth((req) => {
-  const isAuth = !!req.auth
+export default auth(async (req) => {
+  // Check for session-based auth
+  let isAuth = !!req.auth
+
+  // If no session, check for Bearer token (OAuth2 JWT or API Key)
+  if (!isAuth) {
+    const authHeader = req.headers.get('authorization')
+    const token = extractBearerToken(authHeader)
+
+    if (token) {
+      // Check if it's an API key (starts with osk_)
+      if (token.startsWith('osk_')) {
+        // API keys are validated in the API routes
+        // Just allow it to pass through middleware
+        isAuth = true
+      } else {
+        // Validate JWT token
+        const payload = await validateJWT(token)
+        isAuth = !!payload
+      }
+    }
+  }
   const isAuthPage = req.nextUrl.pathname.startsWith('/auth')
   const isApiRoute = req.nextUrl.pathname.startsWith('/api')
   const isSignPage = req.nextUrl.pathname.startsWith('/sign')
@@ -11,7 +32,8 @@ export default auth((req) => {
   // Public API routes that don't require authentication
   const publicApiRoutes = [
     '/api/auth',
-    '/api/oauth/token', // OAuth2 token endpoint (client_credentials flow)
+    '/api/oauth', // Allow all OAuth endpoints
+    '/api/test', // Test endpoints (temporary)
     '/api/openapi', // OpenAPI specification
     '/api/status',
     '/api/sign-requests',

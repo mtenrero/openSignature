@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
+import { getAuthContext } from '@/lib/auth/unified'
 import { getSignaturesCollection, getContractsCollection, getDatabase, CustomerEncryption } from '@/lib/db/mongodb'
 import { signedContractPDFGenerator } from '@/lib/pdf/signedContractGenerator'
 import { auditTrailService } from '@/lib/auditTrail'
+import { getCombinedAuditTrail } from '@/lib/audit/integration'
 import { processContractContent, createAccountVariableValues } from '@/lib/contractUtils'
 import { ObjectId } from 'mongodb'
 
@@ -14,17 +16,14 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Authenticate user
-    const session = await auth()
-    if (!session?.user?.id) {
+    // Get authentication context (supports session, API keys, and OAuth JWT)
+    const authContext = await getAuthContext(request)
+
+    if (!authContext) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json({ error: 'Customer ID not found' }, { status: 401 })
-    }
+    const { userId, customerId } = authContext
 
     const { id: contractId } = await params
 
@@ -39,13 +38,77 @@ export async function GET(
       return NextResponse.json({ error: 'Contract not found' }, { status: 404 })
     }
 
-    // Get signatures for this contract
+    // Try to get signatures from both possible collections
+    // 1. First check esign_signatures (completed signatures)
     const signaturesCollection = await getSignaturesCollection()
-    const signatures = await signaturesCollection.find({
+    let signatures = await signaturesCollection.find({
       contractId: contractId,
       customerId: customerId,
       type: 'signature'
     }).sort({ createdAt: -1 }).toArray()
+
+    // 2. If no signatures found, check signature_requests collection
+    if (signatures.length === 0) {
+      console.log('[PDF DEBUG] No signatures in esign_signatures, checking signature_requests...')
+      console.log('[PDF DEBUG] Looking for contractId:', contractId, 'customerId:', customerId)
+
+      const db = await getDatabase()
+      const signatureRequestsCollection = db.collection('signature_requests')
+
+      const signatureRequests = await signatureRequestsCollection.find({
+        contractId: contractId,
+        customerId: customerId,
+        status: { $in: ['signed', 'completed'] }
+      }).sort({ createdAt: -1 }).toArray()
+
+      console.log('[PDF DEBUG] Found signature requests:', signatureRequests.length)
+
+      if (signatureRequests.length === 0) {
+        // Try without status filter in case the status field is different
+        const allRequests = await signatureRequestsCollection.find({
+          contractId: contractId,
+          customerId: customerId
+        }).toArray()
+        console.log('[PDF DEBUG] Total signature requests for contract (any status):', allRequests.length)
+        if (allRequests.length > 0) {
+          console.log('[PDF DEBUG] Sample request status:', allRequests[0].status)
+          console.log('[PDF DEBUG] Has signatureData?', !!allRequests[0].signatureData)
+        }
+      }
+
+      if (signatureRequests.length > 0) {
+        console.log('[PDF DEBUG] Converting signature requests to signature format...')
+        // Convert signature request to signature format
+        signatures = signatureRequests.map(req => {
+          const signerInfo = req.signerInfo || {}
+          return {
+            _id: req._id,
+            contractId: req.contractId,
+            customerId: req.customerId,
+            type: 'signature',
+            signature: req.signatureData || req.signature || '',
+            createdAt: req.signedAt || req.updatedAt || req.createdAt,
+            ipAddress: req.ipAddress || signerInfo.ipAddress || '',
+            userAgent: req.userAgent || signerInfo.userAgent || '',
+            metadata: {
+              signatureMethod: req.signatureType || 'electronic',
+              signerInfo: {
+                clientName: req.clientName || req.signerName || signerInfo.name || '',
+                clientTaxId: req.clientTaxId || signerInfo.taxId || '',
+                clientEmail: req.signerEmail || signerInfo.email || '',
+                clientPhone: req.signerPhone || signerInfo.phone || '',
+                allFields: req.dynamicFieldValues || {}
+              },
+              documentHash: req.documentHash || '',
+              deviceMetadata: req.signatureMetadata || req.deviceMetadata || {},
+              auditTrail: req.auditTrail || {}
+            },
+            auditTrailId: req.contractId
+          }
+        })
+        console.log('[PDF DEBUG] Converted signatures:', signatures.length)
+      }
+    }
 
     if (signatures.length === 0) {
       return NextResponse.json({ error: 'No signatures found for this contract' }, { status: 404 })
@@ -53,9 +116,46 @@ export async function GET(
 
     // Use the most recent signature
     const latestSignatureDoc = signatures[0]
-    
+
     // Decrypt sensitive fields
     const decryptedSignature = CustomerEncryption.decryptSensitiveFields(latestSignatureDoc, customerId)
+
+    console.log('[PDF DEBUG] Decrypted signature:', {
+      hasMetadata: !!decryptedSignature.metadata,
+      hasAuditTrail: !!decryptedSignature.metadata?.auditTrail,
+      auditTrailRecords: decryptedSignature.metadata?.auditTrail?.trail?.records?.length || 0,
+      hasSignatureData: !!decryptedSignature.signature,
+      signatureId: decryptedSignature._id?.toString()
+    })
+
+    // Get combined audit trail from both systems
+    let auditTrailRecords = []
+    try {
+      const signRequestId = decryptedSignature._id?.toString() || contractId
+      const combinedTrail = await getCombinedAuditTrail({
+        signRequestId,
+        contractId,
+        oldAuditTrail: decryptedSignature.metadata?.auditTrail || decryptedSignature.auditTrail
+      })
+
+      console.log('[PDF DEBUG] Combined audit trail events:', combinedTrail.length)
+
+      // Convert to expected format
+      auditTrailRecords = combinedTrail.map(event => ({
+        timestamp: event.timestamp || new Date(),
+        action: event.action,
+        actor: event.actor || { id: 'system', type: 'system' },
+        details: event.details || {},
+        metadata: event.metadata || {}
+      }))
+    } catch (error) {
+      console.error('[PDF DEBUG] Error getting combined audit trail:', error)
+      // Fallback to old audit trail
+      auditTrailRecords = decryptedSignature.metadata?.auditTrail?.trail?.records ||
+                          decryptedSignature.auditTrail?.trail?.records || []
+    }
+
+    console.log('[PDF DEBUG] Final audit trail records for PDF:', auditTrailRecords.length)
 
     // Verify audit trail integrity
     const auditVerification = auditTrailService.verifyAuditTrailIntegrity(contractId)
@@ -98,7 +198,7 @@ export async function GET(
         consentGiven: true,
         intentToBind: true,
         signatureAgreement: 'User agreed to electronic signature terms',
-        auditTrail: decryptedSignature.metadata?.auditTrail?.trail?.records || []
+        auditTrail: auditTrailRecords
       }
     }
 
@@ -195,27 +295,62 @@ export async function GET_CSV(
   }
 
   try {
-    // Authenticate user
-    const session = await auth()
-    if (!session?.user?.id) {
+    // Get authentication context (supports session, API keys, and OAuth JWT)
+    const authContext = await getAuthContext(request)
+
+    if (!authContext) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // @ts-ignore - customerId is a custom property  
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json({ error: 'Customer ID not found' }, { status: 401 })
-    }
+    const { userId, customerId } = authContext
 
     const { id: contractId } = await params
 
-    // Get signatures
+    // Get signatures from both collections (same logic as PDF generation)
     const signaturesCollection = await getSignaturesCollection()
-    const signatures = await signaturesCollection.find({
+    let signatures = await signaturesCollection.find({
       contractId: contractId,
       customerId: customerId,
       type: 'signature'
     }).sort({ createdAt: -1 }).toArray()
+
+    // Check signature_requests if no completed signatures found
+    if (signatures.length === 0) {
+      const db = await getDatabase()
+      const signatureRequestsCollection = db.collection('signature_requests')
+      const signatureRequests = await signatureRequestsCollection.find({
+        contractId: contractId,
+        customerId: customerId,
+        status: { $in: ['signed', 'completed'] }
+      }).sort({ createdAt: -1 }).toArray()
+
+      if (signatureRequests.length > 0) {
+        signatures = signatureRequests.map(req => ({
+          _id: req._id,
+          contractId: req.contractId,
+          customerId: req.customerId,
+          type: 'signature',
+          signature: req.signatureData || req.signature || '',
+          createdAt: req.signedAt || req.updatedAt || req.createdAt,
+          ipAddress: req.ipAddress || '',
+          userAgent: req.userAgent || '',
+          metadata: {
+            signatureMethod: req.signatureType || 'electronic',
+            signerInfo: {
+              clientName: req.clientName || req.signerName || '',
+              clientTaxId: req.clientTaxId || '',
+              clientEmail: req.signerEmail || '',
+              clientPhone: req.signerPhone || '',
+              allFields: req.dynamicFieldValues || {}
+            },
+            documentHash: req.documentHash || '',
+            deviceMetadata: req.deviceMetadata || {},
+            auditTrail: req.auditTrail || {}
+          },
+          auditTrailId: req.contractId
+        }))
+      }
+    }
 
     if (signatures.length === 0) {
       return NextResponse.json({ error: 'No signatures found' }, { status: 404 })

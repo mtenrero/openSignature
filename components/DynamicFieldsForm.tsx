@@ -66,16 +66,15 @@ export function DynamicFieldsForm({
     // Handle both DynamicField (has 'enabled') and UserField (no 'enabled' property)
     // UserFields are always considered enabled if they exist
     const isEnabled = 'enabled' in field ? field.enabled : true
-    
+
     if (!isEnabled) {
-      console.log(`Field ${field.name} excluded: not enabled`)
       return false
     }
-    
+
     // For UserFields, they should always be included for user input
     // regardless of whether they have values or not
     const fieldType = 'enabled' in field ? 'DynamicField' : 'UserField'
-    
+
     // Include all enabled fields - let the user decide when to submit
     return true
   })
@@ -217,23 +216,18 @@ export function DynamicFieldsForm({
   }
 
   // Auto-submit if no fields are needed
+  // This should only happen once on mount if there are truly no fields to show
   const hasAutoSubmitted = useRef(false)
-  
-  const stableOnSubmit = useCallback(() => {
-    onSubmit()
-  }, [onSubmit])
-  
+  const initialFieldCount = useRef(userInputFields.length)
+
   useEffect(() => {
-    // Uncomment for debugging:
-    // console.log('DynamicFieldsForm useEffect triggered:', {
-    //   userInputFieldsLength: userInputFields.length,
-    //   hasAutoSubmittedCurrent: hasAutoSubmitted.current,
-    //   shouldAutoSubmit: userInputFields.length === 0 && !hasAutoSubmitted.current
-    // })
-    
-    if (userInputFields.length === 0 && !hasAutoSubmitted.current) {
-      // No fields needed, proceed directly
-      // console.log('Auto-submitting because no user input fields needed')
+    // Only auto-submit if:
+    // 1. We haven't already submitted
+    // 2. There are no user input fields
+    // 3. The initial field count was also 0 (to prevent race conditions)
+    if (userInputFields.length === 0 &&
+        initialFieldCount.current === 0 &&
+        !hasAutoSubmitted.current) {
       hasAutoSubmitted.current = true
       // Use setTimeout to ensure this runs after render
       setTimeout(() => {
@@ -241,13 +235,6 @@ export function DynamicFieldsForm({
       }, 0)
     }
   }, [userInputFields.length, onSubmit])
-  
-  // Reset flag when fields change
-  useEffect(() => {
-    if (userInputFields.length > 0) {
-      hasAutoSubmitted.current = false
-    }
-  }, [userInputFields.length])
 
   if (userInputFields.length === 0) {
     return null

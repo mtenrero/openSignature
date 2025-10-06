@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSignatureRequestsCollection, getContractsCollection, getVariablesCollection, CustomerEncryption } from '@/lib/db/mongodb'
 import { ObjectId } from 'mongodb'
+import crypto from 'crypto'
 import { extractClientIP, createSignatureMetadata } from '@/lib/deviceMetadata'
 import { auditTrailService } from '@/lib/auditTrail'
 import { extractSignerInfo } from '@/lib/contractUtils'
@@ -23,9 +24,18 @@ export async function GET(
     
     console.log('[DEBUG] GET sign-requests:', { shortId, accessKey })
 
-    // Capture IP address and basic metadata for audit trail
+    // Capture IP address and comprehensive metadata for audit trail
     const clientIP = extractClientIP(request)
     const userAgent = request.headers.get('user-agent') || ''
+    const deviceMetadata = {
+      ipAddress: clientIP,
+      userAgent: userAgent,
+      timestamp: new Date().toISOString(),
+      screenResolution: request.headers.get('sec-ch-ua-mobile') ? 'mobile' : 'desktop',
+      timezone: request.headers.get('x-timezone') || 'unknown',
+      language: request.headers.get('accept-language')?.split(',')[0] || 'unknown',
+      platform: userAgent.includes('Mobile') ? 'mobile' : 'desktop'
+    }
 
     // Basic validation - support both nanoid(10) and generateShortId() formats
     if (!shortId || shortId.length < 5) {
@@ -87,7 +97,12 @@ export async function GET(
 
     // Validate access key - support both formats
     let isValidAccessKey = false
-    
+
+    console.log('[DEBUG] Access validation - shortId:', shortId)
+    console.log('[DEBUG] Access validation - provided accessKey:', accessKey)
+    console.log('[DEBUG] Access validation - customerId:', signatureRequest.customerId)
+    console.log('[DEBUG] Access validation - stored accessKey:', signatureRequest.accessKey)
+
     if (signatureRequest.accessKey) {
       // New format: stored access key (from /api/sign-requests)
       console.log('[DEBUG] GET - Using stored accessKey:', signatureRequest.accessKey)
@@ -96,9 +111,10 @@ export async function GET(
       // Legacy format: generated from base64 (from /api/signature-requests)
       const expectedAccessKey = Buffer.from(`${shortId}:${signatureRequest.customerId}`).toString('base64').slice(0, 6)
       console.log('[DEBUG] GET - Generated accessKey:', expectedAccessKey, 'provided:', accessKey)
+      console.log('[DEBUG] GET - Comparison string:', `${shortId}:${signatureRequest.customerId}`)
       isValidAccessKey = accessKey === expectedAccessKey
     }
-    
+
     console.log('[DEBUG] GET - Access key valid:', isValidAccessKey)
     
     if (!isValidAccessKey) {
@@ -239,6 +255,61 @@ export async function GET(
       // Don't fail the request if audit logging fails
     }
 
+    // Register document access event for audit trail
+    try {
+      // Get document hash for integrity verification
+      const contractHash = contractData.content ?
+        crypto.createHash('sha256').update(contractData.content).digest('hex') :
+        'unknown'
+
+      // Register document access event (each visit)
+      auditTrailService.addAuditRecord({
+        resourceId: signatureRequest.contractId,
+        action: 'document_accessed',
+        actor: {
+          id: signatureRequest.signerEmail || 'unknown',
+          type: 'user',
+          identifier: signatureRequest.signerEmail || 'anonymous'
+        },
+        resource: {
+          type: 'document',
+          id: signatureRequest.contractId,
+          name: contractData.name || 'Contrato'
+        },
+        details: {
+          documentHash: contractHash,
+          documentSize: contractData.content?.length || 0,
+          accessMethod: 'web_interface',
+          accessKey: accessKey,
+          contractSnapshot: {
+            id: signatureRequest.contractId,
+            name: contractData.name,
+            createdAt: signatureRequest.contractSnapshot?.snapshotCreatedAt,
+            hash: contractHash
+          },
+          sessionId: signatureRequest._id.toString(),
+          visitNumber: signatureRequest.visitCount || 1,
+          expiresAt: signatureRequest.expiresAt
+        },
+        metadata: {
+          ipAddress: clientIP,
+          userAgent: userAgent,
+          deviceMetadata: deviceMetadata,
+          session: signatureRequest._id.toString()
+        }
+      })
+
+      console.log('[AUDIT] Document access event registered for:', {
+        shortId,
+        contractId: signatureRequest.contractId,
+        ip: clientIP,
+        hash: contractHash
+      })
+    } catch (auditError) {
+      console.warn('[AUDIT] Failed to register document access event:', auditError)
+      // Don't fail the request if audit logging fails
+    }
+
     // Return the sign request details and contract data
     return NextResponse.json({
       authorized: true,
@@ -246,10 +317,15 @@ export async function GET(
         id: signatureRequest._id,
         shortId: signatureRequest.shortId,
         status: signatureRequest.status,
+        signerName: signatureRequest.signerName,
+        signerEmail: signatureRequest.signerEmail,
+        signerPhone: signatureRequest.signerPhone,
         recipientEmail: signatureRequest.signerEmail,
         recipientPhone: signatureRequest.signerPhone,
         expiresAt: signatureRequest.expiresAt,
-        createdAt: signatureRequest.createdAt
+        createdAt: signatureRequest.createdAt,
+        // 🔥 NEW: Include pre-filled dynamic field values from the partner/API
+        dynamicFieldValues: signatureRequest.dynamicFieldValues || null
       },
       contract: {
         id: contractData._id,
@@ -347,7 +423,57 @@ export async function PUT(
     // Debug: Log dynamic field values
     console.log('[SIGNER DEBUG] Dynamic field values received:', JSON.stringify(dynamicFieldValues, null, 2))
     console.log('[SIGNER DEBUG] User fields from contract:', JSON.stringify(signatureRequest.contractSnapshot?.userFields, null, 2))
-    
+
+    // Register optional data provided event for audit trail
+    try {
+      if (dynamicFieldValues && Object.keys(dynamicFieldValues).length > 0) {
+        // Register each field as a separate audit event
+        Object.entries(dynamicFieldValues).forEach(([fieldName, fieldValue]) => {
+          if (fieldValue && fieldValue.toString().trim() !== '') {
+            const fieldHash = crypto.createHash('sha256').update(fieldValue.toString()).digest('hex')
+
+            auditTrailService.addAuditRecord({
+              resourceId: signatureRequest.contractId,
+              action: 'optional_data_provided',
+              actor: {
+                id: signatureRequest.signerEmail || 'unknown',
+                type: 'user',
+                identifier: signatureRequest.signerEmail || 'anonymous'
+              },
+              resource: {
+                type: 'contract',
+                id: signatureRequest.contractId,
+                name: signatureRequest.contractSnapshot?.name || 'Contrato'
+              },
+              details: {
+                fieldName: fieldName,
+                fieldValue: fieldHash, // Store hash for privacy
+                fieldType: typeof fieldValue,
+                isRequired: false, // Optional fields
+                validationPassed: true, // Assume valid if submitted
+                providedAt: new Date(),
+                sessionId: signatureRequest._id.toString()
+              },
+              metadata: {
+                ipAddress: clientIP,
+                userAgent: request.headers.get('user-agent') || '',
+                session: signatureRequest._id.toString()
+              }
+            })
+          }
+        })
+
+        console.log('[AUDIT] Optional data provided events registered for:', {
+          shortId,
+          fieldsCount: Object.keys(dynamicFieldValues).length,
+          contractId: signatureRequest.contractId
+        })
+      }
+    } catch (auditError) {
+      console.warn('[AUDIT] Failed to register optional data events:', auditError)
+      // Don't fail the request if audit logging fails
+    }
+
     // Extract signer information from dynamic fields
     const signerInfo = extractSignerInfo(dynamicFieldValues || [], signatureRequest.contractSnapshot?.userFields || [])
     
@@ -356,28 +482,49 @@ export async function PUT(
     // Generate comprehensive document hash for integrity verification
     const crypto = require('crypto')
     const contractContent = signatureRequest.contractSnapshot?.content || ''
-    
+
+    // Helper function for deterministic JSON stringify (sorted keys)
+    const deterministicStringify = (obj: any): string => {
+      if (obj === null) return 'null'
+      if (typeof obj !== 'object') return JSON.stringify(obj)
+      if (Array.isArray(obj)) return '[' + obj.map(deterministicStringify).join(',') + ']'
+
+      const keys = Object.keys(obj).sort()
+      const pairs = keys.map(key => {
+        const value = deterministicStringify(obj[key])
+        return JSON.stringify(key) + ':' + value
+      })
+      return '{' + pairs.join(',') + '}'
+    }
+
     // Create a deterministic object for hashing
+    // IMPORTANT: Ensure all values are properly defined (no undefined values)
+    // MongoDB converts undefined to null, which would cause hash mismatch
     const hashData = {
-      contractId: signatureRequest.contractId,
-      contractContent: contractContent,
-      contractName: signatureRequest.contractSnapshot?.name,
+      contractId: signatureRequest.contractId || null,
+      contractContent: contractContent || '',
+      contractName: signatureRequest.contractSnapshot?.name || null,
       dynamicFieldValues: dynamicFieldValues || {},
       signerInfo: {
-        name: signerInfo.clientName || signatureRequest.signerName,
-        taxId: signerInfo.clientTaxId,
-        email: signerInfo.clientEmail || signatureRequest.signerEmail,
-        phone: signerInfo.clientPhone || signatureRequest.signerPhone
+        name: signerInfo.clientName || signatureRequest.signerName || null,
+        taxId: signerInfo.clientTaxId || null,
+        email: signerInfo.clientEmail || signatureRequest.signerEmail || null,
+        phone: signerInfo.clientPhone || signatureRequest.signerPhone || null
       },
-      signatureMethod: signatureRequest.deliveryMethod,
+      signatureMethod: signatureRequest.deliveryMethod || null,
       timestamp: new Date().toISOString()
     }
-    
-    // Generate SHA-256 hash of the complete data
+
+    // Generate SHA-256 hash of the complete data using deterministic stringify
+    console.log('[HASH DEBUG] hashData before hashing:', JSON.stringify(hashData, null, 2))
+    console.log('[HASH DEBUG] deterministicStringify output:', deterministicStringify(hashData))
+
     const documentHash = crypto
       .createHash('sha256')
-      .update(JSON.stringify(hashData))
+      .update(deterministicStringify(hashData))
       .digest('hex')
+
+    console.log('[HASH DEBUG] Generated documentHash:', documentHash)
     
     // Determine signature method based on access type
     // QR code access should be 'ELECTRONIC_DEVICE', others default to 'ELECTRONIC'
@@ -491,7 +638,10 @@ export async function PUT(
         value: signature,
         method: signatureMethod,
         duration: clientMetadata?.signatureData?.duration,
-        points: clientMetadata?.signatureData?.points
+        points: clientMetadata?.signatureData?.points,
+        hash: signature ? crypto.createHash('sha256').update(signature).digest('hex') : 'unknown',
+        coordinates: clientMetadata?.signatureData?.coordinates || null,
+        timestamp: new Date()
       },
       deviceMetadata: signatureMetadata,
       interactionEvents: clientMetadata?.interactionEvents || [],
@@ -513,9 +663,15 @@ export async function PUT(
     // Seal the audit trail to ensure integrity
     auditTrailService.sealAuditTrail(signatureRequest.contractId)
 
+    // Export audit trail before updating (to persist in MongoDB)
+    const exportedAuditTrail = auditTrailService.exportAuditTrail(signatureRequest.contractId)
+
+    // Extract all audit records for MongoDB storage
+    const allAuditRecords = exportedAuditTrail?.trail?.records || []
+
     // Update the signature request to signed status with qualified timestamp
     const updateResult = await collection.findOneAndUpdate(
-      { 
+      {
         _id: signatureRequest._id,
         status: 'pending'
       },
@@ -526,7 +682,8 @@ export async function PUT(
           signatureData: signature,
           dynamicFieldValues: dynamicFieldValues || {},
           signatureMetadata: signatureMetadata,
-          auditTrail: auditTrailService.exportAuditTrail(signatureRequest.contractId),
+          auditTrail: exportedAuditTrail, // Full exported audit trail
+          auditRecords: allAuditRecords, // Individual records for easy querying
           auditSealedAt: new Date(),
           signerInfo: signerInfo,
           hashData: hashData, // Store the data used to generate the hash

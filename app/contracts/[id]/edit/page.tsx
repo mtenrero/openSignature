@@ -33,6 +33,7 @@ const userDynamicFieldsConfig: DynamicField[] = [
 ]
 
 // Campos dinámicos predefinidos para el firmante (cliente)
+// IMPORTANTE: Estos campos son OBLIGATORIOS y deben estar siempre presentes
 const defaultUserFields: LocalUserField[] = [
   {
     id: 'client-name',
@@ -40,17 +41,35 @@ const defaultUserFields: LocalUserField[] = [
     type: 'text',
     required: true,
     placeholder: 'Ingrese su nombre completo',
-    label: 'Nombre del cliente',
+    label: 'Nombre del firmante',
     order: 1
   },
   {
     id: 'client-tax-id',
     name: 'clientTaxId',
-    type: 'text', 
+    type: 'text',
     required: true,
-    placeholder: 'Ingrese su identificación fiscal',
-    label: 'Identificador fiscal del cliente',
+    placeholder: 'Ingrese su NIF/DNI/CIF',
+    label: 'NIF del firmante',
     order: 2
+  },
+  {
+    id: 'client-phone',
+    name: 'clientPhone',
+    type: 'phone',
+    required: false,
+    placeholder: 'Ingrese su teléfono (opcional)',
+    label: 'SMS del firmante (opcional)',
+    order: 3
+  },
+  {
+    id: 'client-email',
+    name: 'clientEmail',
+    type: 'email',
+    required: false,
+    placeholder: 'Ingrese su email (opcional)',
+    label: 'Mail del firmante (opcional)',
+    order: 4
   }
 ]
 
@@ -1013,7 +1032,7 @@ export default function ContractEditorPage() {
                       ) : (
                         <>
                           • Variables de tu cuenta (nombre, dirección, NIF, etc.)<br />
-                          • Campos obligatorios (nombre y NIF del cliente)<br />
+                          • 4 campos predefinidos del firmante (nombre, NIF, SMS, mail)<br />
                           • Estructura legal española con cláusulas de cumplimiento<br />
                           • Campos dinámicos adicionales según el tipo de contrato
                         </>
@@ -1201,57 +1220,74 @@ export default function ContractEditorPage() {
               </Group>
 
               {/* Mandatory Fields Warning */}
-              <Card shadow="sm" padding="md" radius="md" withBorder mb="md" style={{ borderColor: 'var(--mantine-color-orange-3)', backgroundColor: 'var(--mantine-color-orange-0)' }}>
+              <Card shadow="sm" padding="md" radius="md" withBorder mb="md" style={{ borderColor: 'var(--mantine-color-blue-3)', backgroundColor: 'var(--mantine-color-blue-0)' }}>
                 <Group>
                   <Box>
-                    <Text fw={600} c="orange" size="sm">Campos Obligatorios para Activación</Text>
-                    <Text size="xs" c="dimmed">
-                      Para activar este contrato y solicitar firmas, debes incluir los siguientes campos obligatorios:
+                    <Text fw={600} c="blue" size="sm">📋 Campos Predefinidos del Firmante</Text>
+                    <Text size="xs" c="dimmed" mb="xs">
+                      Todos los contratos incluyen 4 campos predefinidos que siempre están disponibles:
                     </Text>
                     <Stack gap="xs" mt="xs">
-                      <Text size="xs" c="orange">• Nombre del cliente (clientName)</Text>
-                      <Text size="xs" c="orange">• Identificador fiscal del cliente (clientTaxId)</Text>
+                      <Text size="xs" c="red" fw={600}>• Nombre del firmante (clientName) - OBLIGATORIO usar en el contenido</Text>
+                      <Text size="xs" c="red" fw={600}>• NIF del firmante (clientTaxId) - OBLIGATORIO usar en el contenido</Text>
+                      <Text size="xs" c="blue">• SMS del firmante (clientPhone) - Opcional</Text>
+                      <Text size="xs" c="blue">• Mail del firmante (clientEmail) - Opcional</Text>
                     </Stack>
                     <Text size="xs" c="dimmed" mt="xs">
-                      Estos campos aseguran el cumplimiento legal y la correcta identificación del firmante.
+                      ⚠️ El contrato no se puede activar si no usas los campos Nombre y NIF en el contenido.
                     </Text>
                   </Box>
                 </Group>
               </Card>
 
               <Stack gap="sm">
-                {contrato.userFields?.map(field => (
-                  <Card key={field.id} padding="sm" withBorder style={{ borderColor: 'var(--mantine-color-blue-3)' }}>
-                    <Group justify="space-between" align="center">
-                      <Box>
-                        <Text fw={500} c="blue">{field.label}</Text>
-                        <Text size="sm" c="dimmed">
-                          Nombre: {field.name} | Tipo: {field.type} | Requerido: {field.required ? 'Sí' : 'No'}
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                          Placeholder: {field.placeholder}
-                        </Text>
-                      </Box>
-                      <Group>
-                        <Button
-                          size="xs"
-                          variant="light"
-                          color="blue"
-                          onClick={() => handleInsertField(field.name, true)}
-                        >
-                          Insertar
-                        </Button>
-                        <ActionIcon
-                          color="red"
-                          variant="subtle"
-                          onClick={() => handleRemoveUserField(field.id)}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
+                {contrato.userFields?.map(field => {
+                  // Los campos predefinidos no se pueden eliminar
+                  const isPredefined = ['clientName', 'clientTaxId', 'clientPhone', 'clientEmail'].includes(field.name)
+                  const isMandatory = ['clientName', 'clientTaxId'].includes(field.name)
+
+                  return (
+                    <Card key={field.id} padding="sm" withBorder style={{
+                      borderColor: isMandatory ? 'var(--mantine-color-red-3)' : 'var(--mantine-color-blue-3)',
+                      backgroundColor: isPredefined ? 'var(--mantine-color-gray-0)' : 'transparent'
+                    }}>
+                      <Group justify="space-between" align="center">
+                        <Box>
+                          <Group gap="xs">
+                            <Text fw={500} c={isMandatory ? 'red' : 'blue'}>{field.label}</Text>
+                            {isPredefined && <Badge size="xs" color={isMandatory ? 'red' : 'blue'}>Predefinido</Badge>}
+                            {isMandatory && <Badge size="xs" color="red">Obligatorio</Badge>}
+                          </Group>
+                          <Text size="sm" c="dimmed">
+                            Nombre: {field.name} | Tipo: {field.type} | Requerido: {field.required ? 'Sí' : 'No'}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            Placeholder: {field.placeholder}
+                          </Text>
+                        </Box>
+                        <Group>
+                          <Button
+                            size="xs"
+                            variant="light"
+                            color="blue"
+                            onClick={() => handleInsertField(field.name, true)}
+                          >
+                            Insertar
+                          </Button>
+                          {!isPredefined && (
+                            <ActionIcon
+                              color="red"
+                              variant="subtle"
+                              onClick={() => handleRemoveUserField(field.id)}
+                            >
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          )}
+                        </Group>
                       </Group>
-                    </Group>
-                  </Card>
-                ))}
+                    </Card>
+                  )
+                })}
                 {(!contrato.userFields || contrato.userFields.length === 0) && (
                   <Text c="dimmed" ta="center" py="lg">
                     No hay campos dinámicos configurados

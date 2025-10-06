@@ -71,12 +71,42 @@ export async function getCombinedAuditTrail(params: {
   signRequestId: string
   contractId?: string
   oldAuditTrail?: any
+  accessLogs?: any[]
 }): Promise<any[]> {
-  const { signRequestId, oldAuditTrail } = params
+  const { signRequestId, oldAuditTrail, accessLogs } = params
 
   // Intentar obtener del nuevo sistema primero
   try {
     const summary = await getAuditSummary(signRequestId)
+
+    // Si no hay datos en el nuevo sistema, usar el viejo
+    if (!summary) {
+      let allRecords: any[] = []
+
+      // Incluir access logs si existen
+      if (accessLogs && Array.isArray(accessLogs)) {
+        allRecords = [...accessLogs]
+      }
+
+      // Manejar diferentes formatos del sistema antiguo
+      if (oldAuditTrail?.trail?.records) {
+        const auditRecords = oldAuditTrail.trail.records.map((record: any) => ({
+          action: record.action,
+          timestamp: record.timestamp,
+          ipAddress: record.metadata?.ipAddress,
+          userAgent: record.metadata?.userAgent,
+          details: record.details
+        }))
+        allRecords = [...allRecords, ...auditRecords]
+      } else if (Array.isArray(oldAuditTrail)) {
+        allRecords = [...allRecords, ...oldAuditTrail]
+      }
+
+      // Ordenar por timestamp
+      allRecords.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+
+      return allRecords
+    }
 
     // Convertir el summary a formato compatible con la UI
     const events: any[] = []
@@ -220,20 +250,33 @@ export async function getCombinedAuditTrail(params: {
     return events
 
   } catch (error) {
-    console.log('New audit system not available, falling back to old system:', error)
+    console.error('Error getting audit trail from new system, falling back to old system:', error)
+
+    let allRecords: any[] = []
+
+    // Incluir access logs si existen
+    if (accessLogs && Array.isArray(accessLogs)) {
+      allRecords = [...accessLogs]
+    }
 
     // Fallback al sistema antiguo
     if (oldAuditTrail?.trail?.records) {
-      return oldAuditTrail.trail.records.map((record: any) => ({
+      const auditRecords = oldAuditTrail.trail.records.map((record: any) => ({
         action: record.action,
         timestamp: record.timestamp,
         ipAddress: record.metadata?.ipAddress,
         userAgent: record.metadata?.userAgent,
         details: record.details
       }))
+      allRecords = [...allRecords, ...auditRecords]
+    } else if (Array.isArray(oldAuditTrail)) {
+      allRecords = [...allRecords, ...oldAuditTrail]
     }
 
-    return []
+    // Ordenar por timestamp
+    allRecords.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+
+    return allRecords
   }
 }
 

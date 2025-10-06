@@ -130,8 +130,25 @@ export class SimplePDFGenerator {
       // Page 3: Signature details
       doc.addPage()
       this.addSignatureDetailsPage(doc, signature, qrCodeDataUrl, verificationUrl)
-      
-      // Page 3: CSV verification data - REMOVED as requested
+
+      // Page 4: Audit Trail Table
+      console.log('[SIMPLE PDF] Audit trail check:', {
+        hasEvidence: !!signature.evidence,
+        hasAuditTrail: !!signature.evidence?.auditTrail,
+        auditTrailLength: signature.evidence?.auditTrail?.length,
+        auditTrailType: typeof signature.evidence?.auditTrail,
+        isArray: Array.isArray(signature.evidence?.auditTrail)
+      })
+
+      if (signature.evidence.auditTrail && signature.evidence.auditTrail.length > 0) {
+        console.log('[SIMPLE PDF] Adding audit trail page with', signature.evidence.auditTrail.length, 'events')
+        doc.addPage()
+        this.addAuditTrailPage(doc, signature.evidence.auditTrail)
+      } else {
+        console.log('[SIMPLE PDF] Skipping audit trail page - no events or empty array')
+      }
+
+      // Page 5: CSV verification data - REMOVED as requested
       // doc.addPage()
       // this.addCSVVerificationPage(doc, csvData, signature)
       
@@ -664,6 +681,203 @@ export class SimplePDFGenerator {
     doc.text('oSign.EU: Plataforma de Firma Electronica', 107, 228, { align: 'center' })
   }
   
+  /**
+   * Add audit trail events table page
+   */
+  private addAuditTrailPage(doc: jsPDF, auditTrail: any[]) {
+    // Header
+    doc.setFillColor(41, 128, 185)
+    doc.rect(0, 0, 210, 20, 'F')
+
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.text('REGISTRO DE AUDITORÍA', 105, 13, { align: 'center' })
+
+    // Reset text color
+    doc.setTextColor(0, 0, 0)
+
+    // Description section
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(73, 80, 87)
+    doc.text('Registro cronológico completo de todos los eventos relacionados con este documento:', 20, 30)
+
+    // Table header background
+    doc.setFillColor(52, 73, 94) // Dark blue
+    doc.rect(15, 40, 180, 10, 'F')
+
+    // Table headers - simplified without "Detalles" column
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'bold')
+    doc.text('#', 17, 47)
+    doc.text('Fecha y Hora', 25, 47)
+    doc.text('Acción', 80, 47)
+    doc.text('Dirección IP', 135, 47)
+
+    // Table rows
+    let yPosition = 55
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+
+    auditTrail.forEach((event: any, index: number) => {
+      // Extract details for this event
+      const details = this.extractAuditDetails(event)
+      const hasDetails = details && details !== '-' && details !== 'Ver registro'
+
+      // Calculate row height based on whether we have details
+      const rowHeight = hasDetails ? 15 : 10
+
+      // Check if we need a new page (accounting for row height)
+      if (yPosition + rowHeight > 270) {
+        doc.addPage()
+
+        // Add continuation header
+        doc.setFillColor(41, 128, 185)
+        doc.rect(0, 0, 210, 15, 'F')
+        doc.setTextColor(255, 255, 255)
+        doc.setFontSize(12)
+        doc.setFont('helvetica', 'bold')
+        doc.text('REGISTRO DE AUDITORÍA (continuación)', 105, 10, { align: 'center' })
+
+        // Re-add table header
+        doc.setFillColor(52, 73, 94)
+        doc.rect(15, 25, 180, 10, 'F')
+        doc.setTextColor(255, 255, 255)
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'bold')
+        doc.text('#', 17, 32)
+        doc.text('Fecha y Hora', 25, 32)
+        doc.text('Acción', 80, 32)
+        doc.text('Dirección IP', 135, 32)
+
+        yPosition = 40
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(8)
+      }
+
+      // Alternating row colors
+      if (index % 2 === 0) {
+        doc.setFillColor(248, 249, 250)
+        doc.rect(15, yPosition - 5, 180, rowHeight, 'F')
+      }
+
+      // Row data
+      doc.setTextColor(73, 80, 87)
+
+      // Event number
+      doc.text((index + 1).toString(), 17, yPosition)
+
+      // Timestamp
+      const timestamp = event.timestamp ? new Date(event.timestamp).toLocaleString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      }) : 'N/A'
+      doc.text(timestamp, 25, yPosition)
+
+      // Action - translate and format
+      const action = this.translateAuditAction(event.action || event.type || 'unknown')
+      const actionText = action.length > 28 ? action.substring(0, 26) + '...' : action
+      doc.text(actionText, 80, yPosition)
+
+      // IP Address
+      const ipAddress = event.ipAddress || event.ip || 'N/A'
+      const ipText = ipAddress.length > 25 ? ipAddress.substring(0, 23) + '...' : ipAddress
+      doc.text(ipText, 135, yPosition)
+
+      // Details in sublayer (indented, smaller font, gray)
+      if (hasDetails) {
+        doc.setFontSize(7)
+        doc.setTextColor(108, 117, 125) // Gray color
+        doc.setFont('helvetica', 'italic')
+        // Wrap details text if too long
+        const maxDetailWidth = 170
+        const detailLines = doc.splitTextToSize(details, maxDetailWidth)
+        doc.text(detailLines[0], 25, yPosition + 4) // Show first line only to keep it compact
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(8)
+        doc.setTextColor(73, 80, 87) // Reset color
+      }
+
+      yPosition += rowHeight
+    })
+
+    // Summary section
+    const summaryY = Math.min(yPosition + 10, 250)
+    doc.setFillColor(46, 204, 113) // Green
+    doc.rect(15, summaryY, 180, 20, 'F')
+
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'bold')
+    doc.text(`Total de eventos registrados: ${auditTrail.length}`, 105, summaryY + 8, { align: 'center' })
+
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'normal')
+    doc.text('Todos los eventos están protegidos criptográficamente con hash SHA-256', 105, summaryY + 15, { align: 'center' })
+  }
+
+  /**
+   * Translate audit action codes to Spanish
+   */
+  private translateAuditAction(action: string): string {
+    const translations: { [key: string]: string } = {
+      'contract_created': 'Contrato creado',
+      'signature_requested': 'Firma solicitada',
+      'signature_link_sent': 'Enlace enviado',
+      'signature_page_viewed': 'Página vista',
+      'signature_started': 'Firma iniciada',
+      'signature_completed': 'Firma completada',
+      'document_signed': 'Documento firmado',
+      'pdf_generated': 'PDF generado',
+      'pdf_descargado': 'PDF descargado',
+      'contract_updated': 'Contrato actualizado',
+      'contract_deleted': 'Contrato eliminado',
+      'email_sent': 'Email enviado',
+      'sms_sent': 'SMS enviado',
+      'verification_viewed': 'Verificación vista',
+      'integrity_verified': 'Integridad verificada'
+    }
+    return translations[action] || action
+  }
+
+  /**
+   * Extract meaningful details from audit event
+   */
+  private extractAuditDetails(event: any): string {
+    if (event.details) {
+      if (typeof event.details === 'string') {
+        return event.details
+      }
+      if (typeof event.details === 'object') {
+        // Extract key details
+        const parts = []
+        if (event.details.email) parts.push(`Email: ${event.details.email}`)
+        if (event.details.phone) parts.push(`Tel: ${event.details.phone}`)
+        if (event.details.method) parts.push(`Método: ${event.details.method}`)
+        if (event.details.status) parts.push(`Estado: ${event.details.status}`)
+        if (event.details.userAgent) {
+          const ua = event.details.userAgent
+          if (ua.includes('Mobile')) parts.push('Móvil')
+          else if (ua.includes('Windows')) parts.push('Windows')
+          else if (ua.includes('Mac')) parts.push('Mac')
+        }
+        return parts.join(', ') || 'Ver registro'
+      }
+    }
+    if (event.userAgent) {
+      const ua = event.userAgent
+      if (ua.includes('Mobile')) return 'Móvil'
+      if (ua.includes('Windows')) return 'Windows'
+      if (ua.includes('Mac')) return 'Mac'
+    }
+    return '-'
+  }
+
   /**
    * Add CSV verification page with professional design
    */

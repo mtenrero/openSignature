@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 import { auth } from '@/lib/auth/config'
-import { 
-  getContractsCollection, 
-  mongoHelpers, 
+import { getAuthContext } from '@/lib/auth/unified'
+import {
+  getContractsCollection,
+  mongoHelpers,
   handleDatabaseError,
-  CustomerEncryption 
+  CustomerEncryption
 } from '@/lib/db/mongodb'
 import { ObjectId } from 'mongodb'
 import { validateMandatoryFields } from '@/lib/contractUtils'
@@ -18,23 +19,18 @@ export async function GET(
 ) {
   try {
     const params = await context.params
-    const session = await auth()
 
-    if (!session?.user?.id) {
+    // Get authentication context (supports session, API keys, and OAuth JWT)
+    const authContext = await getAuthContext(request)
+
+    if (!authContext) {
       return NextResponse.json(
         { error: 'Unauthorized - Please sign in' },
         { status: 401 }
       )
     }
 
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json(
-        { error: 'Customer ID not found in session' },
-        { status: 401 }
-      )
-    }
+    const { userId, customerId } = authContext
 
     // Get collection instance for this customer
     const collection = await getContractsCollection()
@@ -84,23 +80,18 @@ export async function PUT(
 ) {
   try {
     const params = await context.params
-    const session = await auth()
 
-    if (!session?.user?.id) {
+    // Get authentication context (supports session, API keys, and OAuth JWT)
+    const authContext = await getAuthContext(request)
+
+    if (!authContext) {
       return NextResponse.json(
         { error: 'Unauthorized - Please sign in' },
         { status: 401 }
       )
     }
 
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json(
-        { error: 'Customer ID not found in session' },
-        { status: 401 }
-      )
-    }
+    const { userId, customerId } = authContext
 
     const body = await request.json()
 
@@ -234,23 +225,18 @@ export async function DELETE(
 ) {
   try {
     const params = await context.params
-    const session = await auth()
 
-    if (!session?.user?.id) {
+    // Get authentication context (supports session, API keys, and OAuth JWT)
+    const authContext = await getAuthContext(request)
+
+    if (!authContext) {
       return NextResponse.json(
         { error: 'Unauthorized - Please sign in' },
         { status: 401 }
       )
     }
 
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json(
-        { error: 'Customer ID not found in session' },
-        { status: 401 }
-      )
-    }
+    const { userId, customerId } = authContext
 
     // Get collection instance for this customer
     const collection = await getContractsCollection()

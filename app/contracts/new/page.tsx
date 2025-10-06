@@ -212,10 +212,13 @@ export default function NewContractPage() {
               • Los campos de usuario permiten recopilar información del firmante
             </Text>
             <Text size="sm" fw={600} c="red">
-              • IMPORTANTE: Para activar el contrato y solicitar firmas, deberás agregar los campos obligatorios: Nombre del cliente y NIF del cliente
+              • IMPORTANTE: Todos los contratos incluyen 4 campos predefinidos del firmante: Nombre, NIF, SMS (opcional) y Mail (opcional)
             </Text>
             <Text size="sm">
-              • Estos campos obligatorios aseguran el cumplimiento legal y la correcta identificación del firmante
+              • Los campos Nombre y NIF son OBLIGATORIOS y deben estar usados en el contenido para activar el contrato
+            </Text>
+            <Text size="sm">
+              • Los campos SMS y Mail son opcionales pero recomendados para auditoría
             </Text>
           </Stack>
         </Card>

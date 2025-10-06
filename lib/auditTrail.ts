@@ -3,7 +3,7 @@
  * Ensures integrity and non-repudiation of audit records
  */
 
-import crypto from 'crypto'
+import * as crypto from 'crypto'
 import { DeviceMetadata } from './deviceMetadata'
 import { InteractionEvent } from './eidas/sesSignature'
 
@@ -449,6 +449,68 @@ export class AuditTrailService {
       verification,
       exportFormat: 'eIDAS-Audit-Trail-v1.0',
       exportedAt: new Date()
+    }
+  }
+
+  /**
+   * Monitor audit trail integrity across all resources
+   */
+  monitorAuditTrailIntegrity(): {
+    totalTrails: number
+    validTrails: number
+    invalidTrails: number
+    issues: Array<{ resourceId: string; issues: string[] }>
+  } {
+    const allTrails = Array.from(this.trails.entries())
+    const issues: Array<{ resourceId: string; issues: string[] }> = []
+
+    let validTrails = 0
+    let invalidTrails = 0
+
+    for (const [resourceId, trail] of allTrails) {
+      const verification = this.verifyAuditTrailIntegrity(resourceId)
+      if (verification.isValid) {
+        validTrails++
+      } else {
+        invalidTrails++
+        issues.push({ resourceId, issues: verification.issues })
+      }
+    }
+
+    return {
+      totalTrails: allTrails.length,
+      validTrails,
+      invalidTrails,
+      issues
+    }
+  }
+
+  /**
+   * Get audit statistics for monitoring
+   */
+  getAuditStatistics(): {
+    totalRecords: number
+    sealedTrails: number
+    averageEventsPerTrail: number
+    eventsByType: Record<string, number>
+  } {
+    const allTrails = Array.from(this.trails.values())
+    const totalRecords = allTrails.reduce((sum, trail) => sum + trail.records.length, 0)
+    const sealedTrails = allTrails.filter(trail => trail.isSealed).length
+    const averageEventsPerTrail = totalRecords / allTrails.length || 0
+
+    const eventsByType: Record<string, number> = {}
+    allTrails.forEach(trail => {
+      trail.records.forEach(record => {
+        eventsByType[record.action] = (eventsByType[record.action] || 0) + 1
+      })
+    })
+
+    return {
+      totalRecords,
+      sealedTrails,
+      averageEventsPerTrail,
+      eventsByType
     }
   }
 }

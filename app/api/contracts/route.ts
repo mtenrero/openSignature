@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
-import { auth } from '@/lib/auth/config'
+import { getAuthContext } from '@/lib/auth/unified'
 import {
   getContractsCollection,
   getSignatureRequestsCollection,
@@ -25,33 +25,26 @@ async function getSignRequestsCollection() {
 // GET /api/contracts - Get all contracts for the authenticated user
 export async function GET(request: NextRequest) {
   try {
-    // Get session from request headers/cookies (NextAuth v5)
-    const session = await auth()
+    // Get authentication context (supports both session and OAuth JWT)
+    const authContext = await getAuthContext(request)
 
-    if (!session?.user?.id) {
-      console.log('No session found in API route')
+    if (!authContext) {
+      console.log('No authentication found in API route')
       return NextResponse.json(
         { error: 'Unauthorized - Please sign in' },
         { status: 401 }
       )
     }
 
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json(
-        { error: 'Customer ID not found in session' },
-        { status: 401 }
-      )
-    }
-
-    console.log('Session found:', session.user.id, 'Customer:', customerId)
+    const { userId, customerId } = authContext
+    console.log('Auth context found - User:', userId, 'Customer:', customerId, 'OAuth:', authContext.isOAuth)
 
     // Get query parameters
     const url = new URL(request.url)
     const status = url.searchParams.get('status')
     const limit = parseInt(url.searchParams.get('limit') || '50')
     const skip = parseInt(url.searchParams.get('skip') || '0')
+    const full = url.searchParams.get('full') === 'true'
 
     // Build MongoDB query
     const query: any = {
@@ -70,9 +63,16 @@ export async function GET(request: NextRequest) {
     // Get collection instance for this customer
     const collection = await getContractsCollection()
 
+    // Define projection based on full parameter
+    const projection = full ? {} : {
+      content: 0,  // Exclude heavy HTML content
+      htmlContent: 0,  // Exclude alternative HTML content if exists
+      signedPdfBuffer: 0  // Exclude PDF binary data
+    }
+
     // Query contracts with pagination
     const contracts = await collection
-      .find(query)
+      .find(query, { projection })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)

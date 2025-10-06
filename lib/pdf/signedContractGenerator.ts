@@ -149,7 +149,7 @@ export class SignedContractPDFGenerator {
   }
   
   /**
-   * Create PDF document with signature and verification data
+   * Create PDF document with signature and verification data using PDFKit
    */
   private async createPDFDocument(
     contractContent: string,
@@ -161,42 +161,18 @@ export class SignedContractPDFGenerator {
     auditVerification: any = null,
     ownerPassword?: string
   ): Promise<Buffer> {
-    
+
     return new Promise((resolve, reject) => {
       try {
-        // Ensure we're in the right directory for font resolution
-        console.log('[PDF] Current working directory:', process.cwd())
-        console.log('[PDF] NODE_ENV:', process.env.NODE_ENV)
-        
-        // Try to create the missing directory structure
-        const rootPath = '/ROOT/node_modules/pdfkit/js/data'
-        const localFontsPath = path.resolve(process.cwd(), 'node_modules/pdfkit/js/data')
-        
-        try {
-          if (!fs.existsSync(rootPath)) {
-            console.log('[PDF] Creating missing font directory:', rootPath)
-            fs.mkdirSync(rootPath, { recursive: true })
-          }
-          
-          // Copy font files to the expected location
-          const fontFiles = ['Helvetica.afm', 'Helvetica-Bold.afm', 'Times-Roman.afm', 'Courier.afm']
-          for (const fontFile of fontFiles) {
-            const localFile = path.join(localFontsPath, fontFile)
-            const rootFile = path.join(rootPath, fontFile)
-            
-            if (fs.existsSync(localFile) && !fs.existsSync(rootFile)) {
-              console.log(`[PDF] Copying ${fontFile} to expected location`)
-              fs.copyFileSync(localFile, rootFile)
-            }
-          }
-        } catch (copyError) {
-          console.warn('[PDF] Could not copy font files:', copyError.message)
-        }
-        
-        // Create PDFDocument with password protection
-        const docOptions: any = { 
-          size: 'A4', 
+        // Create PDFDocument options with proper font configuration
+        // PDFKit 0.17.2+ has embedded fonts - no external font files needed
+        const docOptions: any = {
+          size: 'A4',
           margin: 50,
+          bufferPages: true,
+          autoFirstPage: true,
+          // Disable font subsetting to avoid AFM file requirements
+          compress: true,
           info: {
             Title: `Contrato Firmado - ${signature.document.originalName}`,
             Author: options.companyName || 'oSign.EU',
@@ -210,59 +186,52 @@ export class SignedContractPDFGenerator {
         // Add password protection if ownerPassword is provided
         if (ownerPassword) {
           docOptions.ownerPassword = ownerPassword
-          // No userPassword - PDF can be opened freely
           docOptions.permissions = {
-            printing: 'lowResolution',  // Allow low-res printing
-            modifying: false,           // Block modifications
-            copying: false,             // Block text copying
-            annotating: false,          // Block annotations
-            fillingForms: false,        // Block form filling
-            contentAccessibility: true, // Allow screen readers
-            documentAssembly: false     // Block page operations
+            printing: 'lowResolution',
+            modifying: false,
+            copying: false,
+            annotating: false,
+            fillingForms: false,
+            contentAccessibility: true,
+            documentAssembly: false
           }
         }
 
         const doc = new PDFDocument(docOptions)
-        
+
         const chunks: Buffer[] = []
-        
+
         doc.on('data', chunk => chunks.push(chunk))
         doc.on('end', () => resolve(Buffer.concat(chunks)))
         doc.on('error', reject)
-        
-        // Simple approach: just set fontSize without specifying font
-        // PDFKit should use its default internal font
-        try {
-          doc.fontSize(12)
-          console.log('[PDF] Using PDFKit default setup - no custom fonts')
-        } catch (error) {
-          console.warn('[PDF] Error in basic setup:', error)
-        }
-        
-        // Page 1: Contract Content
+
+        // Set default font and size
+        doc.fontSize(12)
+
+        // Page 1: Header and contract content
         this.addHeaderPage(doc, signature, options)
         this.addContractContent(doc, contractContent)
-        
+
         // Page 2: Signature Details
         doc.addPage()
         this.addSignatureDetailsPage(doc, signature, qrCodeDataUrl, verificationUrl)
-        
+
         // Page 3: Audit Trail Verification (if available)
         if (auditVerification) {
           doc.addPage()
           this.addAuditTrailVerificationPage(doc, auditVerification)
         }
-        
+
         // Page 4: CSV Verification Data
         doc.addPage()
         this.addCSVVerificationPage(doc, csvData, signature)
-        
+
         // Page 5: Legal Notice
         doc.addPage()
         this.addLegalNoticePage(doc, signature)
-        
+
         doc.end()
-        
+
       } catch (error) {
         reject(error)
       }
@@ -277,28 +246,28 @@ export class SignedContractPDFGenerator {
     if (options.companyLogo) {
       doc.image(options.companyLogo, 50, 50, { width: 100 })
     }
-    
+
     // Company name
     doc.fontSize(20)
        .fillColor('#2c3e50')
        .text(options.companyName || 'oSign.EU', 50, options.companyLogo ? 170 : 50)
-    
+
     // Document title
     doc.fontSize(24)
        .fillColor('#e74c3c')
        .text('CONTRATO FIRMADO ELECTRÓNICAMENTE', 50, 200, { align: 'center' })
-    
+
     // Document subtitle
     doc.fontSize(16)
        .fillColor('#34495e')
        .text('Firma Electrónica Simple (SES) - Conforme a eIDAS', 50, 240, { align: 'center' })
-    
+
     // Document info box
     doc.rect(50, 280, 495, 120)
        .stroke('#bdc3c7')
        .fillColor('#ecf0f1')
        .fill()
-    
+
     doc.fillColor('#2c3e50')
        .fontSize(12)
        .text('Información del Documento:', 60, 295, { continued: false })
@@ -308,25 +277,25 @@ export class SignedContractPDFGenerator {
        .text(`Firmante: ${signature.signer.identifier}`, 60, 360)
        .text(`Método: ${signature.signer.method.toUpperCase()}`, 60, 375)
   }
-  
+
   /**
    * Add contract content
    */
   private addContractContent(doc: PDFKit.PDFDocument, contractContent: string) {
     doc.addPage()
-    
+
     // Title
     doc.fontSize(18)
        .fillColor('#2c3e50')
        .text('CONTENIDO DEL CONTRATO', 50, 50)
-    
+
     // Line separator
     doc.moveTo(50, 80)
        .lineTo(545, 80)
        .stroke('#bdc3c7')
-    
+
     console.log('[PDF CONTENT DEBUG] Input contract content:', contractContent.substring(0, 500) + '...')
-    
+
     // Contract content (convert HTML to formatted plain text for PDF with better formatting)
     let plainTextContent = contractContent
       // First, handle specific styled spans (variables and dynamic fields) to preserve their content
@@ -382,7 +351,7 @@ export class SignedContractPDFGenerator {
     if (!plainTextContent) {
       plainTextContent = 'El contrato no tiene contenido disponible.'
     }
-    
+
     doc.fontSize(11)
        .fillColor('#2c3e50')
        .text(plainTextContent, 50, 100, {
@@ -391,12 +360,12 @@ export class SignedContractPDFGenerator {
          lineGap: 3
        })
   }
-  
+
   /**
    * Add signature details page
    */
   private addSignatureDetailsPage(
-    doc: PDFKit.PDFDocument, 
+    doc: PDFKit.PDFDocument,
     signature: SESSignature,
     qrCodeDataUrl: string,
     verificationUrl: string
@@ -405,14 +374,14 @@ export class SignedContractPDFGenerator {
     doc.fontSize(18)
        .fillColor('#2c3e50')
        .text('DETALLES DE LA FIRMA ELECTRÓNICA', 50, 50)
-    
+
     // Line separator
     doc.moveTo(50, 80)
        .lineTo(545, 80)
        .stroke('#bdc3c7')
-    
+
     let yPos = 100
-    
+
     // Signature info sections
     const sections = [
       {
@@ -451,15 +420,15 @@ export class SignedContractPDFGenerator {
         ]
       }
     ]
-    
+
     sections.forEach(section => {
       // Section title
       doc.fontSize(14)
          .fillColor('#e74c3c')
          .text(section.title, 50, yPos)
-      
+
       yPos += 25
-      
+
       // Section data
       section.data.forEach(([label, value]) => {
         doc.fontSize(10)
@@ -469,10 +438,10 @@ export class SignedContractPDFGenerator {
            .text(` ${value}`, { continued: false })
         yPos += 15
       })
-      
+
       yPos += 10
     })
-    
+
     // QR Code for verification
     if (qrCodeDataUrl) {
       const qrBuffer = Buffer.from(qrCodeDataUrl.split(',')[1], 'base64')
@@ -483,7 +452,7 @@ export class SignedContractPDFGenerator {
          .text(verificationUrl, 400, 245, { width: 120, align: 'center' })
     }
   }
-  
+
   /**
    * Add CSV verification page
    */
@@ -492,12 +461,12 @@ export class SignedContractPDFGenerator {
     doc.fontSize(18)
        .fillColor('#2c3e50')
        .text('DATOS DE VERIFICACIÓN (CSV)', 50, 50)
-    
+
     // Subtitle
     doc.fontSize(12)
        .fillColor('#7f8c8d')
        .text('Los siguientes datos pueden ser utilizados para verificar la autenticidad de esta firma:', 50, 80)
-    
+
     // CSV data - use default font instead of Courier
     doc.fontSize(8)
        .fillColor('#2c3e50')
@@ -506,7 +475,7 @@ export class SignedContractPDFGenerator {
          lineGap: 1
        })
   }
-  
+
   /**
    * Add audit trail verification page
    */
@@ -515,21 +484,21 @@ export class SignedContractPDFGenerator {
     doc.fontSize(18)
        .fillColor('#2c3e50')
        .text('VERIFICACIÓN DE INTEGRIDAD DE AUDITORÍA', 50, 50)
-    
+
     // Subtitle
     doc.fontSize(12)
        .fillColor('#7f8c8d')
        .text('Registro criptográfico de todos los eventos de firma para garantizar no repudio', 50, 80)
-    
+
     let yPos = 110
-    
+
     // Integrity status
     doc.fontSize(14)
        .fillColor(auditVerification.isValid ? '#27ae60' : '#e74c3c')
        .text(`ESTADO DE INTEGRIDAD: ${auditVerification.isValid ? 'VÁLIDO' : 'INVÁLIDO'}`, 50, yPos)
-    
+
     yPos += 30
-    
+
     // Audit trail details
     const auditDetails = [
       ['Total de Registros:', auditVerification.trail?.records.length?.toString() || '0'],
@@ -537,30 +506,30 @@ export class SignedContractPDFGenerator {
       ['Fecha de Sellado:', auditVerification.trail?.sealedAt ? new Date(auditVerification.trail.sealedAt).toLocaleString('es-ES') : 'NO SELLADO'],
       ['Hash Raíz:', auditVerification.trail?.rootHash?.substring(0, 32) + '...' || 'NO DISPONIBLE']
     ]
-    
+
     doc.fontSize(12)
        .fillColor('#2c3e50')
-    
+
     auditDetails.forEach(([label, value]) => {
       doc.text(label, 60, yPos, { continued: true })
          .fillColor('#34495e')
          .text(` ${value}`, { continued: false })
       yPos += 20
     })
-    
+
     yPos += 10
-    
+
     // Issues if any
     if (auditVerification.issues && auditVerification.issues.length > 0) {
       doc.fontSize(14)
          .fillColor('#e74c3c')
          .text('PROBLEMAS DETECTADOS:', 50, yPos)
-      
+
       yPos += 25
-      
+
       doc.fontSize(10)
          .fillColor('#c0392b')
-      
+
       auditVerification.issues.forEach((issue: string, index: number) => {
         doc.text(`${index + 1}. ${issue}`, 60, yPos)
         yPos += 15
@@ -570,9 +539,9 @@ export class SignedContractPDFGenerator {
          .fillColor('#27ae60')
          .text('✓ No se detectaron problemas de integridad', 60, yPos)
     }
-    
+
     yPos += 20
-    
+
     // Technical explanation
     doc.fontSize(10)
        .fillColor('#7f8c8d')
@@ -582,7 +551,7 @@ export class SignedContractPDFGenerator {
          lineGap: 2
        })
   }
-  
+
   /**
    * Add legal notice page
    */
@@ -590,7 +559,7 @@ export class SignedContractPDFGenerator {
     doc.fontSize(18)
        .fillColor('#2c3e50')
        .text('AVISO LEGAL Y DECLARACIÓN eIDAS', 50, 50)
-    
+
     const legalText = `
 DECLARACIÓN DE CONFORMIDAD eIDAS
 
@@ -626,7 +595,7 @@ La validez legal de esta firma está respaldada por el cumplimiento de los requi
 Generado el ${new Date().toLocaleString('es-ES')}
 Sistema: oSign.EU eIDAS Compliant
     `.trim()
-    
+
     doc.fontSize(10)
        .fillColor('#2c3e50')
        .text(legalText, 50, 100, {
@@ -635,6 +604,7 @@ Sistema: oSign.EU eIDAS Compliant
          lineGap: 3
        })
   }
+
 }
 
 // Export singleton

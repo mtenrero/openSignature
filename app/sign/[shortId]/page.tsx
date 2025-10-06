@@ -37,32 +37,67 @@ export default function SignDocument() {
     const signRequest = signData?.signRequest
     const accountVariableValues = signData?.accountVariableValues || {}
 
-    // Initialize dynamic fields with signer data from email request
+    // Initialize dynamic fields with pre-filled data from API or signer data from email request
     useEffect(() => {
-        if (signRequest && Object.keys(dynamicFieldValues).length === 0) {
+        if (signData && Object.keys(dynamicFieldValues).length === 0) {
             const initialValues: { [key: string]: string } = {}
-            
-            // Pre-fill with data from the signature request
-            if (signRequest.signerName) {
+
+            // PRIORITY 1: Pre-filled dynamic field values from the API (when partner provides them)
+            if (signData.signRequest?.dynamicFieldValues && typeof signData.signRequest.dynamicFieldValues === 'object') {
+                Object.assign(initialValues, signData.signRequest.dynamicFieldValues)
+                console.log('[DEBUG] Pre-filling from API dynamicFieldValues:', signData.signRequest.dynamicFieldValues)
+            }
+
+            // PRIORITY 2: Fallback to basic signer data from the signature request
+            // Only fill these if not already provided in dynamicFieldValues
+            if (signRequest.signerName && !initialValues.clientName) {
                 initialValues.clientName = signRequest.signerName
             }
-            if (signRequest.signerEmail) {
+            if (signRequest.signerEmail && !initialValues.clientEmail) {
                 initialValues.clientEmail = signRequest.signerEmail
             }
-            if (signRequest.signerPhone) {
+            if (signRequest.signerPhone && !initialValues.clientPhone) {
                 initialValues.clientPhone = signRequest.signerPhone
             }
-            
-            console.log('[DEBUG] Pre-filling dynamic fields with signer data:', initialValues)
+
+            console.log('[DEBUG] Final pre-filled dynamic fields:', initialValues)
             setDynamicFieldValues(initialValues)
         }
-    }, [signRequest])
+    }, [signData])
 
     // Determine if we need dynamic fields step
     const needsDynamicFields = contract ? contractNeedsDynamicFields(contract.content) : false
 
-    // Adjust steps based on whether we need dynamic fields
-    const steps = needsDynamicFields ? defaultSigningSteps : defaultSigningSteps.slice(1)
+    // Check if all required dynamic fields are already filled
+    const areAllFieldsFilled = () => {
+        if (!contract?.userFields || contract.userFields.length === 0) {
+            return true // No fields needed
+        }
+
+        // Check each required field
+        for (const field of contract.userFields) {
+            if (field.required) {
+                const value = dynamicFieldValues[field.name]
+                if (!value || value.trim() === '') {
+                    return false // Missing required field
+                }
+            }
+        }
+
+        return true // All required fields are filled
+    }
+
+    // Determine initial steps once on mount - DON'T recalculate as user types
+    // This prevents the steps array from changing mid-flow
+    const [initialSteps] = useState(() => {
+        const allFieldsFilled = areAllFieldsFilled()
+        return needsDynamicFields && !allFieldsFilled
+            ? defaultSigningSteps
+            : defaultSigningSteps.slice(1)
+    })
+
+    const allFieldsFilled = areAllFieldsFilled()
+    const steps = initialSteps
 
     const handleSignatureChange = (dataURL: string | null) => {
         setSignatureData(dataURL)
@@ -225,14 +260,34 @@ export default function SignDocument() {
 
         switch (stepId) {
             case 'data':
-                // Determine which fields should be locked (pre-provided from email request)
+                // Determine which fields should be locked (pre-provided from API or email request)
                 const lockedFields: string[] = []
-                if (signRequest) {
-                    if (signRequest.signerName) lockedFields.push('clientName')
-                    if (signRequest.signerEmail) lockedFields.push('clientEmail')
-                    if (signRequest.signerPhone) lockedFields.push('clientPhone')
+
+                if (signData?.signRequest?.dynamicFieldValues) {
+                    // Lock any fields that were pre-filled by the partner via API
+                    Object.keys(signData.signRequest.dynamicFieldValues).forEach(fieldName => {
+                        const value = signData.signRequest.dynamicFieldValues[fieldName]
+                        if (value && value.toString().trim() !== '') {
+                            lockedFields.push(fieldName)
+                        }
+                    })
                 }
-                
+
+                // Also lock basic signer fields if they came from the signature request
+                if (signRequest) {
+                    if (signRequest.signerName && !lockedFields.includes('clientName')) {
+                        lockedFields.push('clientName')
+                    }
+                    if (signRequest.signerEmail && !lockedFields.includes('clientEmail')) {
+                        lockedFields.push('clientEmail')
+                    }
+                    if (signRequest.signerPhone && !lockedFields.includes('clientPhone')) {
+                        lockedFields.push('clientPhone')
+                    }
+                }
+
+                console.log('[DEBUG] Locked fields for form:', lockedFields)
+
                 return (
                     <DynamicFieldsForm
                         fields={contract?.userFields || []}
@@ -282,18 +337,20 @@ export default function SignDocument() {
 
                             {/* Navigation */}
                             <Group justify="space-between">
-                                <Button 
-                                    variant="subtle" 
-                                    onClick={handleBackToFields}
-                                    leftSection={<IconArrowLeft size={16} />}
-                                    disabled={!needsDynamicFields}
-                                >
-                                    {needsDynamicFields ? 'Editar datos' : ''}
-                                </Button>
-                                
+                                {needsDynamicFields && !allFieldsFilled && (
+                                    <Button
+                                        variant="subtle"
+                                        onClick={handleBackToFields}
+                                        leftSection={<IconArrowLeft size={16} />}
+                                    >
+                                        Editar datos
+                                    </Button>
+                                )}
+
                                 <Button
                                     onClick={handleContinueToSign}
                                     rightSection={<IconSignature size={16} />}
+                                    style={{ marginLeft: needsDynamicFields && !allFieldsFilled ? undefined : 'auto' }}
                                 >
                                     Continuar a firmar
                                 </Button>

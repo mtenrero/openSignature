@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
+import { getAuthContext } from '@/lib/auth/unified'
 import { getSignatureRequestsCollection, mongoHelpers } from '@/lib/db/mongodb'
 import { ObjectId } from 'mongodb'
 import { nanoid } from 'nanoid'
@@ -13,16 +14,14 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
+    // Get authentication context (supports session, API keys, and OAuth JWT)
+    const authContext = await getAuthContext(request)
+
+    if (!authContext) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json({ error: 'Customer ID not found' }, { status: 401 })
-    }
+    const { userId, customerId } = authContext
 
     const params = await context.params
     const id = params.id
@@ -66,16 +65,14 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
+    // Get authentication context (supports session, API keys, and OAuth JWT)
+    const authContext = await getAuthContext(request)
+
+    if (!authContext) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json({ error: 'Customer ID not found' }, { status: 401 })
-    }
+    const { userId, customerId } = authContext
 
     const params = await context.params
     const id = params.id
@@ -99,13 +96,13 @@ export async function PATCH(
 
     const updateData: any = {
       updatedAt: new Date(),
-      updatedBy: session.user.id
+      updatedBy: userId
     }
 
     const auditEntry = {
       timestamp: new Date(),
       action: '',
-      performedBy: session.user.id,
+      performedBy: userId,
       details: {} as any
     }
 
@@ -398,16 +395,14 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
+    // Get authentication context (supports session, API keys, and OAuth JWT)
+    const authContext = await getAuthContext(request)
+
+    if (!authContext) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json({ error: 'Customer ID not found' }, { status: 401 })
-    }
+    const { userId, customerId } = authContext
 
     const params = await context.params
     const id = params.id
@@ -447,7 +442,7 @@ export async function DELETE(
       const discardAuditEntry = {
         timestamp: new Date(),
         action: 'solicitud_descartada',
-        performedBy: session.user.id,
+        performedBy: userId,
         details: {
           reason: discardReason,
           preservedDueToAccess: true,
@@ -463,7 +458,7 @@ export async function DELETE(
             status: 'discarded',
             discardedAt: new Date(),
             discardReason: discardReason,
-            discardedBy: session.user.id,
+            discardedBy: userId,
             updatedAt: new Date()
           },
           $push: {

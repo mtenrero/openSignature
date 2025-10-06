@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
 import { getDatabase } from '@/lib/db/mongodb'
-import { validateOAuthToken } from '@/lib/auth/oauth'
+import { extractBearerToken, validateJWT } from '@/lib/auth/jwt'
 
 export const runtime = 'nodejs'
 
@@ -11,10 +11,10 @@ async function isAuthorized(request: NextRequest) {
     if (session?.user?.id) return true
   } catch (_) {}
 
-  // Fallback: allow API key or OAuth token via Authorization: Bearer <key>
+  // Fallback: allow API key or OAuth JWT token via Authorization: Bearer <key>
   try {
     const authHeader = request.headers.get('authorization') || ''
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
+    const token = extractBearerToken(authHeader)
     if (!token) return false
 
     const db = await getDatabase()
@@ -24,9 +24,9 @@ async function isAuthorized(request: NextRequest) {
     const apiKey = await collection.findOne({ _id: token })
     if (apiKey) return true
 
-    // Check if it's an OAuth token
-    const isValidOAuth = await validateOAuthToken(token)
-    return isValidOAuth
+    // Check if it's an OAuth JWT token
+    const payload = await validateJWT(token)
+    return !!payload
   } catch (_) {
     return false
   }
@@ -34,6 +34,10 @@ async function isAuthorized(request: NextRequest) {
 
 function baseUrl() {
   return process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000'
+}
+
+function apiAudience() {
+  return process.env.AUTH0_API_IDENTIFIER || 'https://osign.eu'
 }
 
 export async function GET(request: NextRequest) {
@@ -56,20 +60,39 @@ Official REST API for electronic signature management.
 
 ## Authentication
 
-This API uses **OAuth 2.0 Client Credentials** flow for authentication.
+This API supports **Bearer Token** authentication with two options:
 
-### Step 1: Obtain Access Token
+### Option 1: API Keys (Recommended)
 
-Make a POST request to \`/api/oauth/token\` with your credentials:
+The simplest method for permanent authentication.
+
+1. Sign in to ${baseUrl()}/settings/api-keys
+2. Create a new API Key
+3. Use it in your requests:
 
 \`\`\`bash
-curl -X POST https://osign.eu/api/oauth/token \\
+curl -H "Authorization: Bearer osk_your_api_key_here" ${baseUrl()}/api/contracts
+\`\`\`
+
+**Advantages:**
+- ✅ No expiration (permanent until revoked)
+- ✅ Simple to use - no token refresh needed
+- ✅ Can be revoked anytime from settings
+
+### Option 2: OAuth 2.0 JWT Tokens
+
+For applications requiring temporary tokens with expiration.
+
+**Step 1:** Obtain an access token:
+
+\`\`\`bash
+curl -X POST ${baseUrl()}/api/oauth/token \\
   -H "Content-Type: application/json" \\
   -d '{
     "grant_type": "client_credentials",
     "client_id": "YOUR_CLIENT_ID",
     "client_secret": "YOUR_CLIENT_SECRET",
-    "audience": "https://osign.eu"
+    "audience": "${apiAudience()}"
   }'
 \`\`\`
 
@@ -82,18 +105,13 @@ Response:
 }
 \`\`\`
 
-### Step 2: Use Access Token
-
-Include the access token in the Authorization header for all API requests:
+**Step 2:** Use the token in requests:
 
 \`\`\`bash
-curl https://osign.eu/api/contracts \\
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+curl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" ${baseUrl()}/api/contracts
 \`\`\`
 
-### Getting Credentials
-
-Contact support to obtain your \`client_id\` and \`client_secret\`.
+**Note:** Tokens expire after 24 hours. Request a new token when needed.
 
 ## Rate Limiting
 
@@ -107,12 +125,40 @@ For API support, contact: api@osign.eu
     servers,
     components: {
       securitySchemes: {
+        ApiKeyAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'API Key',
+          description: `
+**API Key Authentication** (recommended for simplicity)
+
+Use an API Key for simple, permanent authentication without OAuth complexity.
+
+**How to get an API Key:**
+1. Sign in to your account at ${baseUrl()}
+2. Go to Settings → API Keys
+3. Click "Create API Key"
+4. Copy the generated key (starts with \`osk_\`)
+5. Store it securely - it won't be shown again
+
+**Usage:**
+\`\`\`bash
+curl -H "Authorization: Bearer osk_your_api_key_here" ${baseUrl()}/api/contracts
+\`\`\`
+
+**Advantages:**
+- ✅ No expiration (permanent until revoked)
+- ✅ Simple to use
+- ✅ Can be revoked anytime from settings
+- ✅ Track last usage date
+          `
+        },
         BearerAuth: {
           type: 'http',
           scheme: 'bearer',
           bearerFormat: 'JWT',
           description: `
-**How to authenticate:**
+**OAuth 2.0 JWT Token** (for temporary access)
 
 1. Get your access token from \`/api/oauth/token\`:
    \`\`\`bash
@@ -122,16 +168,13 @@ For API support, contact: api@osign.eu
        "grant_type": "client_credentials",
        "client_id": "YOUR_CLIENT_ID",
        "client_secret": "YOUR_CLIENT_SECRET",
-       "audience": "https://osign.eu"
+       "audience": "${apiAudience()}"
      }'
    \`\`\`
 
 2. Copy the \`access_token\` from the response
 
-3. Click "Authorize" button and paste the token (without "Bearer" prefix)
-
-4. The token will be automatically included in all requests as:
-   \`Authorization: Bearer YOUR_TOKEN\`
+3. Use as: \`Authorization: Bearer YOUR_TOKEN\`
 
 **Token expires in 24 hours.** Request a new token when needed.
           `
@@ -188,7 +231,10 @@ For API support, contact: api@osign.eu
         }
       }
     },
-    security: [{ BearerAuth: [] }],
+    security: [
+      { ApiKeyAuth: [] },
+      { BearerAuth: [] }
+    ],
     paths: {
       '/api/oauth/token': {
         post: {
@@ -203,26 +249,36 @@ For API support, contact: api@osign.eu
                 schema: {
                   type: 'object',
                   properties: {
-                    grant_type: { type: 'string', enum: ['client_credentials'], description: 'OAuth2 grant type' },
+                    grant_type: {
+                      type: 'string',
+                      enum: ['client_credentials', 'authorization_code', 'refresh_token'],
+                      default: 'client_credentials',
+                      description: 'OAuth2 grant type (only client_credentials is currently supported)'
+                    },
                     client_id: { type: 'string', description: 'Your application client ID' },
                     client_secret: { type: 'string', description: 'Your application client secret' },
-                    audience: { type: 'string', description: 'Optional API audience (default: https://osign.eu)', example: 'https://osign.eu' },
+                    audience: { type: 'string', description: `Optional API audience (default: ${apiAudience()})`, example: apiAudience() },
                     scope: { type: 'string', description: 'Optional space-separated list of scopes', example: 'read:contracts write:contracts' }
                   },
-                  required: ['grant_type', 'client_id', 'client_secret']
+                  required: ['client_id', 'client_secret']
                 }
               },
               'application/json': {
                 schema: {
                   type: 'object',
                   properties: {
-                    grant_type: { type: 'string', enum: ['client_credentials'], description: 'Must be "client_credentials"' },
+                    grant_type: {
+                      type: 'string',
+                      enum: ['client_credentials', 'authorization_code', 'refresh_token'],
+                      default: 'client_credentials',
+                      description: 'OAuth2 grant type (only client_credentials is currently supported)'
+                    },
                     client_id: { type: 'string', description: 'Your application client ID' },
                     client_secret: { type: 'string', description: 'Your application client secret' },
-                    audience: { type: 'string', description: 'Optional API audience (default: https://osign.eu)', example: 'https://osign.eu' },
+                    audience: { type: 'string', description: `Optional API audience (default: ${apiAudience()})`, example: apiAudience() },
                     scope: { type: 'string', description: 'Optional space-separated list of scopes', example: 'read:contracts write:contracts' }
                   },
-                  required: ['grant_type', 'client_id', 'client_secret']
+                  required: ['client_id', 'client_secret']
                 }
               }
             }
@@ -280,7 +336,7 @@ For API support, contact: api@osign.eu
                     type: 'object',
                     properties: {
                       error: { type: 'string', example: 'access_denied' },
-                      error_description: { type: 'string', example: 'Client is not authorized to access "https://osign.eu"' }
+                      error_description: { type: 'string', example: `Client is not authorized to access "${apiAudience()}"` }
                     }
                   }
                 }
@@ -298,11 +354,13 @@ For API support, contact: api@osign.eu
       '/api/contracts': {
         get: {
           summary: 'List contracts',
-          security: [{ BearerAuth: [] }],
+          description: 'Retrieve all contracts for the authenticated user. By default, heavy fields like `content`, `htmlContent`, and `signedPdfBuffer` are excluded for efficiency. Use `full=true` to include all fields.',
+          security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }],
           parameters: [
-            { name: 'status', in: 'query', schema: { type: 'string' } },
-            { name: 'limit', in: 'query', schema: { type: 'integer', default: 50 } },
-            { name: 'skip', in: 'query', schema: { type: 'integer', default: 0 } }
+            { name: 'status', in: 'query', schema: { type: 'string' }, description: 'Filter by status (draft, signed, archived)' },
+            { name: 'limit', in: 'query', schema: { type: 'integer', default: 50 }, description: 'Maximum number of contracts to return' },
+            { name: 'skip', in: 'query', schema: { type: 'integer', default: 0 }, description: 'Number of contracts to skip (pagination)' },
+            { name: 'full', in: 'query', schema: { type: 'boolean', default: false }, description: 'Include all fields including heavy content (content, htmlContent, signedPdfBuffer)' }
           ],
           responses: {
             '200': {
@@ -314,7 +372,7 @@ For API support, contact: api@osign.eu
         },
         post: {
           summary: 'Create contract',
-          security: [{ BearerAuth: [] }],
+          security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }],
           requestBody: {
             required: true,
             content: {
@@ -337,7 +395,7 @@ For API support, contact: api@osign.eu
       '/api/signature-requests': {
         get: {
           summary: 'List signature requests',
-          security: [{ BearerAuth: [] }],
+          security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }],
           parameters: [
             { name: 'status', in: 'query', schema: { type: 'string' } },
             { name: 'contractId', in: 'query', schema: { type: 'string' } }
@@ -346,7 +404,7 @@ For API support, contact: api@osign.eu
         },
         post: {
           summary: 'Create signature request',
-          security: [{ BearerAuth: [] }],
+          security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }],
           requestBody: {
             required: true,
             content: {
@@ -371,20 +429,20 @@ For API support, contact: api@osign.eu
       '/api/signature-requests/{id}': {
         get: {
           summary: 'Get signature request',
-          security: [{ BearerAuth: [] }],
+          security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }],
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
           responses: { '200': { description: 'OK' }, '404': { description: 'Not found' } }
         },
         patch: {
           summary: 'Update signature request (archive/resend)',
-          security: [{ BearerAuth: [] }],
+          security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }],
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
           requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { action: { type: 'string', enum: ['archive', 'resend'] } } } } } },
           responses: { '200': { description: 'OK' } }
         },
         delete: {
           summary: 'Delete/discard signature request',
-          security: [{ BearerAuth: [] }],
+          security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }],
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
           responses: { '200': { description: 'OK' } }
         }
@@ -392,68 +450,151 @@ For API support, contact: api@osign.eu
       '/api/signature-requests/{id}/archive': {
         post: {
           summary: 'Archive signature request and process refund if applicable',
-          security: [{ BearerAuth: [] }],
+          security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }],
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
           responses: { '200': { description: 'OK' } }
         }
       },
+      '/api/signature-requests/{id}/sign': {
+        get: {
+          summary: 'View signature request for signing (public)',
+          description: 'Public endpoint to view a signature request. Accepts either ObjectId or shortId. Requires access key for validation.',
+          tags: ['Signature Workflow'],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Signature request ID (ObjectId) or shortId' },
+            { name: 'a', in: 'query', required: true, schema: { type: 'string' }, description: 'Access key for validation' }
+          ],
+          responses: {
+            '200': {
+              description: 'Signature request details',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/SignRequestPublic' } } }
+            },
+            '404': { description: 'Signature request not found' },
+            '410': { description: 'Signature request expired or already signed' }
+          }
+        },
+        put: {
+          summary: 'Complete signature (public)',
+          description: 'Public endpoint to complete a signature. Accepts either ObjectId or shortId.',
+          tags: ['Signature Workflow'],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Signature request ID (ObjectId) or shortId' },
+            { name: 'a', in: 'query', required: true, schema: { type: 'string' }, description: 'Access key for validation' }
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    signature: { type: 'string', description: 'Base64 encoded signature image' },
+                    dynamicFieldValues: { type: 'object', description: 'Form field values' },
+                    deviceMetadata: { type: 'object', description: 'Device and browser information' }
+                  },
+                  required: ['signature']
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: 'Signature completed successfully' },
+            '400': { description: 'Invalid request' },
+            '404': { description: 'Signature request not found' }
+          }
+        }
+      },
+      '/api/signature-requests/{id}/pdf': {
+        get: {
+          summary: 'Download signed PDF (public)',
+          description: 'Public endpoint to download signed contract PDF. Accepts either ObjectId or shortId.',
+          tags: ['Signature Workflow'],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Signature request ID (ObjectId) or shortId' },
+            { name: 'a', in: 'query', required: true, schema: { type: 'string' }, description: 'Access key for validation' }
+          ],
+          responses: {
+            '200': {
+              description: 'Signed PDF file',
+              content: { 'application/pdf': { schema: { type: 'string', format: 'binary' } } }
+            },
+            '400': { description: 'Invalid request' },
+            '404': { description: 'PDF not found' }
+          }
+        }
+      },
       '/api/sign-requests': {
         get: {
-          summary: 'List sign requests (legacy/internal)',
-          security: [{ BearerAuth: [] }],
+          summary: '[DEPRECATED] Use /api/signature-requests instead',
+          deprecated: true,
+          security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }],
           responses: { '200': { description: 'OK' } }
         },
         post: {
-          summary: 'Create sign request (legacy/internal)',
-          security: [{ BearerAuth: [] }],
-          requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { contractId: { type: 'string' }, recipientEmail: { type: 'string' }, recipientPhone: { type: 'string' } }, required: ['contractId'] } } } },
+          summary: '[DEPRECATED] Use /api/signature-requests instead',
+          deprecated: true,
+          security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }],
+          requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { contractId: { type: 'string' } }, required: ['contractId'] } } } },
           responses: { '201': { description: 'Created' } }
         }
       },
       '/api/sign-requests/{shortId}': {
         get: {
-          summary: 'Validate and get sign request details (public)',
+          summary: '[DEPRECATED] Use /api/signature-requests/{id}/sign instead',
+          deprecated: true,
           parameters: [
             { name: 'shortId', in: 'path', required: true, schema: { type: 'string' } },
-            { name: 'a', in: 'query', required: true, schema: { type: 'string' }, description: 'Access key' }
+            { name: 'a', in: 'query', required: true, schema: { type: 'string' } }
           ],
-          responses: { '200': { description: 'OK', content: { 'application/json': { schema: { $ref: '#/components/schemas/SignRequestPublic' } } } }, '404': { description: 'Not found' } }
+          responses: { '200': { description: 'OK' } }
         },
         put: {
-          summary: 'Complete signature (public)',
+          summary: '[DEPRECATED] Use /api/signature-requests/{id}/sign instead',
+          deprecated: true,
           parameters: [
             { name: 'shortId', in: 'path', required: true, schema: { type: 'string' } },
-            { name: 'a', in: 'query', required: true, schema: { type: 'string' }, description: 'Access key' }
+            { name: 'a', in: 'query', required: true, schema: { type: 'string' } }
           ],
-          requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { signature: { type: 'string' }, dynamicFieldValues: { type: 'object' } }, required: ['signature'] } } } },
+          requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { signature: { type: 'string' } }, required: ['signature'] } } } },
           responses: { '200': { description: 'OK' } }
         }
       },
       '/api/sign-requests/{shortId}/pdf': {
         get: {
-          summary: 'Download signed contract PDF (public)',
+          summary: '[DEPRECATED] Use /api/signature-requests/{id}/pdf instead',
+          deprecated: true,
           parameters: [
             { name: 'shortId', in: 'path', required: true, schema: { type: 'string' } },
             { name: 'a', in: 'query', required: true, schema: { type: 'string' } }
           ],
-          responses: { '200': { description: 'PDF' }, '400': { description: 'Bad request' } }
+          responses: { '200': { description: 'PDF' } }
         }
       },
       '/api/signatures': {
         get: {
           summary: 'List signatures',
-          security: [{ BearerAuth: [] }],
+          description: 'Retrieve all signatures for the authenticated user. By default, heavy fields like `signature` (base64 image), `metadata.auditTrail`, `metadata.dynamicFieldValues`, and TSA tokens are excluded for efficiency. Use `full=true` to include all fields.',
+          security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }],
           parameters: [
-            { name: 'contractId', in: 'query', schema: { type: 'string' } },
-            { name: 'status', in: 'query', schema: { type: 'string' } }
+            { name: 'contractId', in: 'query', schema: { type: 'string' }, description: 'Filter by contract ID' },
+            { name: 'status', in: 'query', schema: { type: 'string' }, description: 'Filter by status' },
+            { name: 'limit', in: 'query', schema: { type: 'integer', default: 50 }, description: 'Maximum number of signatures to return' },
+            { name: 'skip', in: 'query', schema: { type: 'integer', default: 0 }, description: 'Number of signatures to skip (pagination)' },
+            { name: 'full', in: 'query', schema: { type: 'boolean', default: false }, description: 'Include all fields including signature data, audit trail, and form values' }
           ],
-          responses: { '200': { description: 'OK' } }
+          responses: {
+            '200': { description: 'List of signatures with pagination metadata' },
+            '401': { description: 'Unauthorized' }
+          }
         },
         post: {
           summary: 'Create signature (server-to-server)',
-          security: [{ BearerAuth: [] }],
+          security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }],
           requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { contractId: { type: 'string' }, signature: { type: 'string' } }, required: ['contractId', 'signature'] } } } },
-          responses: { '201': { description: 'Created' } }
+          responses: {
+            '201': { description: 'Signature created successfully' },
+            '401': { description: 'Unauthorized' }
+          }
         }
       }
     }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Collection } from 'mongodb'
 import { auth } from '@/lib/auth/config'
+import { getAuthContext } from '@/lib/auth/unified'
 import { generateShortId, generateAccessKey } from '@/lib/shortId'
 import { auditTrailService } from '@/lib/auditTrail'
 import { extractClientIP } from '@/lib/deviceMetadata'
@@ -31,22 +32,17 @@ async function getSignRequestsCollection(): Promise<Collection> {
 // POST /api/sign-requests - Create a new signature request
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
+    // Get authentication context (supports session, API keys, and OAuth JWT)
+    const authContext = await getAuthContext(request)
+
+    if (!authContext) {
       return NextResponse.json(
         { error: 'Unauthorized - Please sign in' },
         { status: 401 }
       )
     }
 
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json(
-        { error: 'Customer ID not found in session' },
-        { status: 401 }
-      )
-    }
+    const { userId, customerId } = authContext
 
     const body = await request.json()
     const { contractId, recipientEmail, recipientPhone, expiresInDays = 7 } = body
@@ -132,9 +128,9 @@ export async function POST(request: NextRequest) {
       resourceId: contractId,
       action: 'solicitud_firma_creada',
       actor: { 
-        id: session.user?.id || 'unknown', 
-        type: 'user', 
-        identifier: session.user?.email || session.user?.id || 'unknown' 
+        id: userId,
+        type: 'user',
+        identifier: userId 
       },
       resource: { 
         type: 'contract', 
@@ -152,7 +148,7 @@ export async function POST(request: NextRequest) {
       metadata: {
         ipAddress: clientIP,
         userAgent: userAgent,
-        session: session.user?.id || 'unknown'
+        session: userId
       }
     })
 
@@ -191,22 +187,17 @@ export async function POST(request: NextRequest) {
 // GET /api/sign-requests - Get sign requests for the authenticated user
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
+    // Get authentication context (supports session, API keys, and OAuth JWT)
+    const authContext = await getAuthContext(request)
+
+    if (!authContext) {
       return NextResponse.json(
         { error: 'Unauthorized - Please sign in' },
         { status: 401 }
       )
     }
 
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json(
-        { error: 'Customer ID not found in session' },
-        { status: 401 }
-      )
-    }
+    const { userId, customerId } = authContext
 
     const url = new URL(request.url)
     const status = url.searchParams.get('status')

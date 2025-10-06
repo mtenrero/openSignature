@@ -37,6 +37,20 @@ export async function GET(
       )
     }
 
+    // Helper function for deterministic JSON stringify (sorted keys)
+    const deterministicStringify = (obj: any): string => {
+      if (obj === null) return 'null'
+      if (typeof obj !== 'object') return JSON.stringify(obj)
+      if (Array.isArray(obj)) return '[' + obj.map(deterministicStringify).join(',') + ']'
+
+      const keys = Object.keys(obj).sort()
+      const pairs = keys.map(key => {
+        const value = deterministicStringify(obj[key])
+        return JSON.stringify(key) + ':' + value
+      })
+      return '{' + pairs.join(',') + '}'
+    }
+
     // Recalculate hash from stored data
     let recalculatedHash = ''
     let hashVerification = {
@@ -48,17 +62,24 @@ export async function GET(
 
     try {
       if (signatureRequest.hashData) {
-        // If we have the original hash data, use it to recalculate
+        // If we have the original hash data, use it to recalculate with deterministic stringify
+        console.log('[HASH VERIFY DEBUG] hashData from DB:', JSON.stringify(signatureRequest.hashData, null, 2))
+        console.log('[HASH VERIFY DEBUG] deterministicStringify output:', deterministicStringify(signatureRequest.hashData))
+
         recalculatedHash = crypto
           .createHash('sha256')
-          .update(JSON.stringify(signatureRequest.hashData))
+          .update(deterministicStringify(signatureRequest.hashData))
           .digest('hex')
-        
+
+        console.log('[HASH VERIFY DEBUG] Recalculated hash:', recalculatedHash)
+        console.log('[HASH VERIFY DEBUG] Original hash from DB:', signatureRequest.documentHash)
+        console.log('[HASH VERIFY DEBUG] Hashes match:', recalculatedHash === signatureRequest.documentHash)
+
         hashVerification = {
           isValid: recalculatedHash === signatureRequest.documentHash,
           originalHash: signatureRequest.documentHash || 'No disponible',
           recalculatedHash: recalculatedHash,
-          message: recalculatedHash === signatureRequest.documentHash 
+          message: recalculatedHash === signatureRequest.documentHash
             ? 'La integridad del documento está verificada. El documento no ha sido alterado.'
             : 'ALERTA: El hash no coincide. El documento podría haber sido alterado.'
         }
@@ -104,18 +125,18 @@ export async function GET(
       events: [] as any[]
     }
 
-    // Combine audit trail and access logs
-    let allAuditRecords = []
-    
-    // First, add access logs if they exist
-    if (signatureRequest.accessLogs && Array.isArray(signatureRequest.accessLogs)) {
-      allAuditRecords = [...signatureRequest.accessLogs]
+    // Combine ALL audit sources (auditRecords + auditTrail + accessLogs)
+    let allAuditRecords: any[] = []
+
+    // Source 1: auditRecords field (creation, resend events)
+    if (signatureRequest.auditRecords && Array.isArray(signatureRequest.auditRecords)) {
+      allAuditRecords = [...signatureRequest.auditRecords]
     }
-    
+
+    // Source 2: auditTrail object (signature events)
     if (signatureRequest.auditTrail) {
-      // Handle both new format (with .trail.records) and old format (direct array)
-      let auditRecords = []
-      
+      let auditRecords: any[] = []
+
       if (signatureRequest.auditTrail.trail?.records) {
         // New format from auditTrailService
         auditRecords = signatureRequest.auditTrail.trail.records
@@ -126,43 +147,55 @@ export async function GET(
         // Legacy format - direct array of events
         auditRecords = signatureRequest.auditTrail
       }
-      
-      // Combine with access logs
-      allAuditRecords = [...allAuditRecords, ...auditRecords]
-      
-      // Format events for display
-      const formattedEvents = allAuditRecords.map((record: any) => {
-        // Handle both new structured format and legacy format
-        if (record.action && record.timestamp) {
-          return {
-            timestamp: record.timestamp,
-            action: record.action,
-            actor: record.actor?.identifier || record.ipAddress || 'Sistema',
-            details: record.details || {},
-            ipAddress: record.metadata?.ipAddress || record.ipAddress || 'No disponible',
-            userAgent: record.metadata?.userAgent || record.userAgent || 'No disponible'
-          }
-        }
-        // Legacy format compatibility
+
+      // Merge without duplicates
+      const existingTimestamps = new Set(allAuditRecords.map((r: any) => new Date(r.timestamp).getTime()))
+      const newRecords = auditRecords.filter((r: any) => !existingTimestamps.has(new Date(r.timestamp).getTime()))
+      allAuditRecords = [...allAuditRecords, ...newRecords]
+    }
+
+    // Source 3: accessLogs (legacy)
+    if (signatureRequest.accessLogs && Array.isArray(signatureRequest.accessLogs)) {
+      const existingTimestamps = new Set(allAuditRecords.map((r: any) => new Date(r.timestamp).getTime()))
+      const newRecords = signatureRequest.accessLogs.filter((r: any) => !existingTimestamps.has(new Date(r.timestamp).getTime()))
+      allAuditRecords = [...allAuditRecords, ...newRecords]
+    }
+
+    // Sort by timestamp (oldest first)
+    allAuditRecords.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+
+    // Format events for display
+    const formattedEvents = allAuditRecords.map((record: any) => {
+      // Handle both new structured format and legacy format
+      if (record.action && record.timestamp) {
         return {
-          timestamp: record.timestamp || new Date(),
-          action: record.action || 'evento_registrado',
-          actor: record.ipAddress || 'Sistema',
-          details: record.details || record,
-          ipAddress: record.ipAddress || 'No disponible',
-          userAgent: record.userAgent || 'No disponible'
+          timestamp: record.timestamp,
+          action: record.action,
+          actor: record.actor?.identifier || record.ipAddress || 'Sistema',
+          details: record.details || {},
+          ipAddress: record.metadata?.ipAddress || record.ipAddress || 'No disponible',
+          userAgent: record.metadata?.userAgent || record.userAgent || 'No disponible'
         }
-      })
-      
-      auditIntegrity = {
-        isSealed: signatureRequest.auditSealedAt ? true : false,
-        sealedAt: signatureRequest.auditSealedAt,
-        recordsCount: allAuditRecords.length,
-        message: signatureRequest.auditSealedAt 
-          ? 'La auditoría está sellada y es inmutable'
-          : 'La auditoría no está sellada',
-        events: formattedEvents
       }
+      // Legacy format compatibility
+      return {
+        timestamp: record.timestamp || new Date(),
+        action: record.action || 'evento_registrado',
+        actor: record.ipAddress || 'Sistema',
+        details: record.details || record,
+        ipAddress: record.ipAddress || 'No disponible',
+        userAgent: record.userAgent || 'No disponible'
+      }
+    })
+
+    auditIntegrity = {
+      isSealed: signatureRequest.auditSealedAt ? true : false,
+      sealedAt: signatureRequest.auditSealedAt,
+      recordsCount: allAuditRecords.length,
+      message: signatureRequest.auditSealedAt
+        ? 'La auditoría está sellada y es inmutable'
+        : 'La auditoría no está sellada',
+      events: formattedEvents
     }
 
     // Compile complete integrity report data

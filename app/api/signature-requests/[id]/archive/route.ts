@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
+import { getAuthContext } from '@/lib/auth/unified'
 import { getSignatureRequestsCollection } from '@/lib/db/mongodb'
 import { ObjectId } from 'mongodb'
 import { RefundSystem } from '@/lib/subscription/refundSystem'
@@ -13,14 +14,18 @@ export async function POST(
 ) {
   try {
     const { id: signatureRequestId } = await params
-    const session = await auth()
 
-    if (!session?.user?.id) {
+    // Get authentication context (supports session, API keys, and OAuth JWT)
+    const authContext = await getAuthContext(request)
+
+    if (!authContext) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
+
+    const { userId, customerId } = authContext
 
     if (!signatureRequestId || !ObjectId.isValid(signatureRequestId)) {
       return NextResponse.json(
@@ -34,7 +39,7 @@ export async function POST(
     // Check if signature request exists and belongs to user
     const signatureRequest = await signatureCollection.findOne({
       _id: new ObjectId(signatureRequestId),
-      customerId: session.user.id
+      customerId: customerId
     })
 
     if (!signatureRequest) {
@@ -64,7 +69,7 @@ export async function POST(
           status: 'archived',
           archivedAt: new Date(),
           archivedReason: reason,
-          archivedBy: session.user.id
+          archivedBy: customerId
         }
       }
     )

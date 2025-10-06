@@ -152,6 +152,7 @@ function FirmasPageContent() {
             status: req.status === 'signed' ? 'completed' : 'pending',
             signedAt: req.signedAt,
             createdAt: req.createdAt,
+            updatedAt: req.updatedAt,
             expiresAt: req.expiresAt,
             signatureUrl: req.signatureUrl,
             shortId: req.shortId,
@@ -159,9 +160,13 @@ function FirmasPageContent() {
             customerId: req.customerId
           }))
         ]
-        
-        // Sort by creation date (newest first)
-        combinedData.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+
+        // Sort by updatedAt (for requests) or createdAt (for signatures) - newest first
+        combinedData.sort((a, b) => {
+          const dateA = new Date(a.updatedAt || a.createdAt || a.signedAt)
+          const dateB = new Date(b.updatedAt || b.createdAt || b.signedAt)
+          return dateB.getTime() - dateA.getTime()
+        })
         
         setFirmas(combinedData)
         
@@ -302,58 +307,9 @@ function FirmasPageContent() {
     router.push(`/signatures/${firmaId}`)
   }
 
-  const handleCopyLink = async (signatureUrl: string) => {
-    try {
-      // Try modern clipboard API first
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(signatureUrl)
-      } else {
-        // Fallback for Safari and HTTP contexts
-        const textArea = document.createElement('textarea')
-        textArea.value = signatureUrl
-        textArea.style.position = 'fixed'
-        textArea.style.left = '-9999px'
-        textArea.style.top = '-9999px'
-        document.body.appendChild(textArea)
-        textArea.focus()
-        textArea.select()
-        
-        try {
-          document.execCommand('copy')
-        } catch (err) {
-          console.error('Fallback copy failed:', err)
-          throw new Error('Copy not supported')
-        }
-        
-        document.body.removeChild(textArea)
-      }
-      
-      notifications.show({
-        title: '📋 Enlace copiado',
-        message: 'El enlace de firma ha sido copiado al portapapeles',
-        color: 'green',
-        autoClose: 4000
-      })
-    } catch (error) {
-      console.error('Copy failed:', error)
-      notifications.show({
-        title: '⚠️ Error al copiar',
-        message: 'No se pudo copiar el enlace. Cópialo manualmente desde la URL mostrada.',
-        color: 'red',
-        autoClose: 6000
-      })
-    }
-  }
-
-  const handleShowQR = (signatureUrl: string) => {
-    // For now, we'll just copy the link. 
-    // TODO: Implement QR modal similar to dashboard
-    handleCopyLink(signatureUrl)
-  }
-
-  const handleOpenSignature = (signatureUrl: string) => {
-    window.open(signatureUrl, '_blank')
-  }
+  // ⚠️ SECURITY: Removed handleCopyLink, handleShowQR, and handleOpenSignature functions
+  // These functions exposed the signature URL with access key, allowing the partner to sign on behalf of the client
+  // Partners should only be able to REQUEST signatures, not access the signing links directly
 
   // Handle email signature request for existing pending requests
   const handleRequestEmailSignature = (firma: any) => {
@@ -1097,24 +1053,6 @@ function FirmasPageContent() {
                           <IconPhone size={16} />
                         </ActionIcon>
                       )}
-
-                      <ActionIcon
-                        variant="light"
-                        color="cyan"
-                        onClick={() => handleCopyLink(firma.signatureUrl)}
-                        title="Copiar enlace de firma"
-                      >
-                        <IconCopy size={16} />
-                      </ActionIcon>
-
-                      <ActionIcon
-                        variant="light"
-                        color="orange"
-                        onClick={() => handleOpenSignature(firma.signatureUrl)}
-                        title="Abrir enlace de firma"
-                      >
-                        <IconExternalLink size={16} />
-                      </ActionIcon>
                     </>
                   )}
 
@@ -1182,18 +1120,6 @@ function FirmasPageContent() {
                               Solicitar por SMS
                             </Menu.Item>
                           )}
-                          <Menu.Item
-                            leftSection={<IconCopy size={14} />}
-                            onClick={() => handleCopyLink(firma.signatureUrl)}
-                          >
-                            Copiar enlace de firma
-                          </Menu.Item>
-                          <Menu.Item
-                            leftSection={<IconExternalLink size={14} />}
-                            onClick={() => handleOpenSignature(firma.signatureUrl)}
-                          >
-                            Abrir enlace de firma
-                          </Menu.Item>
                         </>
                       )}
                       

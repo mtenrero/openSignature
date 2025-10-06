@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSignatureRequestsCollection } from '@/lib/db/mongodb'
 import { ObjectId } from 'mongodb'
 import crypto from 'crypto'
+import { getCombinedAuditTrail } from '@/lib/audit/integration'
 
 export const runtime = 'nodejs'
 
@@ -36,6 +37,20 @@ export async function GET(
       )
     }
 
+    // Helper function for deterministic JSON stringify (sorted keys) - same as used in signature creation
+    const deterministicStringify = (obj: any): string => {
+      if (obj === null) return 'null'
+      if (typeof obj !== 'object') return JSON.stringify(obj)
+      if (Array.isArray(obj)) return '[' + obj.map(deterministicStringify).join(',') + ']'
+
+      const keys = Object.keys(obj).sort()
+      const pairs = keys.map(key => {
+        const value = deterministicStringify(obj[key])
+        return JSON.stringify(key) + ':' + value
+      })
+      return '{' + pairs.join(',') + '}'
+    }
+
     // Recalculate hash from stored data
     let recalculatedHash = ''
     let hashVerification = {
@@ -47,17 +62,17 @@ export async function GET(
 
     try {
       if (signatureRequest.hashData) {
-        // If we have the original hash data, use it to recalculate
+        // If we have the original hash data, use it to recalculate using deterministic stringify
         recalculatedHash = crypto
           .createHash('sha256')
-          .update(JSON.stringify(signatureRequest.hashData))
+          .update(deterministicStringify(signatureRequest.hashData))
           .digest('hex')
-        
+
         hashVerification = {
           isValid: recalculatedHash === signatureRequest.documentHash,
           originalHash: signatureRequest.documentHash || 'No disponible',
           recalculatedHash: recalculatedHash,
-          message: recalculatedHash === signatureRequest.documentHash 
+          message: recalculatedHash === signatureRequest.documentHash
             ? '✅ La integridad del documento está verificada. El documento no ha sido alterado.'
             : '❌ ALERTA: El hash no coincide. El documento podría haber sido alterado.'
         }
@@ -65,18 +80,18 @@ export async function GET(
         // Fallback for older signatures without hashData
         const contractContent = signatureRequest.contractSnapshot?.content || ''
         const dynamicFieldValues = signatureRequest.dynamicFieldValues || {}
-        
-        // Try to recreate with available data
+
+        // Try to recreate with available data using deterministic stringify
         const fallbackHashData = {
           contractContent: contractContent,
           dynamicFieldValues: dynamicFieldValues
         }
-        
+
         recalculatedHash = crypto
           .createHash('sha256')
-          .update(JSON.stringify(fallbackHashData))
+          .update(deterministicStringify(fallbackHashData))
           .digest('hex')
-        
+
         hashVerification = {
           isValid: false,
           originalHash: signatureRequest.signatureMetadata?.documentHash || 'No disponible',
@@ -94,7 +109,7 @@ export async function GET(
       }
     }
 
-    // Verify audit trail integrity
+    // Verify audit trail integrity - Use combined audit trail (new + old system)
     let auditIntegrity = {
       isSealed: false,
       sealedAt: null,
@@ -103,64 +118,108 @@ export async function GET(
       events: [] as any[]
     }
 
-    // Combine audit trail and access logs
-    let allAuditRecords = []
-    
-    // First, add access logs if they exist
-    if (signatureRequest.accessLogs && Array.isArray(signatureRequest.accessLogs)) {
-      allAuditRecords = [...signatureRequest.accessLogs]
-    }
-    
-    if (signatureRequest.auditTrail) {
-      // Handle both new format (with .trail.records) and old format (direct array)
-      let auditRecords = []
-      
-      if (signatureRequest.auditTrail.trail?.records) {
-        // New format from auditTrailService
-        auditRecords = signatureRequest.auditTrail.trail.records
-      } else if (signatureRequest.auditTrail.records) {
-        // New format with direct records array
-        auditRecords = signatureRequest.auditTrail.records
-      } else if (Array.isArray(signatureRequest.auditTrail)) {
-        // Legacy format - direct array of events
-        auditRecords = signatureRequest.auditTrail
+    try {
+      // Determine which audit trail to use (check multiple locations)
+      let auditTrailToUse = signatureRequest.auditTrail
+
+      // Priority 1: Check if using auditRecords field (newest format)
+      if (signatureRequest.auditRecords && Array.isArray(signatureRequest.auditRecords)) {
+        auditTrailToUse = signatureRequest.auditRecords
       }
-      
-      // Combine with access logs
-      allAuditRecords = [...allAuditRecords, ...auditRecords]
-      
-      // Format events for display
-      const formattedEvents = allAuditRecords.map((record: any) => {
-        // Handle both new structured format and legacy format
-        if (record.action && record.timestamp) {
-          return {
-            timestamp: record.timestamp,
-            action: record.action,
-            actor: record.actor?.identifier || record.ipAddress || 'Sistema',
-            details: record.details || {},
-            ipAddress: record.metadata?.ipAddress || record.ipAddress || 'No disponible',
-            userAgent: record.metadata?.userAgent || record.userAgent || 'No disponible'
-          }
-        }
-        // Legacy format compatibility
-        return {
-          timestamp: record.timestamp || new Date(),
-          action: record.action || 'evento_registrado',
-          actor: record.ipAddress || 'Sistema',
-          details: record.details || record,
-          ipAddress: record.ipAddress || 'No disponible',
-          userAgent: record.userAgent || 'No disponible'
-        }
+      // Priority 2: Check if audit trail is in metadata (newer signatures)
+      else if (signatureRequest.metadata?.auditTrail?.trail?.records) {
+        auditTrailToUse = signatureRequest.metadata.auditTrail
+      }
+
+      // Get combined audit trail from both new and old audit systems
+      const combinedTrail = await getCombinedAuditTrail({
+        signRequestId: signatureRequest._id.toString(),
+        contractId: signatureRequest.contractId,
+        oldAuditTrail: auditTrailToUse,
+        accessLogs: signatureRequest.accessLogs
       })
-      
+
+      // Format events for display
+      const formattedEvents = combinedTrail.map((record: any) => ({
+        timestamp: record.timestamp,
+        action: record.action,
+        actor: record.actor || 'Sistema',
+        details: record.details || {},
+        ipAddress: record.ipAddress || 'No disponible',
+        userAgent: record.userAgent || 'No disponible'
+      }))
+
       auditIntegrity = {
         isSealed: signatureRequest.auditSealedAt ? true : false,
         sealedAt: signatureRequest.auditSealedAt,
-        recordsCount: allAuditRecords.length,
-        message: signatureRequest.auditSealedAt 
+        recordsCount: formattedEvents.length,
+        message: signatureRequest.auditSealedAt
           ? '✅ La auditoría está sellada y es inmutable'
           : '⚠️ La auditoría no está sellada',
         events: formattedEvents
+      }
+    } catch (error) {
+      console.error('Error getting combined audit trail, using fallback:', error)
+
+      // Fallback: Combine audit trail and access logs from old system
+      let allAuditRecords = []
+
+      // First, add access logs if they exist
+      if (signatureRequest.accessLogs && Array.isArray(signatureRequest.accessLogs)) {
+        allAuditRecords = [...signatureRequest.accessLogs]
+      }
+
+      if (signatureRequest.auditTrail) {
+        // Handle both new format (with .trail.records) and old format (direct array)
+        let auditRecords = []
+
+        if (signatureRequest.auditTrail.trail?.records) {
+          // New format from auditTrailService
+          auditRecords = signatureRequest.auditTrail.trail.records
+        } else if (signatureRequest.auditTrail.records) {
+          // New format with direct records array
+          auditRecords = signatureRequest.auditTrail.records
+        } else if (Array.isArray(signatureRequest.auditTrail)) {
+          // Legacy format - direct array of events
+          auditRecords = signatureRequest.auditTrail
+        }
+
+        // Combine with access logs
+        allAuditRecords = [...allAuditRecords, ...auditRecords]
+
+        // Format events for display
+        const formattedEvents = allAuditRecords.map((record: any) => {
+          // Handle both new structured format and legacy format
+          if (record.action && record.timestamp) {
+            return {
+              timestamp: record.timestamp,
+              action: record.action,
+              actor: record.actor?.identifier || record.ipAddress || 'Sistema',
+              details: record.details || {},
+              ipAddress: record.metadata?.ipAddress || record.ipAddress || 'No disponible',
+              userAgent: record.metadata?.userAgent || record.userAgent || 'No disponible'
+            }
+          }
+          // Legacy format compatibility
+          return {
+            timestamp: record.timestamp || new Date(),
+            action: record.action || 'evento_registrado',
+            actor: record.ipAddress || 'Sistema',
+            details: record.details || record,
+            ipAddress: record.ipAddress || 'No disponible',
+            userAgent: record.userAgent || 'No disponible'
+          }
+        })
+
+        auditIntegrity = {
+          isSealed: signatureRequest.auditSealedAt ? true : false,
+          sealedAt: signatureRequest.auditSealedAt,
+          recordsCount: allAuditRecords.length,
+          message: signatureRequest.auditSealedAt
+            ? '✅ La auditoría está sellada y es inmutable'
+            : '⚠️ La auditoría no está sellada',
+          events: formattedEvents
+        }
       }
     }
 

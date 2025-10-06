@@ -178,7 +178,7 @@ export async function sealAuditTrail(params: {
 /**
  * Obtiene el audit trail completo
  */
-export async function getAuditTrail(signRequestId: string): Promise<AuditTrail> {
+export async function getAuditTrail(signRequestId: string): Promise<AuditTrail | null> {
   const db = await getDatabase()
   const collection = db.collection<AuditEvent>('audit_events')
 
@@ -188,7 +188,7 @@ export async function getAuditTrail(signRequestId: string): Promise<AuditTrail> 
     .toArray()
 
   if (events.length === 0) {
-    throw new Error('No audit trail found')
+    return null // Return null instead of throwing error when no audit trail exists
   }
 
   // Calcular resumen
@@ -224,8 +224,13 @@ export async function getAuditTrail(signRequestId: string): Promise<AuditTrail> 
 /**
  * Genera un resumen estructurado del audit trail
  */
-export async function getAuditSummary(signRequestId: string): Promise<AuditSummary> {
+export async function getAuditSummary(signRequestId: string): Promise<AuditSummary | null> {
   const trail = await getAuditTrail(signRequestId)
+
+  if (!trail) {
+    return null // No audit trail found in new system
+  }
+
   const events = trail.events
 
   // Evento de creación
@@ -324,6 +329,14 @@ export async function verifyAuditIntegrity(signRequestId: string): Promise<{
   errors: string[]
 }> {
   const trail = await getAuditTrail(signRequestId)
+
+  if (!trail) {
+    return {
+      valid: false,
+      errors: ['No audit trail found in new system']
+    }
+  }
+
   const errors: string[] = []
 
   // Verificar cadena de hashes

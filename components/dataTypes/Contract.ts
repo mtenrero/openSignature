@@ -8,6 +8,10 @@ export interface SendData {
     sendSMS: boolean
 }
 
+// Campos predefinidos obligatorios del sistema
+export const PREDEFINED_MANDATORY_FIELDS = ['clientName', 'clientTaxId'] as const
+export const PREDEFINED_OPTIONAL_FIELDS = ['clientPhone', 'clientEmail'] as const
+
 // Campos dinámicos preestablecidos (configurados por el usuario)
 export interface DynamicField {
     id: string

@@ -7,6 +7,8 @@ module.exports = {
         ignoreBuildErrors: true,
     },
     transpilePackages: ['@mantine/core', '@mantine/hooks', '@mantine/dates', '@mantine/notifications', '@mantine/dropzone', '@mantine/tiptap'],
+    // Prevent bundling of PDFKit to allow access to font files
+    serverExternalPackages: ['pdfkit'],
     webpack(config) {
         config.resolve.fallback = {
           ...config.resolve.fallback,

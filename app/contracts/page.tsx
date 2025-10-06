@@ -261,7 +261,7 @@ export default function DashboardPage() {
   // Handle email signature request creation
   const handleEmailSignatureRequest = async () => {
     const contractId = emailFormData.contractId
-    const extra: any = { signerEmail: emailFormData.email, signerName: emailFormData.name }
+    const extra: any = { signerEmail: emailFormData.email }
     if (pendingAction?.withPrefill) {
       extra.dynamicFieldValues = dynamicValues
     }
@@ -282,7 +282,7 @@ export default function DashboardPage() {
   // Handle SMS signature request creation
   const handleSmsSignatureRequest = async () => {
     const contractId = smsFormData.contractId
-    const extra: any = { signerPhone: smsFormData.phone, signerName: smsFormData.name }
+    const extra: any = { signerPhone: smsFormData.phone }
     if (pendingAction?.withPrefill) {
       extra.dynamicFieldValues = dynamicValues
     }
@@ -1295,18 +1295,6 @@ export default function DashboardPage() {
               />
             )}
 
-            {(requestMethod === 'email' || requestMethod === 'sms') && (
-              <TextInput
-                label="Nombre del firmante (opcional)"
-                placeholder="Nombre completo"
-                value={requestMethod === 'email' ? emailFormData.name : smsFormData.name}
-                onChange={(event) => (requestMethod === 'email' 
-                  ? setEmailFormData(prev => ({ ...prev, name: event.target.value }))
-                  : setSmsFormData(prev => ({ ...prev, name: event.target.value })))}
-                leftSection={<IconSignature size={16} />}
-              />
-            )}
-
             {requestMethod === 'sms' && (
               <TextInput
                 label="Teléfono del firmante"
@@ -1352,10 +1340,10 @@ export default function DashboardPage() {
                 loading={requestingSignature}
                 onClick={async ()=>{
                   if (requestMethod === 'email') {
-                    await createSignatureRequest(emailFormData.contractId, 'email', { signerEmail: emailFormData.email, signerName: emailFormData.name })
+                    await createSignatureRequest(emailFormData.contractId, 'email', { signerEmail: emailFormData.email })
                     notifications.show({ title: 'Email de firma enviado', message: `Se ha enviado la solicitud por email a ${emailFormData.email} para ${emailFormData.contractName}`, color: 'green' })
                   } else if (requestMethod === 'sms') {
-                    await createSignatureRequest(smsFormData.contractId, 'sms', { signerPhone: smsFormData.phone, signerName: smsFormData.name })
+                    await createSignatureRequest(smsFormData.contractId, 'sms', { signerPhone: smsFormData.phone })
                     notifications.show({ title: 'SMS de firma enviado', message: `Se ha enviado la solicitud por SMS a ${smsFormData.phone} para ${smsFormData.contractName}`, color: 'green' })
                   } else if (requestMethod === 'qr') {
                     const createRes = await createSignatureRequest(emailFormData.contractId, 'qr')
@@ -1381,10 +1369,10 @@ export default function DashboardPage() {
                 loading={requestingSignature}
                 onClick={async ()=>{
                   if (requestMethod === 'email') {
-                    await createSignatureRequest(emailFormData.contractId, 'email', { signerEmail: emailFormData.email, signerName: emailFormData.name, dynamicFieldValues: dynamicValues })
+                    await createSignatureRequest(emailFormData.contractId, 'email', { signerEmail: emailFormData.email, dynamicFieldValues: dynamicValues })
                     notifications.show({ title: 'Email de firma enviado', message: `Se ha enviado la solicitud por email a ${emailFormData.email} para ${emailFormData.contractName}`, color: 'green' })
                   } else if (requestMethod === 'sms') {
-                    await createSignatureRequest(smsFormData.contractId, 'sms', { signerPhone: smsFormData.phone, signerName: smsFormData.name, dynamicFieldValues: dynamicValues })
+                    await createSignatureRequest(smsFormData.contractId, 'sms', { signerPhone: smsFormData.phone, dynamicFieldValues: dynamicValues })
                     notifications.show({ title: 'SMS de firma enviado', message: `Se ha enviado la solicitud por SMS a ${smsFormData.phone} para ${smsFormData.contractName}`, color: 'green' })
                   } else if (requestMethod === 'qr') {
                     const createRes = await createSignatureRequest(emailFormData.contractId, 'qr', { dynamicFieldValues: dynamicValues })

@@ -35,6 +35,13 @@ export async function GET(
       )
     }
 
+    // Generate access key for PDF download (support both formats)
+    let accessKey = signatureRequest.accessKey
+    if (!accessKey) {
+      // Legacy format: generate from base64
+      accessKey = Buffer.from(`${signatureRequest.shortId}:${signatureRequest.customerId}`).toString('base64').slice(0, 6)
+    }
+
     // Extract relevant verification data
     const verificationData = {
       signatureId: signatureRequest._id.toString(),
@@ -56,7 +63,10 @@ export async function GET(
         level: 'SES - Simple Electronic Signature'
       },
       auditTrailSealed: signatureRequest.auditSealedAt ? true : false,
-      auditSealedAt: signatureRequest.auditSealedAt
+      auditSealedAt: signatureRequest.auditSealedAt,
+      // 🔥 NEW: Include shortId and accessKey for PDF download
+      shortId: signatureRequest.shortId,
+      accessKey: accessKey
     }
 
     return NextResponse.json(verificationData)

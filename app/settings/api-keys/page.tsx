@@ -14,13 +14,13 @@ import {
   Table,
   Modal,
   TextInput,
-  Textarea,
   Alert,
   Loader,
   Box,
   CopyButton,
   Tooltip,
-  Menu
+  Menu,
+  Code
 } from '@mantine/core'
 import {
   IconKey,
@@ -29,10 +29,7 @@ import {
   IconTrash,
   IconDots,
   IconCheck,
-  IconAlertTriangle,
-  IconEye,
-  IconEyeOff,
-  IconRefresh
+  IconAlertTriangle
 } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import { useSession } from 'next-auth/react'
@@ -41,14 +38,9 @@ import { useRouter } from 'next/navigation'
 interface ApiKey {
   id: string
   name: string
-  description?: string
-  clientId: string
-  clientSecret?: string
-  scopes: string[]
-  status: 'active' | 'inactive'
+  keyPreview: string
   createdAt: string
-  lastUsed?: string
-  usageCount: number
+  lastUsedAt?: string
 }
 
 export default function ApiKeysPage() {
@@ -59,17 +51,11 @@ export default function ApiKeysPage() {
   const [keyToDelete, setKeyToDelete] = useState<ApiKey | null>(null)
   const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [newKeyData, setNewKeyData] = useState({
-    name: '',
-    description: '',
-    scopes: ['read:contracts', 'write:contracts', 'read:signatures', 'write:signatures']
-  })
+  const [newKeyName, setNewKeyName] = useState('')
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<{
-    clientId: string
-    clientSecret: string
+    apiKey: string
     name: string
   } | null>(null)
-  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({})
 
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -88,7 +74,7 @@ export default function ApiKeysPage() {
 
       try {
         setLoading(true)
-        const response = await fetch('/api/auth0/api-keys')
+        const response = await fetch('/api/settings/api-keys')
         if (!response.ok) {
           throw new Error('Error al cargar API Keys')
         }
@@ -110,15 +96,24 @@ export default function ApiKeysPage() {
   }, [status])
 
   const handleCreateApiKey = async () => {
+    if (!newKeyName.trim()) {
+      notifications.show({
+        title: 'Error',
+        message: 'Por favor ingresa un nombre para la API Key',
+        color: 'red',
+      })
+      return
+    }
+
     try {
       setCreating(true)
 
-      const response = await fetch('/api/auth0/api-keys', {
+      const response = await fetch('/api/settings/api-keys', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(newKeyData)
+        body: JSON.stringify({ name: newKeyName.trim() })
       })
 
       if (!response.ok) {
@@ -128,21 +123,21 @@ export default function ApiKeysPage() {
 
       const result = await response.json()
 
-      // Store the newly created key data to show the secret
+      // Store the newly created key to show it once
       setNewlyCreatedKey({
-        clientId: result.clientId,
-        clientSecret: result.clientSecret,
+        apiKey: result.apiKey,
         name: result.name
       })
 
-      // Add to the list (without secret for security)
-      setApiKeys(prev => [...prev, {
-        ...result,
-        clientSecret: undefined // Don't store secret in state
-      }])
+      // Refresh the list
+      const listResponse = await fetch('/api/settings/api-keys')
+      if (listResponse.ok) {
+        const data = await listResponse.json()
+        setApiKeys(data.apiKeys || [])
+      }
 
       setCreateModalOpened(false)
-      setNewKeyData({ name: '', description: '', scopes: ['read:contracts', 'write:contracts', 'read:signatures', 'write:signatures'] })
+      setNewKeyName('')
 
       notifications.show({
         title: 'API Key creada',
@@ -168,7 +163,7 @@ export default function ApiKeysPage() {
     try {
       setDeleting(true)
 
-      const response = await fetch(`/api/auth0/api-keys/${keyToDelete.id}`, {
+      const response = await fetch(`/api/settings/api-keys?id=${keyToDelete.id}`, {
         method: 'DELETE'
       })
 
@@ -177,13 +172,15 @@ export default function ApiKeysPage() {
         throw new Error(errorData.error || 'Error al eliminar API Key')
       }
 
+      // Remove from list
       setApiKeys(prev => prev.filter(key => key.id !== keyToDelete.id))
+
       setDeleteModalOpened(false)
       setKeyToDelete(null)
 
       notifications.show({
         title: 'API Key eliminada',
-        message: `Se ha eliminado exitosamente la API Key "${keyToDelete.name}"`,
+        message: 'La API Key ha sido eliminada exitosamente',
         color: 'green',
       })
 
@@ -197,19 +194,6 @@ export default function ApiKeysPage() {
     } finally {
       setDeleting(false)
     }
-  }
-
-  const toggleSecretVisibility = (keyId: string) => {
-    setShowSecrets(prev => ({
-      ...prev,
-      [keyId]: !prev[keyId]
-    }))
-  }
-
-  const getStatusBadge = (status: string) => {
-    return status === 'active'
-      ? <Badge color="green" variant="light">Activa</Badge>
-      : <Badge color="red" variant="light">Inactiva</Badge>
   }
 
   const formatDate = (dateString: string) => {
@@ -245,7 +229,7 @@ export default function ApiKeysPage() {
           <Box>
             <Title size="2rem" fw={700}>API Keys</Title>
             <Text c="dimmed" mt="xs">
-              Gestiona las claves de API para acceso M2M (Machine-to-Machine) a tu cuenta
+              Gestiona las claves de API para acceso programático a tu cuenta
             </Text>
           </Box>
           <Button
@@ -264,18 +248,17 @@ export default function ApiKeysPage() {
               ¿Qué son las API Keys?
             </Text>
             <Text size="sm">
-              Las API Keys te permiten integrar aplicaciones externas con oSign.eu de forma segura.
-              Utiliza autenticación M2M (Machine-to-Machine) basada en OAuth 2.0 con Auth0.
+              Las API Keys te permiten acceder a la API de oSign.eu desde tus aplicaciones, scripts o integraciones.
             </Text>
             <Text size="sm">
-              • <strong>Client ID:</strong> Identificador público de tu aplicación
-              • <strong>Client Secret:</strong> Clave secreta (solo se muestra una vez al crearla)
-              • <strong>Scopes:</strong> Permisos específicos que tiene la API Key
+              • <strong>Permanentes:</strong> No expiran automáticamente<br/>
+              • <strong>Seguras:</strong> Puedes revocarlas en cualquier momento<br/>
+              • <strong>Simples:</strong> Solo usa <Code>Authorization: Bearer TU_API_KEY</Code>
             </Text>
           </Stack>
         </Alert>
 
-        {/* Show newly created key secret */}
+        {/* Show newly created key */}
         {newlyCreatedKey && (
           <Alert color="green" variant="light" icon={<IconCheck size={16} />}>
             <Stack gap="md">
@@ -283,20 +266,20 @@ export default function ApiKeysPage() {
                 ✅ API Key "{newlyCreatedKey.name}" creada exitosamente
               </Text>
               <Text size="sm" c="orange" fw={500}>
-                ⚠️ Guarda estas credenciales ahora. El Client Secret no se volverá a mostrar por seguridad.
+                ⚠️ Guarda esta clave ahora. No se volverá a mostrar por seguridad.
               </Text>
 
               <Box>
-                <Text size="sm" fw={500} mb="xs">Client ID:</Text>
+                <Text size="sm" fw={500} mb="xs">Tu API Key:</Text>
                 <Group gap="xs">
-                  <Text size="sm" ff="monospace" bg="gray.1" p="xs" style={{ borderRadius: 4, flex: 1 }}>
-                    {newlyCreatedKey.clientId}
-                  </Text>
-                  <CopyButton value={newlyCreatedKey.clientId}>
+                  <Code style={{ flex: 1, padding: '12px', fontSize: '13px' }}>
+                    {newlyCreatedKey.apiKey}
+                  </Code>
+                  <CopyButton value={newlyCreatedKey.apiKey}>
                     {({ copied, copy }) => (
                       <Tooltip label={copied ? 'Copiado!' : 'Copiar'} withArrow>
-                        <ActionIcon color={copied ? 'teal' : 'gray'} onClick={copy}>
-                          {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                        <ActionIcon color={copied ? 'teal' : 'gray'} onClick={copy} size="lg">
+                          {copied ? <IconCheck size={18} /> : <IconCopy size={18} />}
                         </ActionIcon>
                       </Tooltip>
                     )}
@@ -305,112 +288,81 @@ export default function ApiKeysPage() {
               </Box>
 
               <Box>
-                <Text size="sm" fw={500} mb="xs">Client Secret:</Text>
-                <Group gap="xs">
-                  <Text size="sm" ff="monospace" bg="gray.1" p="xs" style={{ borderRadius: 4, flex: 1 }}>
-                    {newlyCreatedKey.clientSecret}
-                  </Text>
-                  <CopyButton value={newlyCreatedKey.clientSecret}>
-                    {({ copied, copy }) => (
-                      <Tooltip label={copied ? 'Copiado!' : 'Copiar'} withArrow>
-                        <ActionIcon color={copied ? 'teal' : 'gray'} onClick={copy}>
-                          {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
-                        </ActionIcon>
-                      </Tooltip>
-                    )}
-                  </CopyButton>
-                </Group>
+                <Text size="sm" fw={500} mb="xs">Ejemplo de uso:</Text>
+                <Code block style={{ fontSize: '12px' }}>
+                  {`curl -H "Authorization: Bearer ${newlyCreatedKey.apiKey}" \\
+  https://osign.eu/api/contracts`}
+                </Code>
               </Box>
 
               <Button
-                variant="subtle"
-                size="xs"
+                variant="light"
+                size="sm"
                 onClick={() => setNewlyCreatedKey(null)}
               >
-                Entendido, ocultar credenciales
+                Entendido, cerrar
               </Button>
             </Stack>
           </Alert>
         )}
 
         {/* API Keys Table */}
-        {apiKeys.length === 0 ? (
-          <Card shadow="sm" padding="xl" radius="md" withBorder>
-            <Stack align="center" gap="md">
-              <IconKey size={48} color="var(--mantine-color-gray-4)" />
-              <Title size="1.5rem" c="dimmed">
-                No hay API Keys
-              </Title>
-              <Text c="dimmed" ta="center">
-                Crea tu primera API Key para comenzar a integrar aplicaciones externas con oSign.eu
+        <Card>
+          {apiKeys.length === 0 ? (
+            <Stack align="center" justify="center" py="xl">
+              <IconKey size={48} stroke={1.5} color="gray" />
+              <Text size="lg" fw={500} c="dimmed">
+                No tienes API Keys todavía
               </Text>
-              <Button leftSection={<IconPlus size={18} />} onClick={() => setCreateModalOpened(true)}>
-                Crear Primera API Key
+              <Text size="sm" c="dimmed">
+                Crea una API Key para empezar a usar la API
+              </Text>
+              <Button
+                mt="md"
+                leftSection={<IconPlus size={16} />}
+                onClick={() => setCreateModalOpened(true)}
+              >
+                Crear primera API Key
               </Button>
             </Stack>
-          </Card>
-        ) : (
-          <Card shadow="sm" padding="lg" radius="md" withBorder>
-            <Table striped highlightOnHover>
+          ) : (
+            <Table>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Nombre</Table.Th>
-                  <Table.Th>Client ID</Table.Th>
-                  <Table.Th>Estado</Table.Th>
+                  <Table.Th>API Key</Table.Th>
                   <Table.Th>Creada</Table.Th>
-                  <Table.Th>Último Uso</Table.Th>
-                  <Table.Th>Usos</Table.Th>
-                  <Table.Th>Acciones</Table.Th>
+                  <Table.Th>Último uso</Table.Th>
+                  <Table.Th></Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {apiKeys.map((apiKey) => (
-                  <Table.Tr key={apiKey.id}>
+                {apiKeys.map((key) => (
+                  <Table.Tr key={key.id}>
                     <Table.Td>
-                      <Stack gap="xs">
-                        <Text fw={500}>{apiKey.name}</Text>
-                        {apiKey.description && (
-                          <Text size="xs" c="dimmed">{apiKey.description}</Text>
-                        )}
-                      </Stack>
+                      <Text fw={500}>{key.name}</Text>
                     </Table.Td>
                     <Table.Td>
-                      <Group gap="xs">
-                        <Text size="sm" ff="monospace">
-                          {showSecrets[apiKey.id] ? apiKey.clientId : `${apiKey.clientId.substring(0, 8)}...`}
-                        </Text>
-                        <ActionIcon
-                          size="sm"
-                          variant="subtle"
-                          onClick={() => toggleSecretVisibility(apiKey.id)}
-                        >
-                          {showSecrets[apiKey.id] ? <IconEyeOff size={14} /> : <IconEye size={14} />}
-                        </ActionIcon>
-                        <CopyButton value={apiKey.clientId}>
-                          {({ copied, copy }) => (
-                            <Tooltip label={copied ? 'Copiado!' : 'Copiar Client ID'} withArrow>
-                              <ActionIcon size="sm" color={copied ? 'teal' : 'gray'} onClick={copy}>
-                                {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
-                              </ActionIcon>
-                            </Tooltip>
-                          )}
-                        </CopyButton>
-                      </Group>
-                    </Table.Td>
-                    <Table.Td>{getStatusBadge(apiKey.status)}</Table.Td>
-                    <Table.Td>
-                      <Text size="sm">{formatDate(apiKey.createdAt)}</Text>
+                      <Code>{key.keyPreview}</Code>
                     </Table.Td>
                     <Table.Td>
-                      <Text size="sm">
-                        {apiKey.lastUsed ? formatDate(apiKey.lastUsed) : 'Nunca'}
+                      <Text size="sm" c="dimmed">
+                        {formatDate(key.createdAt)}
                       </Text>
                     </Table.Td>
                     <Table.Td>
-                      <Text size="sm">{apiKey.usageCount || 0}</Text>
+                      {key.lastUsedAt ? (
+                        <Text size="sm" c="dimmed">
+                          {formatDate(key.lastUsedAt)}
+                        </Text>
+                      ) : (
+                        <Badge size="sm" color="gray" variant="light">
+                          Nunca usada
+                        </Badge>
+                      )}
                     </Table.Td>
                     <Table.Td>
-                      <Menu shadow="md" width={200}>
+                      <Menu position="bottom-end">
                         <Menu.Target>
                           <ActionIcon variant="subtle" color="gray">
                             <IconDots size={16} />
@@ -418,24 +370,10 @@ export default function ApiKeysPage() {
                         </Menu.Target>
                         <Menu.Dropdown>
                           <Menu.Item
-                            leftSection={<IconRefresh size={14} />}
-                            onClick={() => {
-                              // TODO: Implement regenerate secret
-                              notifications.show({
-                                title: 'Función no disponible',
-                                message: 'La regeneración de secretos estará disponible próximamente',
-                                color: 'orange'
-                              })
-                            }}
-                          >
-                            Regenerar Secret
-                          </Menu.Item>
-                          <Menu.Divider />
-                          <Menu.Item
                             leftSection={<IconTrash size={14} />}
                             color="red"
                             onClick={() => {
-                              setKeyToDelete(apiKey)
+                              setKeyToDelete(key)
                               setDeleteModalOpened(true)
                             }}
                           >
@@ -448,95 +386,52 @@ export default function ApiKeysPage() {
                 ))}
               </Table.Tbody>
             </Table>
-          </Card>
-        )}
-
-        {/* Usage Examples */}
-        <Card shadow="sm" padding="lg" radius="md" withBorder>
-          <Stack gap="md">
-            <Title size="1.2rem">Ejemplo de Uso</Title>
-            <Text size="sm" c="dimmed">
-              Una vez que tengas tu Client ID y Client Secret, puedes usar la API de oSign.eu:
-            </Text>
-
-            <Box>
-              <Text size="sm" fw={500} mb="xs">1. Obtener token de acceso:</Text>
-              <Text size="xs" ff="monospace" bg="gray.1" p="md" style={{ borderRadius: 4, overflow: 'auto' }}>
-{`curl -X POST https://vetcontrol-pro.eu.auth0.com/oauth/token \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "client_id": "TU_CLIENT_ID",
-    "client_secret": "TU_CLIENT_SECRET",
-    "audience": "https://osign.eu",
-    "grant_type": "client_credentials"
-  }'`}
-              </Text>
-            </Box>
-
-            <Box>
-              <Text size="sm" fw={500} mb="xs">2. Usar la API:</Text>
-              <Text size="xs" ff="monospace" bg="gray.1" p="md" style={{ borderRadius: 4, overflow: 'auto' }}>
-{`curl -X GET https://osign.eu/api/contracts \\
-  -H "Authorization: Bearer TU_ACCESS_TOKEN" \\
-  -H "Content-Type: application/json"`}
-              </Text>
-            </Box>
-          </Stack>
+          )}
         </Card>
 
-        {/* Create API Key Modal */}
+        {/* Create Modal */}
         <Modal
           opened={createModalOpened}
           onClose={() => {
             setCreateModalOpened(false)
-            setNewKeyData({ name: '', description: '', scopes: ['read:contracts', 'write:contracts', 'read:signatures', 'write:signatures'] })
+            setNewKeyName('')
           }}
-          title="Crear Nueva API Key"
-          centered
+          title="Crear nueva API Key"
           size="md"
         >
-          <Stack gap="md">
+          <Stack>
             <TextInput
-              label="Nombre de la API Key"
-              placeholder="Mi aplicación externa"
-              value={newKeyData.name}
-              onChange={(event) => setNewKeyData(prev => ({ ...prev, name: event.target.value }))}
+              label="Nombre"
+              placeholder="Ej: Mi aplicación"
+              value={newKeyName}
+              onChange={(e) => setNewKeyName(e.target.value)}
               required
+              description="Un nombre descriptivo para identificar esta API Key"
             />
 
-            <Textarea
-              label="Descripción (opcional)"
-              placeholder="Descripción de para qué se usará esta API Key"
-              value={newKeyData.description}
-              onChange={(event) => setNewKeyData(prev => ({ ...prev, description: event.target.value }))}
-              rows={3}
-            />
-
-            <Alert color="blue" variant="light">
+            <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />}>
               <Text size="sm">
-                <strong>Permisos incluidos:</strong> Lectura y escritura de contratos y firmas.
-                Los permisos específicos se pueden ajustar posteriormente desde Auth0 Dashboard.
+                La API Key se mostrará <strong>una sola vez</strong> después de crearla.
+                Asegúrate de copiarla y guardarla en un lugar seguro.
               </Text>
             </Alert>
 
-            <Group justify="flex-end" gap="sm">
+            <Group justify="flex-end" mt="md">
               <Button
                 variant="subtle"
                 onClick={() => {
                   setCreateModalOpened(false)
-                  setNewKeyData({ name: '', description: '', scopes: ['read:contracts', 'write:contracts', 'read:signatures', 'write:signatures'] })
+                  setNewKeyName('')
                 }}
-                disabled={creating}
               >
                 Cancelar
               </Button>
               <Button
                 onClick={handleCreateApiKey}
                 loading={creating}
-                leftSection={<IconKey size={16} />}
-                disabled={!newKeyData.name.trim()}
+                leftSection={<IconPlus size={16} />}
               >
-                {creating ? 'Creando...' : 'Crear API Key'}
+                Crear API Key
               </Button>
             </Group>
           </Stack>
@@ -549,45 +444,26 @@ export default function ApiKeysPage() {
             setDeleteModalOpened(false)
             setKeyToDelete(null)
           }}
-          title="Confirmar eliminación"
-          centered
+          title="Eliminar API Key"
           size="md"
         >
-          <Stack gap="md">
+          <Stack>
             <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
               <Text size="sm">
-                Esta acción no se puede deshacer. La API Key será eliminada permanentemente y
-                cualquier aplicación que la use dejará de funcionar inmediatamente.
+                ¿Estás seguro que deseas eliminar la API Key <strong>"{keyToDelete?.name}"</strong>?
+              </Text>
+              <Text size="sm" mt="xs">
+                Esta acción no se puede deshacer. Cualquier aplicación que use esta clave dejará de funcionar.
               </Text>
             </Alert>
 
-            {keyToDelete && (
-              <Box>
-                <Text size="sm" c="dimmed" mb="xs">
-                  API Key a eliminar:
-                </Text>
-                <Text fw={600} size="md">
-                  {keyToDelete.name}
-                </Text>
-                {keyToDelete.description && (
-                  <Text size="sm" c="dimmed" mt="xs">
-                    {keyToDelete.description}
-                  </Text>
-                )}
-                <Text size="xs" c="dimmed" mt="xs">
-                  Client ID: {keyToDelete.clientId}
-                </Text>
-              </Box>
-            )}
-
-            <Group justify="flex-end" gap="sm">
+            <Group justify="flex-end" mt="md">
               <Button
                 variant="subtle"
                 onClick={() => {
                   setDeleteModalOpened(false)
                   setKeyToDelete(null)
                 }}
-                disabled={deleting}
               >
                 Cancelar
               </Button>
@@ -597,7 +473,7 @@ export default function ApiKeysPage() {
                 loading={deleting}
                 leftSection={<IconTrash size={16} />}
               >
-                {deleting ? 'Eliminando...' : 'Eliminar API Key'}
+                Eliminar
               </Button>
             </Group>
           </Stack>

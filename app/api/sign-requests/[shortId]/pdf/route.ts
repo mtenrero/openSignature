@@ -5,6 +5,7 @@ import { extractClientIP } from '@/lib/deviceMetadata'
 import { signedContractPDFGenerator } from '@/lib/pdf/signedContractGenerator'
 import { SimplePDFGenerator } from '@/lib/pdf/simplePdfGenerator'
 import { auditTrailService } from '@/lib/auditTrail'
+import { getCombinedAuditTrail } from '@/lib/audit/integration'
 
 export const runtime = 'nodejs'
 
@@ -86,11 +87,55 @@ export async function GET(
       )
     }
 
+    // Get combined audit trail (same logic as verify-integrity API)
+    let auditTrailForPDF: any[] = []
+
+    try {
+      // Determine which audit trail to use (check multiple locations)
+      let auditTrailToUse = signatureRequest.auditTrail
+
+      // Priority 1: Check if using auditRecords field (newest format)
+      if (signatureRequest.auditRecords && Array.isArray(signatureRequest.auditRecords)) {
+        auditTrailToUse = signatureRequest.auditRecords
+      }
+      // Priority 2: Check if audit trail is in metadata (newer signatures)
+      else if (signatureRequest.metadata?.auditTrail?.trail?.records) {
+        auditTrailToUse = signatureRequest.metadata.auditTrail
+      }
+
+      // Get combined audit trail from both new and old audit systems
+      const combinedTrail = await getCombinedAuditTrail({
+        signRequestId: signatureRequest._id.toString(),
+        contractId: signatureRequest.contractId,
+        oldAuditTrail: auditTrailToUse,
+        accessLogs: signatureRequest.accessLogs
+      })
+
+      // Filter out PDF download events
+      auditTrailForPDF = combinedTrail.filter((event: any) => {
+        const action = event.action || ''
+        return action !== 'pdf_descargado' && action !== 'pdf_downloaded'
+      })
+
+      console.log('[PDF DEBUG] Combined audit trail:', combinedTrail.length, 'total events')
+      console.log('[PDF DEBUG] Filtered for PDF:', auditTrailForPDF.length, 'events (excluded PDF downloads)')
+      console.log('[PDF DEBUG] Sample events:', auditTrailForPDF.slice(0, 3).map((e: any) => ({
+        action: e.action,
+        timestamp: e.timestamp
+      })))
+    } catch (auditError) {
+      console.error('[PDF DEBUG] Error getting combined audit trail:', auditError)
+      // Fallback to simple array if available
+      auditTrailForPDF = Array.isArray(signatureRequest.auditTrail)
+        ? signatureRequest.auditTrail.filter((e: any) => e.action !== 'pdf_descargado' && e.action !== 'pdf_downloaded')
+        : []
+    }
+
     // Log PDF download access
     try {
       // First ensure auditTrail is an array (fix schema inconsistencies)
       await collection.updateOne(
-        { 
+        {
           _id: signatureRequest._id,
           $or: [
             { auditTrail: { $exists: false } },
@@ -99,7 +144,7 @@ export async function GET(
         },
         { $set: { auditTrail: [] } }
       )
-      
+
       // Now safely push the audit entry
       await collection.findOneAndUpdate(
         { _id: signatureRequest._id },
@@ -131,12 +176,14 @@ export async function GET(
       // Verify audit trail integrity
       const auditVerification = auditTrailService.verifyAuditTrailIntegrity(signatureRequest.contractId)
       
-      // Debug signer info
+      // Debug signer info and audit trail
       console.log('[PDF DEBUG] Signer info from request:', {
         signerInfo: signatureRequest.signerInfo,
         signerName: signatureRequest.signerName,
         signerEmail: signatureRequest.signerEmail
       })
+      console.log('[PDF DEBUG] Total audit trail records:', signatureRequest.auditTrail?.length || 0, 'events')
+      console.log('[PDF DEBUG] Filtered audit trail for PDF:', auditTrailForPDF.length, 'events (excluded downloads)')
       
       // Create SES signature object for PDF generation
       const sesSignature = {
@@ -180,7 +227,7 @@ export async function GET(
           consentGiven: true,
           intentToBind: true,
           signatureAgreement: 'User agreed to electronic signature',
-          auditTrail: signatureRequest.auditTrail?.trail?.records || []
+          auditTrail: auditTrailForPDF
         }
       }
 

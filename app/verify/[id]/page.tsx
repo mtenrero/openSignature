@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react'
 import { Container, Title, Text, Card, Stack, Badge, Group, Loader, Alert, Box, Divider, Progress, List, ThemeIcon, Tabs, Timeline, Code, Button, Collapse, Table, ScrollArea } from '@mantine/core'
 import { IconCheck, IconX, IconFileDescription, IconCalendar, IconUser, IconFingerprint, IconShieldCheck, IconAlertTriangle, IconHash, IconLock, IconClock, IconInfoCircle, IconDownload, IconEye, IconCircleCheck, IconCircleX } from '@tabler/icons-react'
 import { useDisclosure } from '@mantine/hooks'
 import axios from 'axios'
 
-export default function VerifySignature({ params }: { params: { id: string } }) {
+export default function VerifySignature({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const [loading, setLoading] = useState(true)
   const [signatureData, setSignatureData] = useState<any>(null)
   const [integrityData, setIntegrityData] = useState<any>(null)
@@ -16,14 +17,14 @@ export default function VerifySignature({ params }: { params: { id: string } }) 
 
   useEffect(() => {
     fetchSignatureData()
-  }, [params.id])
+  }, [id])
 
   const fetchSignatureData = async () => {
     try {
       // Fetch both basic verification and integrity data
       const [verifyResponse, integrityResponse] = await Promise.all([
-        axios.get(`/api/verify/${params.id}`),
-        axios.get(`/api/verify-integrity/${params.id}`)
+        axios.get(`/api/verify/${id}`),
+        axios.get(`/api/verify-integrity/${id}`)
       ])
       setSignatureData(verifyResponse.data)
       setIntegrityData(integrityResponse.data)
@@ -70,18 +71,45 @@ export default function VerifySignature({ params }: { params: { id: string } }) 
     return <IconX size={20} />
   }
 
-  const downloadPDF = async () => {
+  const downloadSignedPDF = async () => {
     try {
-      const response = await fetch(`/api/verify-integrity/${params.id}/pdf`)
-      if (!response.ok) {
-        throw new Error('Error al generar el informe')
+      // Use shortId and accessKey from signatureData to download the signed contract
+      if (!signatureData?.shortId || !signatureData?.accessKey) {
+        throw new Error('No se encontraron datos de descarga')
       }
-      
+
+      const response = await fetch(`/api/sign-requests/${signatureData.shortId}/pdf?a=${signatureData.accessKey}`)
+      if (!response.ok) {
+        throw new Error('Error al generar el PDF')
+      }
+
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `informe-integridad-${params.id}.pdf`
+      link.download = `contrato-firmado-${signatureData.contractName}-${signatureData.shortId}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Error downloading signed contract:', error)
+      alert('Error al descargar el contrato firmado')
+    }
+  }
+
+  const downloadIntegrityReport = async () => {
+    try {
+      const response = await fetch(`/api/verify-integrity/${id}/pdf`)
+      if (!response.ok) {
+        throw new Error('Error al generar el informe')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `informe-integridad-${id}.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -153,6 +181,27 @@ export default function VerifySignature({ params }: { params: { id: string } }) 
             </Stack>
           </Card>
         )}
+
+        {/* Download Actions */}
+        <Group justify="center" gap="md">
+          <Button
+            leftSection={<IconDownload size={16} />}
+            onClick={downloadSignedPDF}
+            variant="filled"
+            color="blue"
+            size="md"
+          >
+            Descargar Contrato Firmado
+          </Button>
+          <Button
+            leftSection={<IconDownload size={16} />}
+            onClick={downloadIntegrityReport}
+            variant="outline"
+            size="md"
+          >
+            Descargar Reporte de Integridad
+          </Button>
+        </Group>
 
         {/* Tabs for Different Views */}
         <Tabs value={activeTab} onChange={setActiveTab}>
@@ -347,25 +396,43 @@ export default function VerifySignature({ params }: { params: { id: string } }) 
                       const actionIcons: Record<string, any> = {
                         'documento_accedido': <IconEye size={12} />,
                         'document_accessed': <IconEye size={12} />,
+                        'documento_visualizado': <IconEye size={12} />,
                         'signer_identified': <IconUser size={12} />,
+                        'firmante_identificado': <IconUser size={12} />,
                         'consent_verified': <IconCheck size={12} />,
+                        'consentimiento_verificado': <IconCheck size={12} />,
                         'signature_created': <IconFingerprint size={12} />,
+                        'firma_creada': <IconFingerprint size={12} />,
+                        'firma_iniciada': <IconFingerprint size={12} />,
                         'document_integrity_verified': <IconShieldCheck size={12} />,
+                        'integridad_verificada': <IconShieldCheck size={12} />,
                         'audit_trail_created': <IconClock size={12} />,
-                        'audit_trail_sealed': <IconLock size={12} />
+                        'auditoria_creada': <IconClock size={12} />,
+                        'audit_trail_sealed': <IconLock size={12} />,
+                        'auditoria_sellada': <IconLock size={12} />,
+                        'pdf_descargado': <IconDownload size={12} />
                       }
-                      
+
                       const actionLabels: Record<string, string> = {
-                        'documento_accedido': 'Documento Accedido',
-                        'document_accessed': 'Documento Accedido',
-                        'signer_identified': 'Firmante Identificado',
-                        'consent_verified': 'Consentimiento Verificado',
-                        'signature_created': 'Firma Creada',
-                        'document_integrity_verified': 'Integridad Verificada',
-                        'audit_trail_created': 'Auditoría Iniciada',
-                        'audit_trail_sealed': 'Auditoría Sellada'
+                        'documento_accedido': 'Documento visualizado',
+                        'document_accessed': 'Documento visualizado',
+                        'documento_visualizado': 'Documento visualizado',
+                        'signer_identified': 'Firmante identificado',
+                        'firmante_identificado': 'Firmante identificado',
+                        'consent_verified': 'Consentimiento verificado',
+                        'consentimiento_verificado': 'Consentimiento verificado',
+                        'signature_created': 'Firma creada',
+                        'firma_creada': 'Firma creada',
+                        'firma_iniciada': 'Firma iniciada',
+                        'document_integrity_verified': 'Integridad verificada',
+                        'integridad_verificada': 'Integridad verificada',
+                        'audit_trail_created': 'Auditoría creada',
+                        'auditoria_creada': 'Auditoría creada',
+                        'audit_trail_sealed': 'Auditoría sellada',
+                        'auditoria_sellada': 'Auditoría sellada',
+                        'pdf_descargado': 'PDF descargado'
                       }
-                      
+
                       const icon = actionIcons[event.action] || <IconInfoCircle size={12} />
                       const label = actionLabels[event.action] || event.action
                       
@@ -375,43 +442,106 @@ export default function VerifySignature({ params }: { params: { id: string } }) 
                           bullet={icon}
                           title={label}
                         >
-                          <Text c="dimmed" size="sm">
-                            {new Date(event.timestamp).toLocaleString('es-ES')}
+                          <Text c="dimmed" size="sm" fw={500}>
+                            {new Date(event.timestamp).toLocaleString('es-ES', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit'
+                            })}
                           </Text>
-                          <Text size="sm" mt="xs">
-                            <strong>Actor:</strong> {event.actor || 'Sistema'}
-                          </Text>
-                          <Text size="sm">
-                            <strong>IP:</strong> {event.ipAddress || 'No disponible'}
-                          </Text>
-                          {event.details && typeof event.details === 'object' && (
-                            <Box mt="xs">
-                              {event.details.documentName && (
-                                <Text size="xs" c="dimmed">
-                                  Documento: {event.details.documentName}
-                                </Text>
-                              )}
-                              {event.details.signerName && (
-                                <Text size="xs" c="dimmed">
-                                  Firmante: {event.details.signerName}
-                                </Text>
-                              )}
-                              {event.details.signerTaxId && (
-                                <Text size="xs" c="dimmed">
-                                  NIF/DNI: {event.details.signerTaxId}
-                                </Text>
-                              )}
-                              {event.details.documentHash && (
-                                <Text size="xs" c="dimmed" style={{ wordBreak: 'break-all' }}>
-                                  Hash: {event.details.documentHash.substring(0, 16)}...
-                                </Text>
-                              )}
-                              {event.details.reason && (
-                                <Text size="xs" c="dimmed">
-                                  Razón: {event.details.reason}
-                                </Text>
-                              )}
-                            </Box>
+                          {event.details && typeof event.details === 'object' && (() => {
+                            const hiddenFields = [
+                              'shortId', 'newShortId', 'accessKey',
+                              'documentId', 'contractId', 'signatureRequestId',
+                              'messageId', 'sessionId', 'customerId',
+                              'previousSignatureType', 'newSignatureType',
+                              'previousExpiresAt', 'newExpiresAt',
+                              'signatureType'
+                            ]
+
+                            const keyLabels: { [key: string]: string } = {
+                              documentName: 'Documento',
+                              contractName: 'Contrato',
+                              downloadedAt: 'Fecha de descarga',
+                              reason: 'Motivo',
+                              resendReason: 'Motivo',
+                              preservedDueToAccess: 'Preservado por accesos',
+                              signerName: 'Firmante',
+                              signerEmail: 'Email',
+                              signerPhone: 'Teléfono',
+                              signerTaxId: 'NIF/DNI',
+                              clientName: 'Cliente',
+                              clientTaxId: 'NIF/DNI',
+                              resentCount: 'Reenvío número',
+                              emailSent: 'Email enviado',
+                              emailCount: 'Emails enviados',
+                              emailError: 'Error',
+                              previousStatus: 'Estado anterior',
+                              expiresAt: 'Expira',
+                              documentHash: 'Hash',
+                              signatureMethod: 'Método',
+                              documentViewDuration: 'Duración visualización',
+                              interactionEventsCount: 'Eventos de interacción',
+                              algorithm: 'Algoritmo',
+                              verified: 'Verificado',
+                              verificationMethod: 'Método de verificación',
+                              recordsCount: 'Eventos registrados',
+                              rootHash: 'Hash raíz',
+                              consentGiven: 'Consentimiento',
+                              intentToBind: 'Intención de vincularse',
+                              agreement: 'Acuerdo',
+                              identificationMethod: 'Método de identificación',
+                              documentSize: 'Tamaño documento',
+                              accessMethod: 'Método de acceso'
+                            }
+
+                            const entries = Object.entries(event.details)
+                              .filter(([key, value]) => {
+                                if (value === undefined || value === null || value === '') return false
+                                if (hiddenFields.includes(key)) return false
+                                return true
+                              })
+                              .map(([key, value]) => {
+                                const label = keyLabels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                                let displayValue: string
+                                if (typeof value === 'boolean') {
+                                  displayValue = value ? 'Sí' : 'No'
+                                } else if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}T/)) {
+                                  displayValue = new Date(value).toLocaleString('es-ES', {
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })
+                                } else if (key === 'documentHash' && typeof value === 'string') {
+                                  displayValue = value.substring(0, 16) + '...'
+                                } else {
+                                  displayValue = String(value)
+                                }
+                                return { label, value: displayValue }
+                              })
+
+                            if (entries.length === 0) return null
+
+                            return (
+                              <Stack gap={4} mt={4}>
+                                {entries.map(({ label, value }, idx) => (
+                                  <Group key={idx} gap={6}>
+                                    <Text size="xs" fw={600} c="dimmed">{label}:</Text>
+                                    <Text size="xs">{value}</Text>
+                                  </Group>
+                                ))}
+                              </Stack>
+                            )
+                          })()}
+                          {event.ipAddress && (
+                            <Text size="xs" c="dimmed" mt={4}>
+                              IP: {event.ipAddress}
+                            </Text>
                           )}
                         </Timeline.Item>
                       )
@@ -462,16 +592,6 @@ export default function VerifySignature({ params }: { params: { id: string } }) 
                   </Code>
                 </ScrollArea>
               </Card>
-
-              <Group justify="center">
-                <Button 
-                  leftSection={<IconDownload size={16} />}
-                  onClick={downloadPDF}
-                  variant="filled"
-                >
-                  Descargar Reporte de Integridad (PDF)
-                </Button>
-              </Group>
             </Stack>
           </Tabs.Panel>
         </Tabs>

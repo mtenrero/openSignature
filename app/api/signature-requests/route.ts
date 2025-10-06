@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
+import { getAuthContext } from '@/lib/auth/unified'
 import { getSignatureRequestsCollection, getContractsCollection, mongoHelpers, CustomerEncryption, getDatabase } from '@/lib/db/mongodb'
 import { nanoid } from 'nanoid'
 import { ObjectId } from 'mongodb'
@@ -10,6 +11,7 @@ import { UsageTracker } from '@/lib/subscription/usage'
 import { extractSignerInfo } from '@/lib/contractUtils'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { isSMSEnabled } from '@/lib/utils/smsConfig'
+import { getCombinedAuditTrail } from '@/lib/audit/integration'
 
 export const runtime = 'nodejs'
 
@@ -44,16 +46,14 @@ async function getCustomerMiNombre(customerId: string): Promise<string | null> {
 // POST /api/signature-requests - Create new signature request
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
+    // Get authentication context (supports session, API keys, and OAuth JWT)
+    const authContext = await getAuthContext(request)
+
+    if (!authContext) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json({ error: 'Customer ID not found' }, { status: 401 })
-    }
+    const { userId, customerId } = authContext
 
     const body = await request.json()
     const { contractId, signatureType, signerName, signerEmail, signerPhone, clientName, clientTaxId, dynamicFieldValues } = body
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
       userFields: decryptedContract.userFields || [],
       parameters: decryptedContract.parameters || {},
       snapshotCreatedAt: new Date(),
-      snapshotCreatedBy: session.user.id,
+      snapshotCreatedBy: userId,
       // Hash for integrity verification
       contentHash: Buffer.from(decryptedContract.content || '').toString('base64')
     }
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
       const searchQuery: any = {
         contractId,
         customerId,
-        status: { $in: ['pending', 'signed'] } // Don't reuse expired/rejected
+        status: 'pending' // Only reuse pending requests, not signed/expired/rejected
       }
 
       // Search by email or phone
@@ -131,6 +131,8 @@ export async function POST(request: NextRequest) {
         searchQuery.signerPhone = signerPhone || signerInfoFromFields?.clientPhone
       }
 
+      console.log(`[Signature Request] Searching for existing request with query:`, searchQuery)
+
       existingRequest = await collection.findOne(searchQuery)
 
       if (existingRequest) {
@@ -139,8 +141,12 @@ export async function POST(request: NextRequest) {
           shortId: existingRequest.shortId,
           status: existingRequest.status,
           signatureType: existingRequest.signatureType,
-          createdAt: existingRequest.createdAt
+          createdAt: existingRequest.createdAt,
+          expiresAt: existingRequest.expiresAt,
+          customerId: existingRequest.customerId
         })
+      } else {
+        console.log(`[Signature Request] No existing request found for ${signerIdentifier}`)
       }
     }
 
@@ -148,8 +154,9 @@ export async function POST(request: NextRequest) {
     if (existingRequest) {
       const updateData: any = {
         updatedAt: new Date(),
-        updatedBy: session.user.id,
+        updatedBy: userId,
         signatureType, // Update to new signature type (email/sms/etc)
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 🔥 IMPORTANT: Reset expiration to 7 days from now
       }
 
       // Update signer info if provided
@@ -169,47 +176,76 @@ export async function POST(request: NextRequest) {
         updateData.signerInfo = signerInfoFromFields
       }
 
-      // Add audit trail entry for resend
-      const resendAuditEntry = {
+      // Add audit record entry for resend (structured format)
+      const resendAuditRecord = {
         timestamp: new Date(),
         action: signatureType === 'email' ? 'email_reenviado' : 'sms_reenviado',
-        performedBy: session.user.id,
+        actor: {
+          id: userId,
+          type: 'user',
+          identifier: userId
+        },
+        resource: {
+          type: 'signature_request',
+          id: existingRequest._id.toString(),
+          name: existingRequest.contractSnapshot?.name || 'Solicitud de firma'
+        },
         details: {
           newSignatureType: signatureType,
           previousSignatureType: existingRequest.signatureType,
-          reason: 'Nueva solicitud desde API - reutilizando solicitud existente'
+          previousExpiresAt: existingRequest.expiresAt,
+          newExpiresAt: updateData.expiresAt,
+          reason: 'Nueva solicitud desde API - reutilizando solicitud existente con expiración renovada'
+        },
+        metadata: {
+          ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '',
+          userAgent: request.headers.get('user-agent') || ''
         }
       }
 
-      await collection.updateOne(
+      const updateResult = await collection.updateOne(
         { _id: existingRequest._id },
         {
           $set: updateData,
-          $push: { auditTrail: resendAuditEntry }
+          $push: { auditRecords: resendAuditRecord } // Use auditRecords instead of auditTrail
         }
       )
 
-      console.log(`[Signature Request] Updated existing request ${existingRequest.shortId}`)
+      console.log(`[Signature Request] Update result:`, {
+        matchedCount: updateResult.matchedCount,
+        modifiedCount: updateResult.modifiedCount,
+        acknowledged: updateResult.acknowledged
+      })
 
-      // Reuse existing shortId and accessKey
-      const shortId = existingRequest.shortId
-      const accessKey = Buffer.from(`${shortId}:${customerId}`).toString('base64').slice(0, 6)
+      console.log(`[Signature Request] Updated existing request ${existingRequest.shortId} - Expiration renewed to: ${updateData.expiresAt.toISOString()}`)
 
-      const signatureRequest = {
-        ...existingRequest,
-        ...updateData,
-        shortId,
-        signatureUrl: `${process.env.NEXTAUTH_URL}/sign/${shortId}?a=${accessKey}`,
+      // 🔥 IMPORTANT: Fetch the updated document from database to ensure we have the latest data
+      const updatedRequest = await collection.findOne({ _id: existingRequest._id })
+
+      if (!updatedRequest) {
+        console.error(`[Signature Request] ERROR: Could not find updated request with ID ${existingRequest._id}`)
+        return NextResponse.json({ error: 'Failed to retrieve updated signature request' }, { status: 500 })
       }
 
-      // Continue with email/SMS sending logic using existing request
-      var result = { insertedId: existingRequest._id, acknowledged: true }
-      var shortId = existingRequest.shortId
+      console.log(`[Signature Request] Fetched updated request from DB:`, {
+        id: updatedRequest._id,
+        shortId: updatedRequest.shortId,
+        status: updatedRequest.status,
+        expiresAt: updatedRequest.expiresAt,
+        customerId: updatedRequest.customerId
+      })
+
+      // Reuse existing shortId and accessKey
+      const shortId = updatedRequest.shortId
+      const accessKey = Buffer.from(`${shortId}:${customerId}`).toString('base64').slice(0, 6)
+
+      // Continue with email/SMS sending logic using updated request
+      var result = { insertedId: updatedRequest._id, acknowledged: true }
+      var shortId = updatedRequest.shortId
       var signatureRequest = {
-        ...existingRequest,
-        ...updateData,
+        ...updatedRequest,
         shortId,
-        signatureUrl: `${process.env.NEXTAUTH_URL}/sign/${shortId}?a=${Buffer.from(`${shortId}:${customerId}`).toString('base64').slice(0, 6)}`,
+        signatureUrl: `${process.env.NEXTAUTH_URL}/sign/${shortId}?a=${accessKey}`,
       }
     } else {
       // No existing request - create new one
@@ -234,7 +270,7 @@ export async function POST(request: NextRequest) {
         clientName: clientName || signerInfoFromFields?.clientName || null,
         clientTaxId: clientTaxId || signerInfoFromFields?.clientTaxId || null,
         status: 'pending',
-        createdBy: session.user.id,
+        createdBy: userId,
         customerId,
         businessID: customerId, // For tablet polling
         createdAt: new Date(),
@@ -259,28 +295,31 @@ export async function POST(request: NextRequest) {
         emailTracking: {
           emailsSent: 0,
           emailHistory: []
-        }
+        },
+
+        // Initialize audit records array for tracking all events
+        auditRecords: []
       }
 
       var result = await collection.insertOne(mongoHelpers.addMetadata(signatureRequest, customerId))
     }
 
-    // Create audit trail for signature request creation
+    // Create audit entry for signature request creation (save directly to DB)
     const clientIP = extractClientIP(request)
     const userAgent = request.headers.get('user-agent') || 'unknown'
 
-    auditTrailService.addAuditRecord({
-      resourceId: contractId,
+    const creationAuditRecord = {
+      timestamp: new Date(),
       action: 'solicitud_firma_creada',
-      actor: { 
-        id: session.user.id, 
-        type: 'user', 
-        identifier: session.user.email || session.user.id 
+      actor: {
+        id: userId,
+        type: 'user',
+        identifier: userId
       },
-      resource: { 
-        type: 'contract', 
-        id: contractId, 
-        name: contractSnapshot.name 
+      resource: {
+        type: 'contract',
+        id: contractId,
+        name: contractSnapshot.name
       },
       details: {
         signatureRequestId: result.insertedId.toString(),
@@ -296,9 +335,17 @@ export async function POST(request: NextRequest) {
       metadata: {
         ipAddress: clientIP,
         userAgent: userAgent,
-        session: session.user.id
+        session: userId
       }
-    })
+    }
+
+    // Save the creation audit record directly to MongoDB
+    await collection.updateOne(
+      { _id: result.insertedId },
+      {
+        $push: { auditRecords: creationAuditRecord }
+      }
+    )
 
     // Send notification based on signature type
     // Note: QR signatures and remote links now count as email signatures and require validation
@@ -306,7 +353,7 @@ export async function POST(request: NextRequest) {
     if ((signatureType === 'email' && signerEmail) || signatureType === 'qr') {
       try {
         // Check if email signature is allowed (may require payment)
-        const subscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(session.user.id)
+        const subscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(userId)
         if (subscriptionInfo) {
           const emailValidation = await UsageTracker.canPerformAction(
             customerId,
@@ -351,7 +398,7 @@ export async function POST(request: NextRequest) {
 
           // Record QR request as email usage in audit system
           try {
-            const qrAuditSubscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(session.user.id)
+            const qrAuditSubscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(userId)
             const planId = qrAuditSubscriptionInfo?.plan?.id || 'free'
 
             // Check if this was an extra email (over plan limits or pay-per-use)
@@ -364,7 +411,7 @@ export async function POST(request: NextRequest) {
 
             await UsageAuditService.recordEmailSent({
               customerId,
-              userId: session.user.id,
+              userId: userId,
               emailRecipient: 'QR_CODE', // Special identifier for QR codes
               emailSubject: `QR Code: ${contractSnapshot.name}`,
               signatureRequestId: result.insertedId.toString(),
@@ -415,7 +462,7 @@ export async function POST(request: NextRequest) {
 
             // Record email sent in audit system
             try {
-              const emailAuditSubscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(session.user.id)
+              const emailAuditSubscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(userId)
               const planId = emailAuditSubscriptionInfo?.plan?.id || 'free'
 
               // Check if this was an extra email (over plan limits or pay-per-use)
@@ -428,7 +475,7 @@ export async function POST(request: NextRequest) {
 
               await UsageAuditService.recordEmailSent({
                 customerId,
-                userId: session.user.id,
+                userId: userId,
                 emailRecipient: signerEmail,
                 emailSubject: `Solicitud de firma: ${contractSnapshot.name}`,
                 signatureRequestId: result.insertedId.toString(),
@@ -493,7 +540,7 @@ export async function POST(request: NextRequest) {
 
       try {
         // Check if SMS signature is allowed (always requires payment)
-        const smsSubscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(session.user.id)
+        const smsSubscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(userId)
         if (smsSubscriptionInfo) {
           const smsValidation = await UsageTracker.canPerformAction(
             customerId,
@@ -579,13 +626,13 @@ export async function POST(request: NextRequest) {
         }
 
         // Record SMS sent in audit system
-        const auditSubscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(session.user.id)
+        const auditSubscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(userId)
         const planId = auditSubscriptionInfo?.plan?.id || 'free'
         const smsCost = auditSubscriptionInfo?.limits?.smsCost || 0
 
         await UsageAuditService.recordSmsSent({
           customerId,
-          userId: session.user.id,
+          userId: userId, // Use userId from authContext instead of session.user.id
           smsRecipient: signerPhone,
           smsMessage,
           countryCode: 'ES', // Default to Spain
@@ -605,7 +652,7 @@ export async function POST(request: NextRequest) {
     } else if (signatureType === 'local' || signatureType === 'tablet') {
       try {
         // Check if local signature is allowed (has monthly limit for free/pay-per-use plans)
-        const localSubscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(session.user.id)
+        const localSubscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(userId)
         if (localSubscriptionInfo) {
           const localValidation = await UsageTracker.canPerformAction(
             customerId,
@@ -650,20 +697,19 @@ export async function POST(request: NextRequest) {
 // GET /api/signature-requests - Get signature requests for user
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
+    // Get authentication context (supports session, API keys, and OAuth JWT)
+    const authContext = await getAuthContext(request)
+
+    if (!authContext) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json({ error: 'Customer ID not found' }, { status: 401 })
-    }
+    const { userId, customerId } = authContext
 
     const url = new URL(request.url)
     const status = url.searchParams.get('status')
     const contractId = url.searchParams.get('contractId')
+    const full = url.searchParams.get('full') === 'true'
 
     // Build query
     const query: any = { customerId }
@@ -681,10 +727,10 @@ export async function GET(request: NextRequest) {
     const contractsCollection = await getContractsCollection()
     const cleanedRequests = await Promise.all(signatureRequests.map(async (req) => {
       const { _id, ...cleanReq } = req
-      
+
       // Get contract name from contractSnapshot (new format) or fetch from contracts collection (legacy)
       let contractName = 'Contrato'
-      
+
       if (req.contractSnapshot?.name) {
         // NEW: Use contract name from snapshot
         contractName = req.contractSnapshot.name
@@ -695,7 +741,7 @@ export async function GET(request: NextRequest) {
             _id: new ObjectId(req.contractId),
             customerId: customerId
           })
-          
+
           if (contract) {
             const decryptedContract = CustomerEncryption.decryptSensitiveFields(contract, customerId)
             contractName = decryptedContract.name || 'Contrato'
@@ -704,10 +750,28 @@ export async function GET(request: NextRequest) {
           console.warn('Failed to fetch contract name for request:', req._id, error)
         }
       }
-      
+
       // Extract signer information from signerInfo field (populated when signature is completed)
       const signerInfo = req.signerInfo || {}
-      
+
+      // Get combined audit trail only if full=true (new system + old system)
+      let auditTrail = cleanReq.auditTrail
+      if (full) {
+        try {
+          const combinedTrail = await getCombinedAuditTrail({
+            signRequestId: _id.toString(),
+            contractId: req.contractId,
+            oldAuditTrail: cleanReq.auditTrail,
+            accessLogs: req.accessLogs
+          })
+          if (combinedTrail && combinedTrail.length > 0) {
+            auditTrail = combinedTrail
+          }
+        } catch (error) {
+          console.warn('Failed to get combined audit trail, using old trail:', error)
+        }
+      }
+
       return {
         id: _id,
         ...cleanReq,
@@ -716,7 +780,8 @@ export async function GET(request: NextRequest) {
         clientName: signerInfo.clientName || req.clientName || null,
         clientTaxId: signerInfo.clientTaxId || req.clientTaxId || null,
         signerName: signerInfo.clientName || req.signerName || null,
-        signerEmail: signerInfo.clientEmail || req.signerEmail || null
+        signerEmail: signerInfo.clientEmail || req.signerEmail || null,
+        ...(full && { auditTrail })
       }
     }))
 

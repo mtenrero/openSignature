@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 import { auth } from '@/lib/auth/config'
-import { 
-  getSignaturesCollection, 
+import { getAuthContext } from '@/lib/auth/unified'
+import {
+  getSignaturesCollection,
   getContractsCollection,
-  mongoHelpers, 
+  mongoHelpers,
   handleDatabaseError,
   CustomerEncryption,
-  initializeIndexes 
+  initializeIndexes
 } from '@/lib/db/mongodb'
 import { ObjectId } from 'mongodb'
 import { auditTrailService } from '@/lib/auditTrail'
@@ -20,24 +21,19 @@ import { getCombinedAuditTrail } from '@/lib/audit/integration'
 // GET /api/signatures - Get all signatures for the authenticated user
 export async function GET(request: NextRequest) {
   try {
-    // Use NextAuth v5 auth function with request context
-    const session = await auth()
+    // Get authentication context (supports session, API keys, and OAuth JWT)
+    const authContext = await getAuthContext(request)
 
-    if (!session?.user?.id) {
+    if (!authContext) {
+      console.log('No authentication found in API route')
       return NextResponse.json(
         { error: 'Unauthorized - Please sign in' },
         { status: 401 }
       )
     }
 
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json(
-        { error: 'Customer ID not found in session' },
-        { status: 401 }
-      )
-    }
+    const { userId, customerId } = authContext
+    console.log('Auth context found - User:', userId, 'Customer:', customerId, 'OAuth:', authContext.isOAuth)
 
     // Get query parameters
     const url = new URL(request.url)
@@ -45,6 +41,7 @@ export async function GET(request: NextRequest) {
     const status = url.searchParams.get('status')
     const limit = parseInt(url.searchParams.get('limit') || '50')
     const skip = parseInt(url.searchParams.get('skip') || '0')
+    const full = url.searchParams.get('full') === 'true'
 
     // Build MongoDB query
     const query: any = {
@@ -63,9 +60,17 @@ export async function GET(request: NextRequest) {
     // Get collection instance for this customer
     const collection = await getSignaturesCollection()
 
+    // Define projection based on full parameter
+    const projection = full ? {} : {
+      signature: 0,  // Exclude signature data (base64 image)
+      'metadata.auditTrail': 0,  // Exclude detailed audit trail
+      'metadata.dynamicFieldValues': 0,  // Exclude form field values
+      'metadata.qualifiedTimestamp.token': 0  // Exclude TSA token
+    }
+
     // Query signatures with pagination
     const signatures = await collection
-      .find(query)
+      .find(query, { projection })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
@@ -95,25 +100,28 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Get combined audit trail (new system + old system)
+      // Get combined audit trail only if full=true (new system + old system)
       let auditTrail = cleaned.auditTrail
-      try {
-        const combinedTrail = await getCombinedAuditTrail({
-          signRequestId: cleaned.id || cleaned._id,
-          contractId: cleaned.contractId,
-          oldAuditTrail: cleaned.auditTrail
-        })
-        if (combinedTrail && combinedTrail.length > 0) {
-          auditTrail = combinedTrail
+      if (full) {
+        try {
+          const combinedTrail = await getCombinedAuditTrail({
+            signRequestId: cleaned.id || cleaned._id,
+            contractId: cleaned.contractId,
+            oldAuditTrail: cleaned.auditTrail,
+            accessLogs: doc.accessLogs
+          })
+          if (combinedTrail && combinedTrail.length > 0) {
+            auditTrail = combinedTrail
+          }
+        } catch (error) {
+          console.warn('Failed to get combined audit trail, using old trail:', error)
         }
-      } catch (error) {
-        console.warn('Failed to get combined audit trail, using old trail:', error)
       }
 
       return {
         ...cleaned,
         contractName,
-        auditTrail
+        ...(full && { auditTrail })
       }
     }))
 

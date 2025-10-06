@@ -148,7 +148,7 @@ export default function SignatureDetailsPage() {
   // Modals
   const [resendModalOpened, setResendModalOpened] = useState(false)
   const [archiveModalOpened, setArchiveModalOpened] = useState(false)
-  const [qrModalOpened, setQrModalOpened] = useState(false)
+  // ⚠️ SECURITY: Removed qrModalOpened state (security risk)
   const [discardModalOpened, setDiscardModalOpened] = useState(false)
   
   // Resend form
@@ -168,7 +168,7 @@ export default function SignatureDetailsPage() {
   const [discarding, setDiscarding] = useState(false)
 
   // QR data
-  const [qrCodeData, setQrCodeData] = useState('')
+  // ⚠️ SECURITY: Removed qrCodeData state (security risk)
 
   const id = params.id as string
 
@@ -199,8 +199,8 @@ export default function SignatureDetailsPage() {
         // Try to get from both endpoints
         let detailsData = null
 
-        // Try signature-requests first (for pending requests)
-        const requestResponse = await fetch(`/api/signature-requests`)
+        // Try signature-requests first (for pending requests) with full=true to get audit trail
+        const requestResponse = await fetch(`/api/signature-requests?full=true`)
         if (requestResponse.ok) {
           const requestsData = await requestResponse.json()
           detailsData = requestsData.requests?.find((r: any) => r.id === id)
@@ -209,9 +209,9 @@ export default function SignatureDetailsPage() {
           }
         }
 
-        // If not found, try signatures (for completed signatures)
+        // If not found, try signatures (for completed signatures) with full=true to get audit trail
         if (!detailsData) {
-          const sigResponse = await fetch(`/api/signatures`)
+          const sigResponse = await fetch(`/api/signatures?full=true`)
           if (sigResponse.ok) {
             const signaturesData = await sigResponse.json()
             detailsData = signaturesData.signatures?.find((s: any) => s.id === id)
@@ -240,8 +240,17 @@ export default function SignatureDetailsPage() {
         }
 
         // Process audit trail data from different sources
-        if (detailsData.auditTrail?.trail?.records) {
-          // New format: audit trail stored directly with trail.records
+        if (detailsData.auditRecords && Array.isArray(detailsData.auditRecords)) {
+          // Priority 1: Use auditRecords field (newest format - direct array)
+          detailsData.auditTrail = detailsData.auditRecords.map((record: any) => ({
+            action: record.action,
+            timestamp: record.timestamp,
+            details: record.details,
+            ipAddress: record.metadata?.ipAddress || record.ipAddress,
+            userAgent: record.metadata?.userAgent || record.userAgent
+          }))
+        } else if (detailsData.auditTrail?.trail?.records) {
+          // Priority 2: audit trail stored directly with trail.records
           detailsData.auditTrail = detailsData.auditTrail.trail.records.map((record: any) => ({
             action: record.action,
             timestamp: record.timestamp,
@@ -250,7 +259,7 @@ export default function SignatureDetailsPage() {
             userAgent: record.metadata?.userAgent
           }))
         } else if (detailsData.metadata?.auditTrail?.trail?.records) {
-          // New format: audit trail stored in metadata.auditTrail.trail.records
+          // Priority 3: audit trail stored in metadata.auditTrail.trail.records
           detailsData.auditTrail = detailsData.metadata.auditTrail.trail.records.map((record: any) => ({
             action: record.action,
             timestamp: record.timestamp,
@@ -259,7 +268,7 @@ export default function SignatureDetailsPage() {
             userAgent: record.metadata?.userAgent
           }))
         } else if (detailsData.auditTrail && Array.isArray(detailsData.auditTrail)) {
-          // Legacy format: audit trail is already an array
+          // Priority 4: Legacy format - audit trail is already an array
           // Keep as is
         } else {
           // Fallback: create basic audit trail
@@ -317,48 +326,82 @@ export default function SignatureDetailsPage() {
     }
 
     if (typeof details === 'object' && details !== null) {
-      // Format common audit trail objects in a more readable way
+      // Lista de campos que NO queremos mostrar (técnicos/internos)
+      const hiddenFields = [
+        'shortId', 'newShortId', 'accessKey',
+        'documentId', 'contractId', 'signatureRequestId',
+        'messageId', 'sessionId', 'customerId',
+        'previousSignatureType', 'newSignatureType',
+        'previousExpiresAt', 'newExpiresAt',
+        'signatureType' // Ya se muestra en el título del evento
+      ]
+
+      // Mapeo de claves técnicas a nombres amigables
+      const keyLabels: { [key: string]: string } = {
+        documentName: 'Documento',
+        contractName: 'Contrato',
+        downloadedAt: 'Fecha de descarga',
+        reason: 'Motivo',
+        resendReason: 'Motivo',
+        preservedDueToAccess: 'Preservado por accesos',
+        signerName: 'Firmante',
+        signerEmail: 'Email',
+        signerPhone: 'Teléfono',
+        clientName: 'Cliente',
+        clientTaxId: 'NIF/DNI',
+        resentCount: 'Reenvío número',
+        emailSent: 'Email enviado',
+        emailCount: 'Emails enviados',
+        emailError: 'Error',
+        previousStatus: 'Estado anterior',
+        expiresAt: 'Expira'
+      }
+
       const entries = Object.entries(details)
-      return entries
-        .filter(([key, value]) => value !== undefined && value !== null)
+        .filter(([key, value]) => {
+          // Filtrar campos vacíos/nulos y campos ocultos
+          if (value === undefined || value === null || value === '') return false
+          if (hiddenFields.includes(key)) return false
+          return true
+        })
         .map(([key, value]) => {
-          // Format common keys more nicely
-          const keyLabels: { [key: string]: string } = {
-            shortId: 'ID corto',
-            newShortId: 'Nuevo ID corto',
-            accessKey: 'Clave de acceso',
-            documentId: 'ID del documento',
-            documentName: 'Documento',
-            contractName: 'Contrato',
-            contractId: 'ID del contrato',
-            downloadedAt: 'Descargado',
-            reason: 'Motivo',
-            resendReason: 'Motivo',
-            preservedDueToAccess: 'Preservado por accesos',
-            signatureType: 'Tipo de firma',
-            newSignatureType: 'Nuevo tipo',
-            previousSignatureType: 'Tipo anterior',
-            signerName: 'Nombre',
-            signerEmail: 'Email',
-            signerPhone: 'Teléfono',
-            clientName: 'Cliente',
-            clientTaxId: 'NIF/DNI',
-            resentCount: 'Número de reenvío',
-            emailSent: 'Email enviado',
-            emailCount: 'Total emails enviados',
-            messageId: 'ID del mensaje',
-            emailError: 'Error de email',
-            previousStatus: 'Estado anterior'
+          // Obtener label amigable o formatear el key (remover underscores)
+          const label = keyLabels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+
+          // Formatear valor
+          let displayValue: string
+          if (typeof value === 'boolean') {
+            displayValue = value ? 'Sí' : 'No'
+          } else if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}T/)) {
+            // Es una fecha ISO, formatearla
+            displayValue = new Date(value).toLocaleString('es-ES', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit'
+            })
+          } else {
+            displayValue = String(value)
           }
 
-          const label = keyLabels[key] || key
-          const displayValue = typeof value === 'boolean'
-            ? (value ? 'Sí' : 'No')
-            : String(value)
-
-          return `${label}: ${displayValue}`
+          return { label, value: displayValue }
         })
-        .join(' | ')
+
+      // Si no hay campos para mostrar, no mostrar nada
+      if (entries.length === 0) return null
+
+      // Renderizar como stack de items en lugar de texto separado por |
+      return (
+        <Stack gap={4} mt={4}>
+          {entries.map(({ label, value }, idx) => (
+            <Group key={idx} gap={6}>
+              <Text size="xs" fw={600} c="dimmed">{label}:</Text>
+              <Text size="xs">{value}</Text>
+            </Group>
+          ))}
+        </Stack>
+      )
     }
 
     return String(details)
@@ -366,16 +409,23 @@ export default function SignatureDetailsPage() {
 
   const getAuditActionLabel = (action: string) => {
     const actionLabels: { [key: string]: string } = {
+      'solicitud_firma_creada': 'Solicitud de firma creada',
       'solicitud_creada': 'Solicitud creada',
+      'email_reenviado': 'Email reenviado',
+      'sms_reenviado': 'SMS reenviado',
       'resent': 'Reenviada',
       'archived': 'Archivada',
       'solicitud_descartada': 'Solicitud descartada',
-      'documento_accedido': 'Documento accedido',
-      'document_accessed': 'Documento accedido',
+      'documento_accedido': 'Documento visualizado',
+      'document_accessed': 'Documento visualizado',
+      'firma_iniciada': 'Firma iniciada',
       'firma_completada': 'Firma completada',
-      'contrato_firmado': 'Contrato firmado'
+      'contrato_firmado': 'Contrato firmado',
+      'pdf_descargado': 'PDF descargado',
+      'optional_data_provided': 'Datos proporcionados'
     }
-    return actionLabels[action] || action
+    // Si no está en el mapeo, formatear eliminando underscores y capitalizando
+    return actionLabels[action] || action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
   }
 
   const getAuditIcon = (action: string) => {
@@ -409,73 +459,9 @@ export default function SignatureDetailsPage() {
     return statuses[status as keyof typeof statuses] || statuses.pending
   }
 
-  const handleCopyLink = async () => {
-    if (!details?.signatureUrl) return
-
-    try {
-      // Try modern clipboard API first
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(details.signatureUrl)
-      } else {
-        // Fallback for Safari and HTTP contexts
-        const textArea = document.createElement('textarea')
-        textArea.value = details.signatureUrl
-        textArea.style.position = 'fixed'
-        textArea.style.left = '-9999px'
-        textArea.style.top = '-9999px'
-        document.body.appendChild(textArea)
-        textArea.focus()
-        textArea.select()
-        
-        try {
-          document.execCommand('copy')
-        } catch (err) {
-          console.error('Fallback copy failed:', err)
-          throw new Error('Copy not supported')
-        }
-        
-        document.body.removeChild(textArea)
-      }
-      
-      notifications.show({
-        title: 'Enlace copiado',
-        message: 'El enlace de firma ha sido copiado al portapapeles',
-        color: 'green',
-      })
-    } catch (error) {
-      console.error('Copy failed:', error)
-      notifications.show({
-        title: 'Error al copiar',
-        message: 'No se pudo copiar el enlace. Cópialo manualmente desde la URL mostrada.',
-        color: 'red',
-      })
-    }
-  }
-
-  const generateQRCode = async (url: string): Promise<string> => {
-    try {
-      const QRCode = await import('qrcode')
-      return await QRCode.toDataURL(url, {
-        width: 256,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      })
-    } catch (error) {
-      console.error('Error generating QR code:', error)
-      return ''
-    }
-  }
-
-  const handleShowQR = async () => {
-    if (details?.signatureUrl) {
-      const qrCode = await generateQRCode(details.signatureUrl)
-      setQrCodeData(qrCode)
-      setQrModalOpened(true)
-    }
-  }
+  // ⚠️ SECURITY: Removed handleCopyLink, generateQRCode, and handleShowQR functions
+  // These functions exposed the signature URL with access key, allowing the partner to sign on behalf of the client
+  // Partners should only be able to REQUEST signatures via resend options, not access the signing links directly
 
   const handleResend = async () => {
     if (!details || !resendType) return
@@ -864,32 +850,12 @@ export default function SignatureDetailsPage() {
                       <Divider />
                       <Stack gap="xs">
                         <Text size="sm" fw={500}>Acciones:</Text>
-                        <Group gap="xs">
-                          <Button
-                            size="xs"
-                            variant="light"
-                            leftSection={<IconCopy size={14} />}
-                            onClick={handleCopyLink}
-                          >
-                            Copiar enlace
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="light"
-                            leftSection={<IconQrcode size={14} />}
-                            onClick={handleShowQR}
-                          >
-                            Mostrar QR
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="light"
-                            leftSection={<IconExternalLink size={14} />}
-                            onClick={() => window.open(details.signatureUrl, '_blank')}
-                          >
-                            Abrir enlace
-                          </Button>
-                        </Group>
+                        <Alert color="orange" variant="light" icon={<IconAlertTriangle size={16} />}>
+                          <Text size="xs">
+                            Por seguridad, el enlace de firma solo está disponible para el destinatario.
+                            Usa los botones de reenvío para compartir el enlace con el firmante.
+                          </Text>
+                        </Alert>
                       </Stack>
                     </>
                   )}
@@ -938,21 +904,7 @@ export default function SignatureDetailsPage() {
                         second: '2-digit'
                       })}
                     </Text>
-                    {entry.details && (
-                      <Box
-                        mt={6}
-                        p="xs"
-                        style={{
-                          backgroundColor: 'var(--mantine-color-gray-0)',
-                          borderRadius: 'var(--mantine-radius-sm)',
-                          border: '1px solid var(--mantine-color-gray-2)'
-                        }}
-                      >
-                        <Text size="sm" style={{ lineHeight: 1.4 }}>
-                          {renderAuditDetails(entry.details)}
-                        </Text>
-                      </Box>
-                    )}
+                    {entry.details && renderAuditDetails(entry.details)}
                     {entry.ipAddress && (
                       <Text size="xs" c="dimmed" mt={4}>
                         IP: {entry.ipAddress}
@@ -1107,46 +1059,7 @@ export default function SignatureDetailsPage() {
           </Stack>
         </Modal>
 
-        {/* QR Modal */}
-        <Modal
-          opened={qrModalOpened}
-          onClose={() => setQrModalOpened(false)}
-          title="QR para Firma Remota"
-          centered
-          size="md"
-        >
-          <Stack align="center" gap="md">
-            <Text size="sm" ta="center" c="dimmed">
-              Escanea este código QR con cualquier dispositivo móvil para firmar el contrato
-            </Text>
-            
-            <Text fw={600} ta="center">
-              {details.contractName}
-            </Text>
-            
-            {qrCodeData && (
-              <Image
-                src={qrCodeData}
-                alt="QR Code para firma"
-                w={256}
-                h={256}
-                style={{ border: '1px solid #e0e0e0' }}
-              />
-            )}
-            
-            <Text size="xs" ta="center" c="dimmed" style={{ wordBreak: 'break-all' }}>
-              URL: {details.signatureUrl}
-            </Text>
-            
-            <Button
-              variant="light"
-              onClick={handleCopyLink}
-              leftSection={<IconCopy size={14} />}
-            >
-              Copiar Enlace
-            </Button>
-          </Stack>
-        </Modal>
+        {/* ⚠️ SECURITY: QR Modal removed - it exposed the signature URL with access key */}
 
         {/* Discard Modal */}
         <Modal
