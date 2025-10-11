@@ -199,13 +199,18 @@ export default function SignatureDetailsPage() {
         // Try to get from both endpoints
         let detailsData = null
 
-        // Try signature-requests first (for pending requests) with full=true to get audit trail
+        // Try signature-requests first (for pending AND completed requests) with full=true to get audit trail
         const requestResponse = await fetch(`/api/signature-requests?full=true`)
         if (requestResponse.ok) {
           const requestsData = await requestResponse.json()
           detailsData = requestsData.requests?.find((r: any) => r.id === id)
           if (detailsData) {
             detailsData.type = 'request'
+            // Preserve shortId and accessKey for PDF download
+            if (detailsData.status === 'signed' || detailsData.status === 'completed') {
+              // These fields should already be in the response
+              console.log('[DEBUG] Found signed request with shortId:', detailsData.shortId, 'accessKey:', detailsData.accessKey)
+            }
           }
         }
 
@@ -599,33 +604,58 @@ export default function SignatureDetailsPage() {
     if (!details) return
 
     try {
-      const response = await fetch(`/api/contracts/${details.contractId}/signed-pdf`, {
-        method: 'GET',
-      })
+      let pdfUrl: string
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Error al generar PDF')
+      // Check if we have shortId and accessKey (from signature_requests)
+      if ((details as any).shortId && (details as any).accessKey) {
+        // Use the sign-requests endpoint
+        const shortId = (details as any).shortId
+        const accessKey = (details as any).accessKey
+        pdfUrl = `/api/sign-requests/${shortId}/pdf?a=${accessKey}`
+
+        // Create a temporary link to download the PDF
+        const link = document.createElement('a')
+        link.href = pdfUrl
+        link.download = `contrato-firmado-${details.contractName || 'documento'}-${shortId}.pdf`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+
+        notifications.show({
+          title: 'PDF descargado',
+          message: 'El contrato firmado ha sido descargado exitosamente',
+          color: 'green',
+        })
+      } else {
+        // Fallback to the contracts endpoint for old signatures
+        const response = await fetch(`/api/contracts/${details.contractId}/signed-pdf`, {
+          method: 'GET',
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Error al generar PDF')
+        }
+
+        // Get the blob from response
+        const blob = await response.blob()
+
+        // Create download link
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `Contrato_Firmado_${details.contractName}_${new Date().toISOString().split('T')[0]}.pdf`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+
+        notifications.show({
+          title: 'PDF descargado',
+          message: 'El contrato firmado ha sido descargado exitosamente',
+          color: 'green',
+        })
       }
-
-      // Get the blob from response
-      const blob = await response.blob()
-      
-      // Create download link
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `Contrato_Firmado_${details.contractName}_${new Date().toISOString().split('T')[0]}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-
-      notifications.show({
-        title: 'PDF descargado',
-        message: 'El contrato firmado ha sido descargado exitosamente',
-        color: 'green',
-      })
     } catch (error) {
       console.error('Error downloading PDF:', error)
       notifications.show({

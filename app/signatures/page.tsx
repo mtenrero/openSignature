@@ -121,7 +121,7 @@ function FirmasPageContent() {
         
         // Combine and format data
         const combinedData = [
-          // Completed signatures
+          // Completed signatures - preserve shortId and accessKey if available
           ...signatures.map(sig => ({
             id: sig.id,
             type: 'signature',
@@ -135,7 +135,10 @@ function FirmasPageContent() {
             status: 'completed',
             signedAt: sig.signedAt,
             createdAt: sig.createdAt,
-            documentUrl: sig.documentUrl
+            documentUrl: sig.documentUrl,
+            shortId: sig.shortId, // Preserve for PDF download
+            accessKey: sig.accessKey, // Preserve for PDF download
+            customerId: sig.customerId
           })),
           // Pending signature requests
           ...requests.map(req => ({
@@ -600,7 +603,7 @@ function FirmasPageContent() {
       
       // Combine and format data
       const combinedData = [
-        // Completed signatures
+        // Completed signatures - preserve shortId and accessKey if available
         ...signatures.map(sig => ({
           id: sig.id,
           type: 'signature',
@@ -614,7 +617,10 @@ function FirmasPageContent() {
           status: 'completed',
           signedAt: sig.signedAt,
           createdAt: sig.createdAt,
-          documentUrl: sig.documentUrl
+          documentUrl: sig.documentUrl,
+          shortId: sig.shortId, // Preserve for PDF download
+          accessKey: sig.accessKey, // Preserve for PDF download
+          customerId: sig.customerId
         })),
         // Pending signature requests
         ...requests.map(req => ({

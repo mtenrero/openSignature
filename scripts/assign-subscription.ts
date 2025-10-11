@@ -13,7 +13,7 @@ import { resolve } from 'path'
 import { ManagementClient } from 'auth0'
 
 // Load .env.local
-dotenv.config({ path: resolve(process.cwd(), '.env.local') })
+dotenv.config({ path: resolve(process.cwd(), '.env.prod') })
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017'
 const DB_NAME = process.env.MONGODB_DB_NAME || 'openFirma'

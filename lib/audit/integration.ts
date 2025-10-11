@@ -93,13 +93,21 @@ export async function getCombinedAuditTrail(params: {
         const auditRecords = oldAuditTrail.trail.records.map((record: any) => ({
           action: record.action,
           timestamp: record.timestamp,
-          ipAddress: record.metadata?.ipAddress,
-          userAgent: record.metadata?.userAgent,
+          ipAddress: record.metadata?.ipAddress || record.ipAddress,
+          userAgent: record.metadata?.userAgent || record.userAgent,
           details: record.details
         }))
         allRecords = [...allRecords, ...auditRecords]
       } else if (Array.isArray(oldAuditTrail)) {
-        allRecords = [...allRecords, ...oldAuditTrail]
+        // Normalize array format to ensure ipAddress and userAgent are accessible
+        const normalizedRecords = oldAuditTrail.map((record: any) => ({
+          action: record.action,
+          timestamp: record.timestamp,
+          ipAddress: record.metadata?.ipAddress || record.ipAddress,
+          userAgent: record.metadata?.userAgent || record.userAgent,
+          details: record.details
+        }))
+        allRecords = [...allRecords, ...normalizedRecords]
       }
 
       // Ordenar por timestamp
@@ -264,13 +272,21 @@ export async function getCombinedAuditTrail(params: {
       const auditRecords = oldAuditTrail.trail.records.map((record: any) => ({
         action: record.action,
         timestamp: record.timestamp,
-        ipAddress: record.metadata?.ipAddress,
-        userAgent: record.metadata?.userAgent,
+        ipAddress: record.metadata?.ipAddress || record.ipAddress,
+        userAgent: record.metadata?.userAgent || record.userAgent,
         details: record.details
       }))
       allRecords = [...allRecords, ...auditRecords]
     } else if (Array.isArray(oldAuditTrail)) {
-      allRecords = [...allRecords, ...oldAuditTrail]
+      // Normalize array format to ensure ipAddress and userAgent are accessible
+      const normalizedRecords = oldAuditTrail.map((record: any) => ({
+        action: record.action,
+        timestamp: record.timestamp,
+        ipAddress: record.metadata?.ipAddress || record.ipAddress,
+        userAgent: record.metadata?.userAgent || record.userAgent,
+        details: record.details
+      }))
+      allRecords = [...allRecords, ...normalizedRecords]
     }
 
     // Ordenar por timestamp

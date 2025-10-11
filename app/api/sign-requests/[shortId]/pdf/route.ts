@@ -119,9 +119,13 @@ export async function GET(
 
       console.log('[PDF DEBUG] Combined audit trail:', combinedTrail.length, 'total events')
       console.log('[PDF DEBUG] Filtered for PDF:', auditTrailForPDF.length, 'events (excluded PDF downloads)')
-      console.log('[PDF DEBUG] Sample events:', auditTrailForPDF.slice(0, 3).map((e: any) => ({
+      console.log('[PDF DEBUG] ALL events with IP status:', auditTrailForPDF.map((e: any, idx: number) => ({
+        index: idx + 1,
         action: e.action,
-        timestamp: e.timestamp
+        timestamp: e.timestamp,
+        ipAddress: e.ipAddress || 'MISSING',
+        hasMetadata: !!e.metadata,
+        metadataIP: e.metadata?.ipAddress || 'MISSING'
       })))
     } catch (auditError) {
       console.error('[PDF DEBUG] Error getting combined audit trail:', auditError)
@@ -291,7 +295,10 @@ export async function GET(
           'Content-Length': pdfResult.pdfBuffer.length.toString(),
           'X-Audit-Integrity': auditVerification.isValid ? 'valid' : 'invalid',
           'X-Audit-Sealed': auditVerification.trail?.isSealed ? 'true' : 'false',
-          'X-Audit-Records': auditVerification.trail?.records.length?.toString() || '0'
+          'X-Audit-Records': auditVerification.trail?.records.length?.toString() || '0',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
         }
       })
 
