@@ -56,19 +56,19 @@ export async function POST(request: NextRequest) {
     const { userId, customerId } = authContext
 
     const body = await request.json()
-    const { contractId, signatureType, signerName, signerEmail, signerPhone, clientName, clientTaxId, dynamicFieldValues } = body
+    const { contractId, signatureType, signerName, signerEmail, signerPhone, clientName, clientTaxId, dynamicFieldValues: inputDynamicFieldValues, isResend } = body
 
     if (!contractId || !signatureType) {
-      return NextResponse.json({ 
-        error: 'Contract ID and signature type are required' 
+      return NextResponse.json({
+        error: 'Contract ID and signature type are required'
       }, { status: 400 })
     }
 
     // Validate signature type
     const validTypes = ['email', 'sms', 'local', 'tablet', 'qr']
     if (!validTypes.includes(signatureType)) {
-      return NextResponse.json({ 
-        error: 'Invalid signature type. Must be one of: email, sms, local, tablet, qr' 
+      return NextResponse.json({
+        error: 'Invalid signature type. Must be one of: email, sms, local, tablet, qr'
       }, { status: 400 })
     }
 
@@ -102,7 +102,33 @@ export async function POST(request: NextRequest) {
       contentHash: Buffer.from(decryptedContract.content || '').toString('base64')
     }
 
-    // Extract signer info from dynamic fields if provided
+    // Build dynamicFieldValues with predefined fields mapped
+    // 🔥 IMPORTANT: Map signer parameters to predefined contract fields
+    // These are the 4 predefined fields that all contracts have:
+    // - clientName (required in content)
+    // - clientTaxId (required in content)
+    // - clientPhone (optional)
+    // - clientEmail (optional)
+
+    const dynamicFieldValues: { [key: string]: string | boolean } = { ...(inputDynamicFieldValues || {}) }
+
+    if (signerName && !dynamicFieldValues.clientName) {
+      dynamicFieldValues.clientName = signerName
+    }
+    if (signerEmail && !dynamicFieldValues.clientEmail) {
+      dynamicFieldValues.clientEmail = signerEmail
+    }
+    if (signerPhone && !dynamicFieldValues.clientPhone) {
+      dynamicFieldValues.clientPhone = signerPhone
+    }
+    if (clientName && !dynamicFieldValues.clientName) {
+      dynamicFieldValues.clientName = clientName
+    }
+    if (clientTaxId && !dynamicFieldValues.clientTaxId) {
+      dynamicFieldValues.clientTaxId = clientTaxId
+    }
+
+    // Extract signer info from dynamic fields
     let signerInfoFromFields: any = null
     if (dynamicFieldValues && typeof dynamicFieldValues === 'object') {
       try {
@@ -112,19 +138,75 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // If signerName is provided but not in dynamicFieldValues, add it as clientName
-    if (signerName && dynamicFieldValues && !dynamicFieldValues.clientName) {
-      dynamicFieldValues.clientName = signerName
+    // Check if there is an existing signature request for this contract
+    const collection = await getSignatureRequestsCollection()
+
+    // Strategy:
+    // 1. If isResend=true → Look for existing request to reuse (from /signatures UI or explicit resend)
+    // 2. If isResend=false or undefined → ALWAYS create new request (from /contracts or new API call)
+    // 3. In both cases, preserve locked fields from ANY existing pending request
+
+    let existingRequest = null
+    let fieldsSource = null // Track where we got the locked fields from
+
+    if (isResend === true) {
+      // RESEND MODE: Look for existing pending request to reuse
+      console.log(`[Signature Request] Resend mode - looking for existing request for contract ${contractId}`)
+
+      const anyPendingRequest = await collection.findOne({
+        contractId: contractId,
+        customerId: customerId,
+        status: { $in: ['pending'] }
+      })
+
+      if (anyPendingRequest) {
+        // Check if it's the same type and recipient for a true resend
+        const isSameType = anyPendingRequest.signatureType === signatureType
+        let isSameRecipient = false
+
+        if (signatureType === 'email') {
+          const existingEmail = anyPendingRequest.dynamicFieldValues?.clientEmail
+          const newEmail = dynamicFieldValues.clientEmail
+          isSameRecipient = existingEmail && newEmail && existingEmail === newEmail
+        } else if (signatureType === 'sms') {
+          const existingPhone = anyPendingRequest.dynamicFieldValues?.clientPhone
+          const newPhone = dynamicFieldValues.clientPhone
+          isSameRecipient = existingPhone && newPhone && existingPhone === newPhone
+        }
+
+        if (isSameType && isSameRecipient) {
+          existingRequest = anyPendingRequest
+          console.log(`[Signature Request] REUSE - Found matching request ${existingRequest.shortId}`)
+        } else {
+          console.log(`[Signature Request] NEW - Different type/recipient, but will preserve fields from ${anyPendingRequest.shortId}`)
+          fieldsSource = anyPendingRequest
+        }
+      }
+    } else {
+      // NEW REQUEST MODE: Always create new, but check for locked fields
+      console.log(`[Signature Request] New request mode - will create NEW entry for contract ${contractId}`)
+
+      const anyPendingRequest = await collection.findOne({
+        contractId: contractId,
+        customerId: customerId,
+        status: { $in: ['pending'] }
+      })
+
+      if (anyPendingRequest && anyPendingRequest.dynamicFieldValues) {
+        fieldsSource = anyPendingRequest
+        console.log(`[Signature Request] Found existing request ${anyPendingRequest.shortId} - will preserve locked fields`)
+      }
     }
 
-    // Always create a new signature request (no reusing of existing requests)
-    const collection = await getSignatureRequestsCollection()
-    console.log(`[Signature Request] Creating new signature request for contract ${contractId}`)
+    // Apply locked fields if we found a source
+    if (fieldsSource && fieldsSource.dynamicFieldValues) {
+      Object.assign(dynamicFieldValues, fieldsSource.dynamicFieldValues)
+      console.log(`[Signature Request] Applied locked fields:`, fieldsSource.dynamicFieldValues)
+    }
 
-    // Skip the existing request check - always create new
-    const existingRequest = null
+    if (existingRequest) { // Reuse existing request and preserve locked fields
+      console.log(`[Signature Request] Found existing request ${existingRequest.shortId} - preserving original field values`)
 
-    if (false) { // Disabled: never reuse existing requests
       const updateData: any = {
         updatedAt: new Date(),
         updatedBy: userId,
@@ -132,32 +214,41 @@ export async function POST(request: NextRequest) {
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 🔥 IMPORTANT: Reset expiration to 7 days from now
       }
 
-      // Update signer info if provided
-      if (signerName || signerInfoFromFields?.clientName) {
-        updateData.signerName = signerName || signerInfoFromFields?.clientName
+      // 🔒 LOCKED FIELDS: Use existing values, ignore any new values provided
+      // These fields are immutable once the first signature request is created
+      updateData.signerName = existingRequest.signerName
+      updateData.signerEmail = existingRequest.signerEmail
+      updateData.signerPhone = existingRequest.signerPhone
+      updateData.clientName = existingRequest.clientName
+      updateData.clientTaxId = existingRequest.clientTaxId
+      updateData.dynamicFieldValues = existingRequest.dynamicFieldValues
+      updateData.signerInfo = existingRequest.signerInfo
+
+      // Log warning if user tried to modify locked fields
+      // Check against dynamicFieldValues (source of truth) for predefined fields
+      const existingDynamicFields = existingRequest.dynamicFieldValues || {}
+
+      if (dynamicFieldValues?.clientName && dynamicFieldValues.clientName !== existingDynamicFields.clientName) {
+        console.warn(`[Signature Request] Attempt to modify locked clientName (predefined field) ignored: "${dynamicFieldValues.clientName}" -> kept original "${existingDynamicFields.clientName}"`)
       }
-      if (clientName || signerInfoFromFields?.clientName) {
-        updateData.clientName = clientName || signerInfoFromFields?.clientName
+      if (dynamicFieldValues?.clientEmail && dynamicFieldValues.clientEmail !== existingDynamicFields.clientEmail) {
+        console.warn(`[Signature Request] Attempt to modify locked clientEmail (predefined field) ignored: "${dynamicFieldValues.clientEmail}" -> kept original "${existingDynamicFields.clientEmail}"`)
       }
-      if (clientTaxId || signerInfoFromFields?.clientTaxId) {
-        updateData.clientTaxId = clientTaxId || signerInfoFromFields?.clientTaxId
+      if (dynamicFieldValues?.clientPhone && dynamicFieldValues.clientPhone !== existingDynamicFields.clientPhone) {
+        console.warn(`[Signature Request] Attempt to modify locked clientPhone (predefined field) ignored: "${dynamicFieldValues.clientPhone}" -> kept original "${existingDynamicFields.clientPhone}"`)
+      }
+      if (dynamicFieldValues?.clientTaxId && dynamicFieldValues.clientTaxId !== existingDynamicFields.clientTaxId) {
+        console.warn(`[Signature Request] Attempt to modify locked clientTaxId (predefined field) ignored: "${dynamicFieldValues.clientTaxId}" -> kept original "${existingDynamicFields.clientTaxId}"`)
       }
 
-      // Update dynamic field values if provided, but preserve already locked fields
-      if (signerInfoFromFields?.allFields || dynamicFieldValues) {
-        // Merge new values with existing ones, but keep existing values (locked fields)
-        const existingDynamicFieldValues = existingRequest.dynamicFieldValues || {}
-        const newDynamicFieldValues = signerInfoFromFields?.allFields || dynamicFieldValues || {}
-
-        // Preserve existing values (they are locked and should not be overwritten)
-        updateData.dynamicFieldValues = {
-          ...newDynamicFieldValues,
-          ...existingDynamicFieldValues // Existing values take precedence
-        }
-
-        // Update signerInfo only if not already set
-        if (!existingRequest.signerInfo && signerInfoFromFields) {
-          updateData.signerInfo = signerInfoFromFields
+      // Check other dynamic fields
+      if (dynamicFieldValues && Object.keys(dynamicFieldValues).length > 0) {
+        const changedFields = Object.keys(dynamicFieldValues).filter(
+          key => !['clientName', 'clientEmail', 'clientPhone', 'clientTaxId'].includes(key) &&
+                 dynamicFieldValues[key] !== existingDynamicFields[key]
+        )
+        if (changedFields.length > 0) {
+          console.warn(`[Signature Request] Attempt to modify locked dynamic fields ignored: ${changedFields.join(', ')}`)
         }
       }
 
@@ -264,13 +355,11 @@ export async function POST(request: NextRequest) {
       // Generate access key optimized for SMS (6 characters instead of 16)
       const accessKey = Buffer.from(`${shortId}:${customerId}`).toString('base64').slice(0, 6)
 
-      // Initialize dynamicFieldValues with signer data if not already provided
-      const finalDynamicFieldValues = signerInfoFromFields?.allFields || dynamicFieldValues || {}
+      // Use the already prepared dynamicFieldValues (which includes mapped signer data)
+      const finalDynamicFieldValues = dynamicFieldValues || {}
 
-      // Ensure signerName is mapped to clientName in dynamicFieldValues
-      if (signerName && !finalDynamicFieldValues.clientName) {
-        finalDynamicFieldValues.clientName = signerName
-      }
+      // Extract final signer info from the complete dynamicFieldValues
+      const finalSignerInfo = extractSignerInfo(finalDynamicFieldValues, decryptedContract.userFields || [])
 
       // Create signature request document
       var signatureRequest = {
@@ -278,12 +367,14 @@ export async function POST(request: NextRequest) {
         contractId, // Keep reference to original contract
         contractSnapshot, // 🔥 NEW: Immutable contract content snapshot
         signatureType,
-        signerName: signerName || signerInfoFromFields?.clientName || null,
-        signerEmail: signerEmail || signerInfoFromFields?.clientEmail || null,
-        signerPhone: signerPhone || signerInfoFromFields?.clientPhone || null,
-        // 🔥 NEW: Client information for contract binding
-        clientName: clientName || signerName || signerInfoFromFields?.clientName || null,
-        clientTaxId: clientTaxId || signerInfoFromFields?.clientTaxId || null,
+
+        // Store signer data for backward compatibility and metadata
+        // But the SOURCE OF TRUTH is dynamicFieldValues
+        signerName: finalSignerInfo.clientName || null,
+        signerEmail: finalSignerInfo.clientEmail || null,
+        signerPhone: finalSignerInfo.clientPhone || null,
+        clientName: finalSignerInfo.clientName || null,
+        clientTaxId: finalSignerInfo.clientTaxId || null,
         status: 'pending',
         createdBy: userId,
         customerId,
@@ -295,9 +386,9 @@ export async function POST(request: NextRequest) {
         // URLs for different signature methods (with access key)
         signatureUrl: `${process.env.NEXTAUTH_URL}/sign/${shortId}?a=${accessKey}`,
 
-        // Store provided dynamic field values and extracted signer info (if any)
+        // 🔥 SOURCE OF TRUTH: Dynamic field values with all predefined fields
         dynamicFieldValues: Object.keys(finalDynamicFieldValues).length > 0 ? finalDynamicFieldValues : null,
-        signerInfo: signerInfoFromFields || null,
+        signerInfo: finalSignerInfo || null,
 
         // Metadata
         metadata: {
@@ -317,50 +408,51 @@ export async function POST(request: NextRequest) {
       }
 
       var result = await collection.insertOne(mongoHelpers.addMetadata(signatureRequest, customerId))
-    }
 
-    // Create audit entry for signature request creation (save directly to DB)
-    const clientIP = extractClientIP(request)
-    const userAgent = request.headers.get('user-agent') || 'unknown'
+      // Create audit entry for NEW signature request creation (save directly to DB)
+      // Only for new requests, not for reused ones (they have their own resend audit record)
+      const clientIP = extractClientIP(request)
+      const userAgent = request.headers.get('user-agent') || 'unknown'
 
-    const creationAuditRecord = {
-      timestamp: new Date(),
-      action: 'solicitud_firma_creada',
-      actor: {
-        id: userId,
-        type: 'user',
-        identifier: userId
-      },
-      resource: {
-        type: 'contract',
-        id: contractId,
-        name: contractSnapshot.name
-      },
-      details: {
-        signatureRequestId: result.insertedId.toString(),
-        shortId: shortId,
-        signatureType: signatureType,
-        signerName: signerName,
-        signerEmail: signerEmail,
-        signerPhone: signerPhone,
-        clientName: clientName,
-        clientTaxId: clientTaxId,
-        expiresAt: signatureRequest.expiresAt
-      },
-      metadata: {
-        ipAddress: clientIP,
-        userAgent: userAgent,
-        session: userId
+      const creationAuditRecord = {
+        timestamp: new Date(),
+        action: 'solicitud_firma_creada',
+        actor: {
+          id: userId,
+          type: 'user',
+          identifier: userId
+        },
+        resource: {
+          type: 'contract',
+          id: contractId,
+          name: contractSnapshot.name
+        },
+        details: {
+          signatureRequestId: result.insertedId.toString(),
+          shortId: shortId,
+          signatureType: signatureType,
+          // Use values from dynamicFieldValues (source of truth)
+          clientName: dynamicFieldValues.clientName || null,
+          clientEmail: dynamicFieldValues.clientEmail || null,
+          clientPhone: dynamicFieldValues.clientPhone || null,
+          clientTaxId: dynamicFieldValues.clientTaxId || null,
+          expiresAt: signatureRequest.expiresAt
+        },
+        metadata: {
+          ipAddress: clientIP,
+          userAgent: userAgent,
+          session: userId
+        }
       }
-    }
 
-    // Save the creation audit record directly to MongoDB
-    await collection.updateOne(
-      { _id: result.insertedId },
-      {
-        $push: { auditRecords: creationAuditRecord }
-      }
-    )
+      // Save the creation audit record directly to MongoDB
+      await collection.updateOne(
+        { _id: result.insertedId },
+        {
+          $push: { auditRecords: creationAuditRecord }
+        }
+      )
+    }
 
     // Send notification based on signature type
     // Note: QR signatures and remote links now count as email signatures and require validation
@@ -742,6 +834,7 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url)
     const status = url.searchParams.get('status')
     const contractId = url.searchParams.get('contractId')
+    const clientTaxId = url.searchParams.get('clientTaxId')
     const full = url.searchParams.get('full') === 'true'
 
     // Build query
@@ -749,12 +842,22 @@ export async function GET(request: NextRequest) {
     if (status) query.status = status
     if (contractId) query.contractId = contractId
 
+    // Filter by clientTaxId (DNI) - search in dynamicFieldValues
+    if (clientTaxId) {
+      query['dynamicFieldValues.clientTaxId'] = clientTaxId.trim()
+      console.log(`[Signature Requests GET] Filtering by clientTaxId: ${clientTaxId.trim()}`)
+    }
+
+    console.log(`[Signature Requests GET] Query:`, JSON.stringify(query))
+
     const collection = await getSignatureRequestsCollection()
     const signatureRequests = await collection
       .find(query)
       .sort({ createdAt: -1 })
       .limit(100)
       .toArray()
+
+    console.log(`[Signature Requests GET] Found ${signatureRequests.length} signature requests`)
 
     // Get contract names for each request
     const contractsCollection = await getContractsCollection()

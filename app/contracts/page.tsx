@@ -1,8 +1,8 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Box, Container, Title, Text, Button, Group, Card, Stack, SimpleGrid, Badge, ActionIcon, Menu, TextInput, Select, Loader, Alert, Modal, Image } from '@mantine/core'
-import { IconPlus, IconSearch, IconDots, IconEdit, IconEye, IconCopy, IconTrash, IconFileText, IconAlertTriangle, IconSignature, IconMail, IconPhone, IconDeviceTablet, IconQrcode, IconList, IconCards, IconX, IconUser } from '@tabler/icons-react'
+import { Box, Container, Title, Text, Button, Group, Card, Stack, SimpleGrid, Badge, ActionIcon, Menu, TextInput, Select, Loader, Alert, Modal, Image, Stepper } from '@mantine/core'
+import { IconPlus, IconSearch, IconDots, IconEdit, IconEye, IconCopy, IconTrash, IconFileText, IconAlertTriangle, IconSignature, IconMail, IconPhone, IconDeviceTablet, IconQrcode, IconList, IconCards, IconX, IconUser, IconLock, IconId, IconFileCheck } from '@tabler/icons-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { notifications } from '@mantine/notifications'
@@ -33,10 +33,19 @@ export default function DashboardPage() {
   const [pendingAction, setPendingAction] = useState<{ contract: any, method: 'email'|'sms'|'local'|'tablet'|'qr', withPrefill: boolean } | null>(null)
   const [dynamicValues, setDynamicValues] = useState<{[key:string]: string}>({})
   const [collecting, setCollecting] = useState(false)
+  const [lockedFields, setLockedFields] = useState<string[]>([])
+  const [stepperActive, setStepperActive] = useState(0) // 0 = Datos firmante, 1 = Campos dinámicos
+  const [signerDataErrors, setSignerDataErrors] = useState<{[key: string]: string}>({})
   const [deleteModalOpened, setDeleteModalOpened] = useState(false)
   const [contractToDelete, setContractToDelete] = useState<any>(null)
   const [deleting, setDeleting] = useState(false)
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards')
+
+  // Estados para modal de conflicto de solicitud existente
+  const [conflictModalOpened, setConflictModalOpened] = useState(false)
+  const [existingSignatureRequest, setExistingSignatureRequest] = useState<any>(null)
+  const [pendingNewRequest, setPendingNewRequest] = useState<any>(null)
+  const [deletingExistingRequest, setDeletingExistingRequest] = useState(false)
   const [subscriptionData, setSubscriptionData] = useState<any>(null)
   const [dismissedBanners, setDismissedBanners] = useState<Set<string>>(new Set())
   const [permanentlyDismissedBanners, setPermanentlyDismissedBanners] = useState<Set<string>>(new Set())
@@ -271,42 +280,43 @@ export default function DashboardPage() {
 
   // Handle email signature request creation
   const handleEmailSignatureRequest = async () => {
-    const contractId = emailFormData.contractId
-    const extra: any = { signerEmail: emailFormData.email }
-    if (pendingAction?.withPrefill) {
-      extra.dynamicFieldValues = dynamicValues
+    const contractId = pendingAction?.contract?.id
+    const extra: any = {
+      signerEmail: dynamicValues.clientEmail,
+      dynamicFieldValues: dynamicValues
     }
+
     const result = await createSignatureRequest(contractId, 'email', extra)
     notifications.show({
       title: 'Email de firma enviado',
-      message: `Se ha enviado la solicitud de firma por email a ${emailFormData.email} para ${emailFormData.contractName}`,
+      message: `Se ha enviado la solicitud de firma por email a ${dynamicValues.clientEmail}`,
       color: 'green',
     })
-    setEmailModalOpened(false)
-    setEmailFormData({ email: '', name: '', contractId: '', contractName: '' })
     setFieldsModalOpened(false)
     setDynamicValues({})
     setPendingAction(null)
+    setStepperActive(0)
     return result
   }
 
   // Handle SMS signature request creation
   const handleSmsSignatureRequest = async () => {
-    const contractId = smsFormData.contractId
-    const extra: any = { signerPhone: smsFormData.phone }
-    if (pendingAction?.withPrefill) {
-      extra.dynamicFieldValues = dynamicValues
+    const contractId = pendingAction?.contract?.id
+    const extra: any = {
+      signerPhone: dynamicValues.clientPhone,
+      dynamicFieldValues: dynamicValues
     }
+
     const result = await createSignatureRequest(contractId, 'sms', extra)
     notifications.show({
       title: 'SMS de firma enviado',
-      message: `Se ha enviado la solicitud de firma por SMS a ${smsFormData.phone} para ${smsFormData.contractName}`,
+      message: `Se ha enviado la solicitud de firma por SMS a ${dynamicValues.clientPhone}`,
       color: 'green',
     })
-    setSmsFormData({ phone: '', name: '', contractId: '', contractName: '' })
     setFieldsModalOpened(false)
     setDynamicValues({})
     setPendingAction(null)
+    setStepperActive(0)
     return result
   }
 
@@ -319,27 +329,152 @@ export default function DashboardPage() {
   // Confirm QR creation after user accepts billing warning
   const confirmQrCreation = async () => {
     setQrConfirmModalOpened(false)
-    await handleSignatureRequest(pendingQrRequest.contractId, pendingQrRequest.contractName, 'qr')
+    await checkAndStartSignatureRequest(pendingQrRequest.contractId, pendingQrRequest.contractName, 'qr')
   }
 
-  // Handle signature request creation
+  // Handle viewing existing signature request
+  const handleViewExistingRequest = () => {
+    if (existingSignatureRequest) {
+      window.open(`/signatures/${existingSignatureRequest.id}`, '_blank')
+      setConflictModalOpened(false)
+      setExistingSignatureRequest(null)
+      setPendingNewRequest(null)
+    }
+  }
+
+  // Handle deleting existing request and creating new one
+  const handleDeleteAndCreateNew = async () => {
+    if (!existingSignatureRequest || !pendingNewRequest) return
+
+    try {
+      setDeletingExistingRequest(true)
+
+      // Delete the existing request
+      const deleteRes = await fetch(`/api/signature-requests/${existingSignatureRequest.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          discardReason: 'Usuario solicitó crear nueva solicitud de firma con diferente DNI'
+        })
+      })
+
+      if (!deleteRes.ok) {
+        throw new Error('Error al eliminar la solicitud existente')
+      }
+
+      // Close conflict modal
+      setConflictModalOpened(false)
+      setExistingSignatureRequest(null)
+
+      notifications.show({
+        title: 'Solicitud eliminada',
+        message: 'La solicitud anterior fue eliminada. Continuando con la nueva solicitud...',
+        color: 'blue'
+      })
+
+      // Continue with the stored callback
+      const { proceedCallback } = pendingNewRequest
+      setPendingNewRequest(null)
+
+      if (proceedCallback) {
+        await proceedCallback()
+      }
+
+    } catch (error) {
+      console.error('Error deleting existing request:', error)
+      notifications.show({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'No se pudo eliminar la solicitud existente',
+        color: 'red'
+      })
+    } finally {
+      setDeletingExistingRequest(false)
+    }
+  }
+
+  // Handle canceling the conflict modal
+  const handleCancelConflict = () => {
+    setConflictModalOpened(false)
+    setExistingSignatureRequest(null)
+    setPendingNewRequest(null)
+  }
+
+  // Start signature request flow (without pre-checking)
+  const checkAndStartSignatureRequest = async (contractId: string, contractName: string, signatureType: string) => {
+    // Just proceed to open the fields modal
+    handleSignatureRequest(contractId, contractName, signatureType)
+  }
+
+  // Check for DNI conflict after fields are filled (called from field modal submit)
+  const checkDniConflictAndProceed = async (contractId: string, clientTaxId: string | undefined, proceedCallback: () => Promise<void>) => {
+    try {
+      if (!clientTaxId || !clientTaxId.trim()) {
+        // No DNI provided, proceed without checking
+        console.log('[DNI Conflict Check] No DNI provided, proceeding without check')
+        await proceedCallback()
+        return
+      }
+
+      // Check if there is an existing signature request with the same DNI for this contract
+      console.log(`[DNI Conflict Check] Checking for DNI "${clientTaxId}" in contract ${contractId}`)
+      const existingRequestRes = await fetch(`/api/signature-requests?contractId=${contractId}&clientTaxId=${encodeURIComponent(clientTaxId.trim())}`)
+      const existingRequestData = await existingRequestRes.json()
+      const allRequests = existingRequestData?.requests || []
+
+      // Check for pending OR signed requests with the same DNI
+      const pendingRequest = allRequests.find((r: any) => r.status === 'pending')
+      const signedRequest = allRequests.find((r: any) => r.status === 'signed' || r.status === 'completed')
+
+      // If there's an existing request with the same DNI, show conflict modal
+      if (pendingRequest || signedRequest) {
+        const existingReq = pendingRequest || signedRequest
+        console.log('[DNI Conflict Check] Found conflict with DNI:', existingReq)
+
+        // Store the callback to execute after user resolves conflict
+        setPendingNewRequest({
+          contractId,
+          contractName: existingReq.contractSnapshot?.name || 'Contrato',
+          signatureType: 'email', // Will be determined by the callback
+          contract: null,
+          proceedCallback
+        })
+
+        setExistingSignatureRequest(existingReq)
+        setConflictModalOpened(true)
+        return
+      }
+
+      // No conflict, proceed
+      console.log('[DNI Conflict Check] No conflict found, proceeding')
+      await proceedCallback()
+
+    } catch (error) {
+      console.error('Error checking DNI conflict:', error)
+      // Continue anyway on error
+      await proceedCallback()
+    }
+  }
+
+  // Handle signature request creation (after conflict check)
   const handleSignatureRequest = async (contractId: string, contractName: string, signatureType: string) => {
     try {
       setRequestingSignature(true)
-      
+
       const response = await fetch(`/api/contracts?limit=1&status=all`)
       let selected = contratos.find((c: any) => c.id === contractId)
       if (!selected) {
         selected = (await response.json()).contracts?.find((c: any) => c.id === contractId)
       }
 
-      // Decide if we should show prefill modal
+      // Proceed with normal flow (conflict already checked)
       const showPrefillModalDefault = true
       setPendingAction({ contract: selected, method: signatureType as any, withPrefill: false })
+
       if (showPrefillModalDefault) {
+        setDynamicValues({})
+        setLockedFields([])
         setFieldsModalOpened(true)
         setCollecting(false)
-        setDynamicValues({})
         return
       }
       
@@ -408,108 +543,295 @@ export default function DashboardPage() {
     const dynamicFields = contract.dynamicFields || []
     const fields = [...dynamicFields, ...userFields]
 
+    // Validate step 1 (signer data)
+    const validateSignerData = () => {
+      const errors: {[key: string]: string} = {}
+      const method = pendingAction?.method
+
+      // Validate based on signature type
+      if (method === 'email') {
+        if (!dynamicValues.clientEmail || !dynamicValues.clientEmail.trim()) {
+          errors.clientEmail = 'El email es obligatorio'
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dynamicValues.clientEmail)) {
+          errors.clientEmail = 'Email no válido'
+        }
+      } else if (method === 'sms') {
+        if (!dynamicValues.clientPhone || !dynamicValues.clientPhone.trim()) {
+          errors.clientPhone = 'El teléfono es obligatorio'
+        }
+      }
+
+      // Name and Tax ID are always required
+      if (!dynamicValues.clientName || !dynamicValues.clientName.trim()) {
+        errors.clientName = 'El nombre es obligatorio'
+      }
+      if (!dynamicValues.clientTaxId || !dynamicValues.clientTaxId.trim()) {
+        errors.clientTaxId = 'El NIF/DNI es obligatorio'
+      }
+
+      setSignerDataErrors(errors)
+      return Object.keys(errors).length === 0
+    }
+
+    const handleNextStep = async () => {
+      if (!validateSignerData()) {
+        return
+      }
+
+      // Verificar conflicto de DNI antes de avanzar al paso 2
+      if (!pendingAction || !pendingAction.contract) {
+        console.error('[DNI Conflict Check] No pendingAction or contract found')
+        setStepperActive(1)
+        return
+      }
+
+      const contractId = pendingAction.contract.id
+      const clientTaxId = dynamicValues.clientTaxId
+
+      console.log('[DNI Conflict Check] Starting check for contract:', contractId, 'DNI:', clientTaxId)
+
+      try {
+        if (!clientTaxId || !clientTaxId.trim()) {
+          console.log('[DNI Conflict Check] No DNI provided, proceeding to step 2')
+          setStepperActive(1)
+          return
+        }
+
+        // Comprobar si ya existe solicitud con el mismo DNI para este contrato
+        console.log(`[DNI Conflict Check] Checking for DNI "${clientTaxId}" in contract ${contractId}`)
+        const existingRequestRes = await fetch(`/api/signature-requests?contractId=${contractId}&clientTaxId=${encodeURIComponent(clientTaxId.trim())}`)
+        const existingRequestData = await existingRequestRes.json()
+        const allRequests = existingRequestData?.requests || []
+
+        console.log('[DNI Conflict Check] All requests found:', allRequests.length, allRequests.map((r: any) => ({ id: r.id, status: r.status })))
+
+        const pendingRequest = allRequests.find((r: any) => r.status === 'pending')
+        const signedRequest = allRequests.find((r: any) => r.status === 'signed' || r.status === 'completed')
+
+        console.log('[DNI Conflict Check] Pending request:', pendingRequest?.id, 'Signed request:', signedRequest?.id)
+
+        if (pendingRequest || signedRequest) {
+          const existingReq = pendingRequest || signedRequest
+          console.log('[DNI Conflict Check] Found conflict with DNI:', existingReq)
+
+          // Guardar callback para continuar al step 2 si el usuario resuelve el conflicto
+          const newRequest = {
+            contractId,
+            contractName: pendingAction.contract.name,
+            signatureType: pendingAction.method,
+            contract: pendingAction.contract,
+            proceedCallback: async () => {
+              console.log('[DNI Conflict Check] Callback executed - advancing to step 2')
+              setStepperActive(1)
+            }
+          }
+
+          console.log('[DNI Conflict Check] Setting pendingNewRequest:', newRequest)
+          setPendingNewRequest(newRequest)
+
+          console.log('[DNI Conflict Check] Setting existingSignatureRequest:', existingReq.id)
+          setExistingSignatureRequest(existingReq)
+
+          console.log('[DNI Conflict Check] Opening conflict modal')
+          setConflictModalOpened(true)
+          return
+        }
+
+        console.log('[DNI Conflict Check] No conflict found, proceeding to step 2')
+        setStepperActive(1)
+      } catch (error) {
+        console.error('Error checking DNI conflict:', error)
+        // En caso de error, continuar al step 2
+        setStepperActive(1)
+      }
+    }
+
+    const handlePrevStep = () => {
+      setStepperActive(0)
+    }
+
     return (
       <Modal
         opened={fieldsModalOpened}
-        onClose={() => { setFieldsModalOpened(false); setPendingAction(null); setDynamicValues({}) }}
-        title="Datos opcionales del contrato"
+        onClose={() => {
+          setFieldsModalOpened(false)
+          setPendingAction(null)
+          setDynamicValues({})
+          setLockedFields([])
+          setStepperActive(0)
+          setSignerDataErrors({})
+        }}
+        title="Solicitar Firma Electrónica"
         centered
         size="lg"
       >
         <Stack gap="md">
-          <Text size="sm" c="dimmed">
-            Puedes pre-rellenar datos ahora o dejar que el firmante los complete.
-          </Text>
+          <Stepper active={stepperActive} onStepClick={setStepperActive} allowNextStepsSelect={false}>
+            <Stepper.Step label="Datos del Firmante" description="Información básica" icon={<IconId size={18} />}>
+              <Stack gap="md" mt="md">
+                {lockedFields.length > 0 && (
+                  <Alert icon={<IconLock size={16} />} color="blue" variant="light">
+                    <Text size="sm">
+                      Algunos campos ya fueron proporcionados en la solicitud de firma original y no se pueden modificar.
+                    </Text>
+                  </Alert>
+                )}
 
-          <DynamicFieldsForm
-            fields={fields}
-            values={dynamicValues}
-            onValuesChange={setDynamicValues}
-            onSubmit={async () => {
-              setCollecting(true)
-              const extra: any = { dynamicFieldValues: dynamicValues }
-              const method = pendingAction.method
-              const contractId = pendingAction.contract.id
+                <Text size="sm" c="dimmed">
+                  Introduce los datos del firmante. Estos campos son obligatorios.
+                </Text>
 
-              if (method === 'qr') {
-                const createRes = await createSignatureRequest(contractId, 'qr', extra)
-                const qrCode = await generateQRCode(createRes.signatureUrl)
-                setCurrentQrData({ url: qrCode, contractName: pendingAction.contract.name, signatureUrl: createRes.signatureUrl })
-                setQrModalOpened(true)
-              } else if (method === 'local') {
-                const createRes = await createSignatureRequest(contractId, 'local', extra)
-                if (createRes.signatureUrl) window.open(createRes.signatureUrl, '_blank')
-              } else if (method === 'email') {
-                setPendingAction({ ...pendingAction, withPrefill: true })
-                setFieldsModalOpened(false)
-                setEmailModalOpened(true)
-                setCollecting(false)
-                return
-              } else if (method === 'sms') {
-                setPendingAction({ ...pendingAction, withPrefill: true })
-                setFieldsModalOpened(false)
-                setRequestMethod('sms')
-                setEmailModalOpened(true)
-                setCollecting(false)
-                return
-              } else if (method === 'tablet') {
-                await createSignatureRequest(contractId, 'tablet', extra)
-              }
+                {/* Paso 1: Campos del firmante */}
+                <TextInput
+                  label="Nombre completo"
+                  placeholder="Juan Pérez García"
+                  value={dynamicValues.clientName || ''}
+                  onChange={(e) => setDynamicValues({...dynamicValues, clientName: e.target.value})}
+                  leftSection={<IconUser size={16} />}
+                  required
+                  error={signerDataErrors.clientName}
+                  disabled={lockedFields.includes('clientName')}
+                />
 
-              setCollecting(false)
-              setFieldsModalOpened(false)
-              setDynamicValues({})
-              setPendingAction(null)
-            }}
-            onBack={() => {
-              setFieldsModalOpened(false)
-              setPendingAction(null)
-              setDynamicValues({})
-            }}
-            loading={collecting}
-            contractName={pendingAction.contract.name}
-          />
+                <TextInput
+                  label="NIF / DNI"
+                  placeholder="12345678A"
+                  value={dynamicValues.clientTaxId || ''}
+                  onChange={(e) => setDynamicValues({...dynamicValues, clientTaxId: e.target.value})}
+                  leftSection={<IconId size={16} />}
+                  required
+                  error={signerDataErrors.clientTaxId}
+                  disabled={lockedFields.includes('clientTaxId')}
+                />
 
-          <Group justify="space-between">
-            <Button variant="subtle" onClick={() => { setFieldsModalOpened(false); setPendingAction(null); setDynamicValues({}) }}>
-              Cancelar
-            </Button>
-            <Button
-              variant="outline"
-              onClick={async () => {
-                // Saltar pre-relleno y enviar directo
-                const method = pendingAction.method
-                const contractId = pendingAction.contract.id
-                if (method === 'qr') {
-                  const createRes = await createSignatureRequest(contractId, 'qr')
-                  const qrCode = await generateQRCode(createRes.signatureUrl)
-                  setCurrentQrData({ url: qrCode, contractName: pendingAction.contract.name, signatureUrl: createRes.signatureUrl })
-                  setQrModalOpened(true)
-                } else if (method === 'local') {
-                  const createRes = await createSignatureRequest(contractId, 'local')
-                  if (createRes.signatureUrl) window.open(createRes.signatureUrl, '_blank')
-                } else if (method === 'email') {
-                  setEmailFormData(prev => ({ ...prev, contractId, contractName: pendingAction.contract.name }))
-                  setFieldsModalOpened(false)
-                  setEmailModalOpened(true)
-                  return
-                } else if (method === 'sms') {
-                  setSmsFormData(prev => ({ ...prev, contractId, contractName: pendingAction.contract.name }))
-                  setFieldsModalOpened(false)
-                  setRequestMethod('sms')
-                  setEmailModalOpened(true)
-                  return
-                } else if (method === 'tablet') {
-                  await createSignatureRequest(contractId, 'tablet')
-                }
+                {pendingAction?.method === 'email' && (
+                  <TextInput
+                    label="Email"
+                    placeholder="juan@example.com"
+                    type="email"
+                    value={dynamicValues.clientEmail || ''}
+                    onChange={(e) => setDynamicValues({...dynamicValues, clientEmail: e.target.value})}
+                    leftSection={<IconMail size={16} />}
+                    required
+                    error={signerDataErrors.clientEmail}
+                    disabled={lockedFields.includes('clientEmail')}
+                  />
+                )}
 
-                setFieldsModalOpened(false)
-                setPendingAction(null)
-              }}
-            >
-              Enviar sin rellenar
-            </Button>
-          </Group>
+                {pendingAction?.method === 'sms' && (
+                  <TextInput
+                    label="Teléfono"
+                    placeholder="+34 600 000 000"
+                    type="tel"
+                    value={dynamicValues.clientPhone || ''}
+                    onChange={(e) => setDynamicValues({...dynamicValues, clientPhone: e.target.value})}
+                    leftSection={<IconPhone size={16} />}
+                    required
+                    error={signerDataErrors.clientPhone}
+                    disabled={lockedFields.includes('clientPhone')}
+                  />
+                )}
+
+                {(pendingAction?.method === 'qr' || pendingAction?.method === 'local' || pendingAction?.method === 'tablet') && (
+                  <>
+                    <TextInput
+                      label="Email (opcional)"
+                      placeholder="juan@example.com"
+                      type="email"
+                      value={dynamicValues.clientEmail || ''}
+                      onChange={(e) => setDynamicValues({...dynamicValues, clientEmail: e.target.value})}
+                      leftSection={<IconMail size={16} />}
+                      disabled={lockedFields.includes('clientEmail')}
+                    />
+                    <TextInput
+                      label="Teléfono (opcional)"
+                      placeholder="+34 600 000 000"
+                      type="tel"
+                      value={dynamicValues.clientPhone || ''}
+                      onChange={(e) => setDynamicValues({...dynamicValues, clientPhone: e.target.value})}
+                      leftSection={<IconPhone size={16} />}
+                      disabled={lockedFields.includes('clientPhone')}
+                    />
+                  </>
+                )}
+
+                <Group justify="space-between" mt="md">
+                  <Button variant="subtle" onClick={() => {
+                    setFieldsModalOpened(false)
+                    setPendingAction(null)
+                    setDynamicValues({})
+                    setLockedFields([])
+                    setStepperActive(0)
+                    setSignerDataErrors({})
+                  }}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleNextStep}>
+                    Continuar
+                  </Button>
+                </Group>
+              </Stack>
+            </Stepper.Step>
+
+            <Stepper.Step label="Campos del Contrato" description="Datos adicionales" icon={<IconFileCheck size={18} />}>
+              <Stack gap="md" mt="md">
+                <Text size="sm" c="dimmed">
+                  Completa los campos adicionales del contrato (opcional).
+                </Text>
+
+                <DynamicFieldsForm
+                  fields={fields.filter(f => !['clientName', 'clientTaxId', 'clientEmail', 'clientPhone'].includes(f.name))}
+                  values={dynamicValues}
+                  onValuesChange={setDynamicValues}
+                  lockedFields={lockedFields}
+                  mode="modal"
+                  onSubmit={() => {}} // No usado en este modo
+                />
+
+                <Group justify="space-between" mt="md">
+                  <Button variant="subtle" onClick={handlePrevStep}>
+                    Atrás
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      setCollecting(true)
+                      const contractId = pendingAction.contract.id
+                      const method = pendingAction.method
+                      const extra: any = { dynamicFieldValues: dynamicValues }
+
+                      try {
+                        if (method === 'qr') {
+                          const createRes = await createSignatureRequest(contractId, 'qr', extra)
+                          const qrCode = await generateQRCode(createRes.signatureUrl)
+                          setCurrentQrData({ url: qrCode, contractName: pendingAction.contract.name, signatureUrl: createRes.signatureUrl })
+                          setQrModalOpened(true)
+                        } else if (method === 'local') {
+                          const createRes = await createSignatureRequest(contractId, 'local', extra)
+                          if (createRes.signatureUrl) window.open(createRes.signatureUrl, '_blank')
+                        } else if (method === 'email') {
+                          await handleEmailSignatureRequest()
+                        } else if (method === 'sms') {
+                          await handleSmsSignatureRequest()
+                        } else if (method === 'tablet') {
+                          await createSignatureRequest(contractId, 'tablet', extra)
+                        }
+
+                        setFieldsModalOpened(false)
+                        setDynamicValues({})
+                        setPendingAction(null)
+                        setStepperActive(0)
+                      } finally {
+                        setCollecting(false)
+                      }
+                    }}
+                    loading={collecting}
+                  >
+                    Enviar Solicitud
+                  </Button>
+                </Group>
+              </Stack>
+            </Stepper.Step>
+          </Stepper>
         </Stack>
       </Modal>
     )
@@ -765,69 +1087,34 @@ export default function DashboardPage() {
                         <Menu.Label>Tipo de Firma</Menu.Label>
                         <Menu.Item
                           leftSection={<IconMail size={14} />}
-                          onClick={() => {
-                            setRequestMethod('email')
-                            setEmailFormData({
-                              email: '',
-                              name: '',
-                              contractId: contrato.id,
-                              contractName: contrato.name
-                            })
-                            setSmsFormData({ phone: '', name: '', contractId: contrato.id, contractName: contrato.name })
-                            setEmailModalOpened(true)
-                          }}
+                          onClick={() => checkAndStartSignatureRequest(contrato.id, contrato.name, 'email')}
                         >
                           Mandar por Email
                         </Menu.Item>
                         {smsEnabled && (
                           <Menu.Item
                             leftSection={<IconPhone size={14} />}
-                            onClick={() => {
-                              setRequestMethod('sms')
-                              setSmsFormData({
-                                phone: '',
-                                name: '',
-                                contractId: contrato.id,
-                                contractName: contrato.name
-                              })
-                              setEmailFormData({ email: '', name: '', contractId: contrato.id, contractName: contrato.name })
-                              setEmailModalOpened(true)
-                            }}
+                            onClick={() => checkAndStartSignatureRequest(contrato.id, contrato.name, 'sms')}
                           >
                             Mandar por SMS
                           </Menu.Item>
                         )}
                         <Menu.Item
                           leftSection={<IconSignature size={14} />}
-                          onClick={() => {
-                            setRequestMethod('local')
-                            setEmailFormData({ email: '', name: '', contractId: contrato.id, contractName: contrato.name })
-                            setSmsFormData({ phone: '', name: '', contractId: contrato.id, contractName: contrato.name })
-                            setEmailModalOpened(true)
-                          }}
+                          onClick={() => checkAndStartSignatureRequest(contrato.id, contrato.name, 'local')}
                         >
                           Firma Local
                         </Menu.Item>
                         <Menu.Item
                           leftSection={<IconDeviceTablet size={14} />}
-                          onClick={() => {
-                            setRequestMethod('tablet')
-                            setEmailFormData({ email: '', name: '', contractId: contrato.id, contractName: contrato.name })
-                            setSmsFormData({ phone: '', name: '', contractId: contrato.id, contractName: contrato.name })
-                            setEmailModalOpened(true)
-                          }}
+                          onClick={() => checkAndStartSignatureRequest(contrato.id, contrato.name, 'tablet')}
                         >
                           Firmar en Tableta
                         </Menu.Item>
                         <Menu.Divider />
                         <Menu.Item
                           leftSection={<IconQrcode size={14} />}
-                          onClick={() => {
-                            setRequestMethod('qr')
-                            setEmailFormData({ email: '', name: '', contractId: contrato.id, contractName: contrato.name })
-                            setSmsFormData({ phone: '', name: '', contractId: contrato.id, contractName: contrato.name })
-                            setEmailModalOpened(true)
-                          }}
+                          onClick={() => checkAndStartSignatureRequest(contrato.id, contrato.name, 'qr')}
                         >
                           Mostrar QR para Firma Remota
                         </Menu.Item>
@@ -1530,6 +1817,110 @@ export default function DashboardPage() {
                 {deleting ? 'Archivando...' : 'Archivar Contrato'}
               </Button>
             </Group>
+          </Stack>
+        </Modal>
+
+        {/* Modal de conflicto: Solicitud existente */}
+        <Modal
+          opened={conflictModalOpened}
+          onClose={handleCancelConflict}
+          title="Solicitud de Firma Existente"
+          centered
+          size="md"
+        >
+          <Stack gap="md">
+            <Alert color="yellow" icon={<IconAlertTriangle size={16} />}>
+              <Text size="sm" fw={500}>
+                Ya existe una solicitud de firma para este contrato
+              </Text>
+            </Alert>
+
+            {existingSignatureRequest && (
+              <Stack gap="xs">
+                <Group gap="xs">
+                  <Text size="sm">
+                    <strong>Estado:</strong>
+                  </Text>
+                  <Badge
+                    color={
+                      existingSignatureRequest.status === 'pending' ? 'blue' :
+                      existingSignatureRequest.status === 'signed' ? 'green' :
+                      'gray'
+                    }
+                  >
+                    {existingSignatureRequest.status === 'pending' ? 'Pendiente' :
+                     existingSignatureRequest.status === 'signed' ? 'Firmado' :
+                     existingSignatureRequest.status}
+                  </Badge>
+                </Group>
+                <Text size="sm">
+                  <strong>Tipo:</strong> {existingSignatureRequest.signatureType === 'email' ? 'Email' : existingSignatureRequest.signatureType === 'sms' ? 'SMS' : existingSignatureRequest.signatureType}
+                </Text>
+                {existingSignatureRequest.clientName && (
+                  <Text size="sm">
+                    <strong>Firmante:</strong> {existingSignatureRequest.clientName}
+                  </Text>
+                )}
+                {existingSignatureRequest.clientEmail && (
+                  <Text size="sm">
+                    <strong>Email:</strong> {existingSignatureRequest.clientEmail}
+                  </Text>
+                )}
+                {existingSignatureRequest.clientPhone && (
+                  <Text size="sm">
+                    <strong>Teléfono:</strong> {existingSignatureRequest.clientPhone}
+                  </Text>
+                )}
+                <Text size="sm" c="dimmed">
+                  <strong>Creada:</strong> {new Date(existingSignatureRequest.createdAt).toLocaleString('es-ES')}
+                </Text>
+              </Stack>
+            )}
+
+            <Text size="sm" c="dimmed">
+              ¿Qué deseas hacer?
+            </Text>
+
+            <Stack gap="sm">
+              <Button
+                leftSection={<IconEye size={16} />}
+                onClick={handleViewExistingRequest}
+                variant="light"
+                fullWidth
+              >
+                Ver solicitud existente
+              </Button>
+
+              {existingSignatureRequest?.status === 'pending' && (
+                <Button
+                  leftSection={<IconTrash size={16} />}
+                  onClick={handleDeleteAndCreateNew}
+                  color="red"
+                  variant="light"
+                  fullWidth
+                  loading={deletingExistingRequest}
+                >
+                  Eliminar solicitud pendiente y crear nueva
+                </Button>
+              )}
+
+              {(existingSignatureRequest?.status === 'signed' || existingSignatureRequest?.status === 'completed') && (
+                <Alert color="blue" icon={<IconLock size={16} />}>
+                  <Text size="sm">
+                    Esta solicitud ya está firmada y sellada. No se puede eliminar.
+                    Puedes visualizarla o cancelar para volver atrás.
+                  </Text>
+                </Alert>
+              )}
+
+              <Button
+                onClick={handleCancelConflict}
+                variant="subtle"
+                fullWidth
+              >
+                Cancelar
+              </Button>
+            </Stack>
           </Stack>
         </Modal>
       </Stack>
