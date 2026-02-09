@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
 import { getAuthContext } from '@/lib/auth/unified'
 import { getSignaturesCollection, getContractsCollection, getDatabase, CustomerEncryption } from '@/lib/db/mongodb'
-import { signedContractPDFGenerator } from '@/lib/pdf/signedContractGenerator'
-import { auditTrailService } from '@/lib/auditTrail'
+import { SimplePDFGenerator } from '@/lib/pdf/simplePdfGenerator'
 import { getCombinedAuditTrail } from '@/lib/audit/integration'
 import { processContractContent, createAccountVariableValues } from '@/lib/contractUtils'
 import { ObjectId } from 'mongodb'
@@ -180,9 +179,6 @@ export async function GET(
 
     console.log('[PDF DEBUG] Final audit trail records for PDF:', auditTrailRecords.length)
 
-    // Verify audit trail integrity
-    const auditVerification = auditTrailService.verifyAuditTrailIntegrity(contractId)
-
     // Decrypt the contract for content access
     const decryptedContract = CustomerEncryption.decryptSensitiveFields(contract, customerId)
 
@@ -289,14 +285,16 @@ export async function GET(
     
     console.log('[PDF DEBUG] Processed content after variable replacement:', processedContent.substring(0, 300) + '...')
 
-    // Generate PDF with verification data and audit trail
-    const pdfData = await signedContractPDFGenerator.generateSignedContractPDF(
+    // Generate PDF with SimplePDFGenerator (same as the working public endpoint)
+    const simplePDFGenerator = new SimplePDFGenerator()
+    const pdfData = await simplePDFGenerator.generateSignedContractPDF(
       processedContent,
       sesSignature,
       {
         companyName: 'oSign.EU',
         baseUrl: process.env.NEXTAUTH_URL || 'http://localhost:3000',
-        auditTrailId: decryptedSignature.auditTrailId || contractId
+        auditTrailId: decryptedSignature.auditTrailId || contractId,
+        contractTitle: contractName
       }
     )
 
@@ -450,7 +448,8 @@ export async function GET_CSV(
     }
 
     // Generate CSV data
-    const pdfData = await signedContractPDFGenerator.generateSignedContractPDF(
+    const csvGenerator = new SimplePDFGenerator()
+    const pdfData = await csvGenerator.generateSignedContractPDF(
       '', // Empty content, we only need CSV
       sesSignature,
       {
