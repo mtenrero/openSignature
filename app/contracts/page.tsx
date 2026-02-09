@@ -786,6 +786,7 @@ export default function DashboardPage() {
                   lockedFields={lockedFields}
                   mode="modal"
                   onSubmit={() => {}} // No usado en este modo
+                  skipMandatoryValidation // Mandatory fields (clientName, clientTaxId) already collected in step 1
                 />
 
                 <Group justify="space-between" mt="md">

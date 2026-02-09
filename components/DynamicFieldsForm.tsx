@@ -41,6 +41,7 @@ interface DynamicFieldsFormProps {
   contractName?: string
   lockedFields?: string[]
   mode?: 'standalone' | 'modal' // standalone: full UI with container & button, modal: just fields
+  skipMandatoryValidation?: boolean // Skip mandatory field validation (e.g., when fields were collected in a previous step)
 }
 
 export function DynamicFieldsForm({
@@ -52,7 +53,8 @@ export function DynamicFieldsForm({
   mode = 'modal',
   loading = false,
   contractName,
-  lockedFields = []
+  lockedFields = [],
+  skipMandatoryValidation = false
 }: DynamicFieldsFormProps) {
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [mandatoryValidation, setMandatoryValidation] = useState<{
@@ -81,16 +83,21 @@ export function DynamicFieldsForm({
 
   // Validate mandatory fields on component mount
   useEffect(() => {
+    if (skipMandatoryValidation) {
+      setMandatoryValidation({ isValid: true, missingFields: [], warnings: [] })
+      return
+    }
+
     const userFields = fields.filter(field => !('enabled' in field))
     const dynamicFields = fields.filter(field => 'enabled' in field)
-    
+
     const validation = validateMandatoryFields(userFields, dynamicFields)
     setMandatoryValidation(validation)
-    
+
     if (!validation.isValid) {
       console.warn('Mandatory fields validation failed:', validation)
     }
-  }, [fields])
+  }, [fields, skipMandatoryValidation])
   
   // Uncomment for debugging:
   // console.log('DynamicFieldsForm Debug:', {
