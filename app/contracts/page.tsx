@@ -41,11 +41,6 @@ export default function DashboardPage() {
   const [deleting, setDeleting] = useState(false)
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards')
 
-  // Estados para modal de conflicto de solicitud existente
-  const [conflictModalOpened, setConflictModalOpened] = useState(false)
-  const [existingSignatureRequest, setExistingSignatureRequest] = useState<any>(null)
-  const [pendingNewRequest, setPendingNewRequest] = useState<any>(null)
-  const [deletingExistingRequest, setDeletingExistingRequest] = useState(false)
   const [subscriptionData, setSubscriptionData] = useState<any>(null)
   const [dismissedBanners, setDismissedBanners] = useState<Set<string>>(new Set())
   const [permanentlyDismissedBanners, setPermanentlyDismissedBanners] = useState<Set<string>>(new Set())
@@ -332,130 +327,13 @@ export default function DashboardPage() {
     await checkAndStartSignatureRequest(pendingQrRequest.contractId, pendingQrRequest.contractName, 'qr')
   }
 
-  // Handle viewing existing signature request
-  const handleViewExistingRequest = () => {
-    if (existingSignatureRequest) {
-      window.open(`/signatures/${existingSignatureRequest.id}`, '_blank')
-      setConflictModalOpened(false)
-      setExistingSignatureRequest(null)
-      setPendingNewRequest(null)
-    }
-  }
-
-  // Handle deleting existing request and creating new one
-  const handleDeleteAndCreateNew = async () => {
-    if (!existingSignatureRequest || !pendingNewRequest) return
-
-    try {
-      setDeletingExistingRequest(true)
-
-      // Delete the existing request
-      const deleteRes = await fetch(`/api/signature-requests/${existingSignatureRequest.id}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          discardReason: 'Usuario solicitó crear nueva solicitud de firma con diferente DNI'
-        })
-      })
-
-      if (!deleteRes.ok) {
-        throw new Error('Error al eliminar la solicitud existente')
-      }
-
-      // Close conflict modal
-      setConflictModalOpened(false)
-      setExistingSignatureRequest(null)
-
-      notifications.show({
-        title: 'Solicitud eliminada',
-        message: 'La solicitud anterior fue eliminada. Continuando con la nueva solicitud...',
-        color: 'blue'
-      })
-
-      // Continue with the stored callback
-      const { proceedCallback } = pendingNewRequest
-      setPendingNewRequest(null)
-
-      if (proceedCallback) {
-        await proceedCallback()
-      }
-
-    } catch (error) {
-      console.error('Error deleting existing request:', error)
-      notifications.show({
-        title: 'Error',
-        message: error instanceof Error ? error.message : 'No se pudo eliminar la solicitud existente',
-        color: 'red'
-      })
-    } finally {
-      setDeletingExistingRequest(false)
-    }
-  }
-
-  // Handle canceling the conflict modal
-  const handleCancelConflict = () => {
-    setConflictModalOpened(false)
-    setExistingSignatureRequest(null)
-    setPendingNewRequest(null)
-  }
-
   // Start signature request flow (without pre-checking)
   const checkAndStartSignatureRequest = async (contractId: string, contractName: string, signatureType: string) => {
     // Just proceed to open the fields modal
     handleSignatureRequest(contractId, contractName, signatureType)
   }
 
-  // Check for DNI conflict after fields are filled (called from field modal submit)
-  const checkDniConflictAndProceed = async (contractId: string, clientTaxId: string | undefined, proceedCallback: () => Promise<void>) => {
-    try {
-      if (!clientTaxId || !clientTaxId.trim()) {
-        // No DNI provided, proceed without checking
-        console.log('[DNI Conflict Check] No DNI provided, proceeding without check')
-        await proceedCallback()
-        return
-      }
-
-      // Check if there is an existing signature request with the same DNI for this contract
-      console.log(`[DNI Conflict Check] Checking for DNI "${clientTaxId}" in contract ${contractId}`)
-      const existingRequestRes = await fetch(`/api/signature-requests?contractId=${contractId}&clientTaxId=${encodeURIComponent(clientTaxId.trim())}`)
-      const existingRequestData = await existingRequestRes.json()
-      const allRequests = existingRequestData?.requests || []
-
-      // Check for pending OR signed requests with the same DNI
-      const pendingRequest = allRequests.find((r: any) => r.status === 'pending')
-      const signedRequest = allRequests.find((r: any) => r.status === 'signed' || r.status === 'completed')
-
-      // If there's an existing request with the same DNI, show conflict modal
-      if (pendingRequest || signedRequest) {
-        const existingReq = pendingRequest || signedRequest
-        console.log('[DNI Conflict Check] Found conflict with DNI:', existingReq)
-
-        // Store the callback to execute after user resolves conflict
-        setPendingNewRequest({
-          contractId,
-          contractName: existingReq.contractSnapshot?.name || 'Contrato',
-          signatureType: 'email', // Will be determined by the callback
-          contract: null,
-          proceedCallback
-        })
-
-        setExistingSignatureRequest(existingReq)
-        setConflictModalOpened(true)
-        return
-      }
-
-      // No conflict, proceed
-      console.log('[DNI Conflict Check] No conflict found, proceeding')
-      await proceedCallback()
-
-    } catch (error) {
-      console.error('Error checking DNI conflict:', error)
-      // Continue anyway on error
-      await proceedCallback()
-    }
-  }
-
-  // Handle signature request creation (after conflict check)
+  // Handle signature request creation
   const handleSignatureRequest = async (contractId: string, contractName: string, signatureType: string) => {
     try {
       setRequestingSignature(true)
@@ -466,7 +344,6 @@ export default function DashboardPage() {
         selected = (await response.json()).contracts?.find((c: any) => c.id === contractId)
       }
 
-      // Proceed with normal flow (conflict already checked)
       const showPrefillModalDefault = true
       setPendingAction({ contract: selected, method: signatureType as any, withPrefill: false })
 
@@ -577,73 +454,7 @@ export default function DashboardPage() {
       if (!validateSignerData()) {
         return
       }
-
-      // Verificar conflicto de DNI antes de avanzar al paso 2
-      if (!pendingAction || !pendingAction.contract) {
-        console.error('[DNI Conflict Check] No pendingAction or contract found')
-        setStepperActive(1)
-        return
-      }
-
-      const contractId = pendingAction.contract.id
-      const clientTaxId = dynamicValues.clientTaxId
-
-      console.log('[DNI Conflict Check] Starting check for contract:', contractId, 'DNI:', clientTaxId)
-
-      try {
-        if (!clientTaxId || !clientTaxId.trim()) {
-          console.log('[DNI Conflict Check] No DNI provided, proceeding to step 2')
-          setStepperActive(1)
-          return
-        }
-
-        // Comprobar si ya existe solicitud con el mismo DNI para este contrato
-        console.log(`[DNI Conflict Check] Checking for DNI "${clientTaxId}" in contract ${contractId}`)
-        const existingRequestRes = await fetch(`/api/signature-requests?contractId=${contractId}&clientTaxId=${encodeURIComponent(clientTaxId.trim())}`)
-        const existingRequestData = await existingRequestRes.json()
-        const allRequests = existingRequestData?.requests || []
-
-        console.log('[DNI Conflict Check] All requests found:', allRequests.length, allRequests.map((r: any) => ({ id: r.id, status: r.status })))
-
-        const pendingRequest = allRequests.find((r: any) => r.status === 'pending')
-        const signedRequest = allRequests.find((r: any) => r.status === 'signed' || r.status === 'completed')
-
-        console.log('[DNI Conflict Check] Pending request:', pendingRequest?.id, 'Signed request:', signedRequest?.id)
-
-        if (pendingRequest || signedRequest) {
-          const existingReq = pendingRequest || signedRequest
-          console.log('[DNI Conflict Check] Found conflict with DNI:', existingReq)
-
-          // Guardar callback para continuar al step 2 si el usuario resuelve el conflicto
-          const newRequest = {
-            contractId,
-            contractName: pendingAction.contract.name,
-            signatureType: pendingAction.method,
-            contract: pendingAction.contract,
-            proceedCallback: async () => {
-              console.log('[DNI Conflict Check] Callback executed - advancing to step 2')
-              setStepperActive(1)
-            }
-          }
-
-          console.log('[DNI Conflict Check] Setting pendingNewRequest:', newRequest)
-          setPendingNewRequest(newRequest)
-
-          console.log('[DNI Conflict Check] Setting existingSignatureRequest:', existingReq.id)
-          setExistingSignatureRequest(existingReq)
-
-          console.log('[DNI Conflict Check] Opening conflict modal')
-          setConflictModalOpened(true)
-          return
-        }
-
-        console.log('[DNI Conflict Check] No conflict found, proceeding to step 2')
-        setStepperActive(1)
-      } catch (error) {
-        console.error('Error checking DNI conflict:', error)
-        // En caso de error, continuar al step 2
-        setStepperActive(1)
-      }
+      setStepperActive(1)
     }
 
     const handlePrevStep = () => {
@@ -1830,109 +1641,6 @@ export default function DashboardPage() {
           </Stack>
         </Modal>
 
-        {/* Modal de conflicto: Solicitud existente */}
-        <Modal
-          opened={conflictModalOpened}
-          onClose={handleCancelConflict}
-          title="Solicitud de Firma Existente"
-          centered
-          size="md"
-        >
-          <Stack gap="md">
-            <Alert color="yellow" icon={<IconAlertTriangle size={16} />}>
-              <Text size="sm" fw={500}>
-                Ya existe una solicitud de firma para este contrato
-              </Text>
-            </Alert>
-
-            {existingSignatureRequest && (
-              <Stack gap="xs">
-                <Group gap="xs">
-                  <Text size="sm">
-                    <strong>Estado:</strong>
-                  </Text>
-                  <Badge
-                    color={
-                      existingSignatureRequest.status === 'pending' ? 'blue' :
-                      existingSignatureRequest.status === 'signed' ? 'green' :
-                      'gray'
-                    }
-                  >
-                    {existingSignatureRequest.status === 'pending' ? 'Pendiente' :
-                     existingSignatureRequest.status === 'signed' ? 'Firmado' :
-                     existingSignatureRequest.status}
-                  </Badge>
-                </Group>
-                <Text size="sm">
-                  <strong>Tipo:</strong> {existingSignatureRequest.signatureType === 'email' ? 'Email' : existingSignatureRequest.signatureType === 'sms' ? 'SMS' : existingSignatureRequest.signatureType}
-                </Text>
-                {existingSignatureRequest.clientName && (
-                  <Text size="sm">
-                    <strong>Firmante:</strong> {existingSignatureRequest.clientName}
-                  </Text>
-                )}
-                {existingSignatureRequest.clientEmail && (
-                  <Text size="sm">
-                    <strong>Email:</strong> {existingSignatureRequest.clientEmail}
-                  </Text>
-                )}
-                {existingSignatureRequest.clientPhone && (
-                  <Text size="sm">
-                    <strong>Teléfono:</strong> {existingSignatureRequest.clientPhone}
-                  </Text>
-                )}
-                <Text size="sm" c="dimmed">
-                  <strong>Creada:</strong> {new Date(existingSignatureRequest.createdAt).toLocaleString('es-ES')}
-                </Text>
-              </Stack>
-            )}
-
-            <Text size="sm" c="dimmed">
-              ¿Qué deseas hacer?
-            </Text>
-
-            <Stack gap="sm">
-              <Button
-                leftSection={<IconEye size={16} />}
-                onClick={handleViewExistingRequest}
-                variant="light"
-                fullWidth
-              >
-                Ver solicitud existente
-              </Button>
-
-              {existingSignatureRequest?.status === 'pending' && (
-                <Button
-                  leftSection={<IconTrash size={16} />}
-                  onClick={handleDeleteAndCreateNew}
-                  color="red"
-                  variant="light"
-                  fullWidth
-                  loading={deletingExistingRequest}
-                >
-                  Eliminar solicitud pendiente y crear nueva
-                </Button>
-              )}
-
-              {(existingSignatureRequest?.status === 'signed' || existingSignatureRequest?.status === 'completed') && (
-                <Alert color="blue" icon={<IconLock size={16} />}>
-                  <Text size="sm">
-                    Esta solicitud ya está firmada y sellada. No se puede eliminar.
-                    Puedes visualizarla o cancelar para volver atrás.
-                  </Text>
-                </Alert>
-              )}
-
-              <Button
-                onClick={handleCancelConflict}
-                variant="subtle"
-                fullWidth
-              >
-                Cancelar
-              </Button>
-            </Stack>
-          </Stack>
-        </Modal>
       </Stack>
     </Container>
   )

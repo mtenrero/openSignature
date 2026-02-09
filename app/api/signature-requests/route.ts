@@ -143,11 +143,9 @@ export async function POST(request: NextRequest) {
 
     // Strategy:
     // 1. If isResend=true → Look for existing request to reuse (from /signatures UI or explicit resend)
-    // 2. If isResend=false or undefined → ALWAYS create new request (from /contracts or new API call)
-    // 3. In both cases, preserve locked fields from ANY existing pending request
+    // 2. If isResend=false or undefined → ALWAYS create new, independent request (from /contracts or new API call)
 
     let existingRequest = null
-    let fieldsSource = null // Track where we got the locked fields from
 
     if (isResend === true) {
       // RESEND MODE: Look for existing pending request to reuse
@@ -178,35 +176,12 @@ export async function POST(request: NextRequest) {
           existingRequest = anyPendingRequest
           console.log(`[Signature Request] REUSE - Found matching request ${existingRequest.shortId}`)
         } else {
-          console.log(`[Signature Request] NEW - Different type/recipient, but will preserve fields from ${anyPendingRequest.shortId}`)
-          fieldsSource = anyPendingRequest
+          console.log(`[Signature Request] NEW - Different type/recipient, creating independent request`)
         }
       }
     } else {
-      // NEW REQUEST MODE: Always create new, but check for locked fields
+      // NEW REQUEST MODE: Always create new, each request is independent
       console.log(`[Signature Request] New request mode - will create NEW entry for contract ${contractId}`)
-
-      const anyPendingRequest = await collection.findOne({
-        contractId: contractId,
-        customerId: customerId,
-        status: { $in: ['pending'] }
-      })
-
-      if (anyPendingRequest && anyPendingRequest.dynamicFieldValues) {
-        fieldsSource = anyPendingRequest
-        console.log(`[Signature Request] Found existing request ${anyPendingRequest.shortId} - will preserve locked fields`)
-      }
-    }
-
-    // Apply fields from existing request ONLY for fields not already provided in the new request
-    // This prevents overwriting the user's newly entered data (e.g., new client name/DNI/phone)
-    if (fieldsSource && fieldsSource.dynamicFieldValues) {
-      for (const [key, value] of Object.entries(fieldsSource.dynamicFieldValues as Record<string, string | boolean>)) {
-        if (!dynamicFieldValues[key] || (typeof dynamicFieldValues[key] === 'string' && dynamicFieldValues[key].trim() === '')) {
-          dynamicFieldValues[key] = value
-        }
-      }
-      console.log(`[Signature Request] Applied missing fields from existing request (without overwriting new data):`, fieldsSource.dynamicFieldValues)
     }
 
     if (existingRequest) { // Reuse existing request and preserve locked fields
