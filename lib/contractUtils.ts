@@ -130,6 +130,8 @@ export function processContractContent(
 
   console.log('[PROCESS DEBUG] Input content:', content.substring(0, 200) + '...')
   console.log('[PROCESS DEBUG] Account variable values:', accountVariableValues)
+  console.log('[PROCESS DEBUG] Dynamic field values:', dynamicFieldValues)
+  console.log('[PROCESS DEBUG] Dynamic field keys:', Object.keys(dynamicFieldValues))
   
   let processedContent = content
 
@@ -157,20 +159,42 @@ export function processContractContent(
   })
 
   // Maintain backward compatibility with old format
-  // Replace old format variables {{field}}
+  // Replace old format variables {{field}} for account variables
   Object.entries(accountVariableValues).forEach(([field, value]) => {
     const regex = new RegExp(`\\{\\{${field}\\}\\}`, 'g')
     processedContent = processedContent.replace(regex, `<span style="background: #f3e5f5; padding: 2px 6px; border-radius: 4px; border: 1px solid #9c27b0; color: #7c3aed; font-weight: 600; margin: 0 4px;">${value}</span>`)
   })
 
-  // Support for bracket format [field] (additional backward compatibility)
+  // Replace old format variables {{field}} for dynamic fields
+  Object.entries(dynamicFieldValues).forEach(([field, value]) => {
+    if (value !== undefined && value !== '') {
+      const displayValue = typeof value === 'boolean' ? (value ? '✓ Aceptado' : '☐ No aceptado') : value
+      const regex = new RegExp(`\\{\\{${field}\\}\\}`, 'g')
+      processedContent = processedContent.replace(regex, `<span style="background: #e3f2fd; padding: 2px 6px; border-radius: 4px; border: 1px solid #2196f3; color: #1976d2; font-weight: 600; margin: 0 4px;">${displayValue}</span>`)
+    }
+  })
+
+  // Support for bracket format [field] (additional backward compatibility) for account variables
   Object.entries(accountVariableValues).forEach(([field, value]) => {
     const regex = new RegExp(`\\[${field}\\]`, 'g')
     const matches = processedContent.match(regex)
     if (matches) {
-      console.log(`[PROCESS DEBUG] Found bracket pattern [${field}] - replacing with: ${value}`)
+      console.log(`[PROCESS DEBUG] Found bracket pattern [${field}] - replacing with account var: ${value}`)
     }
     processedContent = processedContent.replace(regex, `<span style="background: #f3e5f5; padding: 2px 6px; border-radius: 4px; border: 1px solid #9c27b0; color: #7c3aed; font-weight: 600; margin: 0 4px;">${value}</span>`)
+  })
+
+  // Support for bracket format [field] for dynamic fields
+  Object.entries(dynamicFieldValues).forEach(([field, value]) => {
+    if (value !== undefined && value !== '') {
+      const displayValue = typeof value === 'boolean' ? (value ? '✓ Aceptado' : '☐ No aceptado') : value
+      const regex = new RegExp(`\\[${field}\\]`, 'g')
+      const matches = processedContent.match(regex)
+      if (matches) {
+        console.log(`[PROCESS DEBUG] Found bracket pattern [${field}] - replacing with dynamic field: ${displayValue}`)
+      }
+      processedContent = processedContent.replace(regex, `<span style="background: #e3f2fd; padding: 2px 6px; border-radius: 4px; border: 1px solid #2196f3; color: #1976d2; font-weight: 600; margin: 0 4px;">${displayValue}</span>`)
+    }
   })
 
   console.log('[PROCESS DEBUG] Final processed content:', processedContent.substring(0, 300) + '...')

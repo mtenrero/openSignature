@@ -102,8 +102,10 @@ export async function GET(
               deviceMetadata: req.signatureMetadata || req.deviceMetadata || {},
               auditTrail: req.auditTrail || {}
             },
-            // Preserve original fields for audit trail and content
+            // Preserve original fields for audit trail, content, and dynamic field values
             contractSnapshot: req.contractSnapshot,
+            dynamicFieldValues: req.dynamicFieldValues,
+            signerInfo: req.signerInfo,
             auditRecords: req.auditRecords,
             accessLogs: req.accessLogs,
             signatureMetadata: req.signatureMetadata,
@@ -274,7 +276,19 @@ export async function GET(
     console.log('[PDF DEBUG] Final variable values:', finalAccountVariableValues)
 
     // Get dynamic field values from signature metadata
-    const dynamicFieldValues = decryptedSignature.metadata?.signerInfo?.allFields || {}
+    // Check multiple sources: converted metadata, direct signerInfo, and direct dynamicFieldValues
+    const dynamicFieldValues = decryptedSignature.metadata?.signerInfo?.allFields
+      || decryptedSignature.signerInfo?.allFields
+      || decryptedSignature.dynamicFieldValues
+      || {}
+
+    console.log('[PDF DEBUG] Dynamic field values sources:', {
+      fromMetadataAllFields: !!decryptedSignature.metadata?.signerInfo?.allFields,
+      fromSignerInfoAllFields: !!decryptedSignature.signerInfo?.allFields,
+      fromDynamicFieldValues: !!decryptedSignature.dynamicFieldValues,
+      finalKeys: Object.keys(dynamicFieldValues),
+      finalValues: dynamicFieldValues
+    })
 
     // Process contract content (use already decrypted contractContent)
     const processedContent = processContractContent(
