@@ -198,10 +198,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Apply locked fields if we found a source
+    // Apply fields from existing request ONLY for fields not already provided in the new request
+    // This prevents overwriting the user's newly entered data (e.g., new client name/DNI/phone)
     if (fieldsSource && fieldsSource.dynamicFieldValues) {
-      Object.assign(dynamicFieldValues, fieldsSource.dynamicFieldValues)
-      console.log(`[Signature Request] Applied locked fields:`, fieldsSource.dynamicFieldValues)
+      for (const [key, value] of Object.entries(fieldsSource.dynamicFieldValues as Record<string, string | boolean>)) {
+        if (!dynamicFieldValues[key] || (typeof dynamicFieldValues[key] === 'string' && dynamicFieldValues[key].trim() === '')) {
+          dynamicFieldValues[key] = value
+        }
+      }
+      console.log(`[Signature Request] Applied missing fields from existing request (without overwriting new data):`, fieldsSource.dynamicFieldValues)
     }
 
     if (existingRequest) { // Reuse existing request and preserve locked fields

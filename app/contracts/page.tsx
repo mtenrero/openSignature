@@ -1238,6 +1238,8 @@ export default function DashboardPage() {
                                 contractId: contrato.id,
                                 contractName: contrato.name
                               })
+                              setRequestMethod('email')
+                              setDynamicValues({})
                               setEmailModalOpened(true)
                             }}
                           >
@@ -1253,7 +1255,14 @@ export default function DashboardPage() {
                                   contractId: contrato.id,
                                   contractName: contrato.name
                                 })
-                                setSmsModalOpened(true)
+                                setEmailFormData(prev => ({
+                                  ...prev,
+                                  contractId: contrato.id,
+                                  contractName: contrato.name
+                                }))
+                                setRequestMethod('sms')
+                                setDynamicValues({})
+                                setEmailModalOpened(true)
                               }}
                             >
                               Mandar por SMS
