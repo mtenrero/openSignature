@@ -78,7 +78,7 @@ export async function GET(
 
       if (signatureRequests.length > 0) {
         console.log('[PDF DEBUG] Converting signature requests to signature format...')
-        // Convert signature request to signature format
+        // Convert signature request to signature format using correct field paths
         signatures = signatureRequests.map(req => {
           const signerInfo = req.signerInfo || {}
           return {
@@ -88,21 +88,26 @@ export async function GET(
             type: 'signature',
             signature: req.signatureData || req.signature || '',
             createdAt: req.signedAt || req.updatedAt || req.createdAt,
-            ipAddress: req.ipAddress || signerInfo.ipAddress || '',
-            userAgent: req.userAgent || signerInfo.userAgent || '',
+            ipAddress: req.signatureMetadata?.ipAddress || req.metadata?.ipAddress || '',
+            userAgent: req.signatureMetadata?.userAgent || req.metadata?.userAgent || '',
             metadata: {
               signatureMethod: req.signatureType || 'electronic',
               signerInfo: {
-                clientName: req.clientName || req.signerName || signerInfo.name || '',
-                clientTaxId: req.clientTaxId || signerInfo.taxId || '',
-                clientEmail: req.signerEmail || signerInfo.email || '',
-                clientPhone: req.signerPhone || signerInfo.phone || '',
+                clientName: signerInfo.clientName || req.clientName || req.signerName || '',
+                clientTaxId: signerInfo.clientTaxId || req.clientTaxId || '',
+                clientEmail: signerInfo.clientEmail || req.signerEmail || '',
+                clientPhone: signerInfo.clientPhone || req.signerPhone || '',
                 allFields: req.dynamicFieldValues || {}
               },
-              documentHash: req.documentHash || '',
+              documentHash: req.signatureMetadata?.documentHash || req.documentHash || '',
               deviceMetadata: req.signatureMetadata || req.deviceMetadata || {},
               auditTrail: req.auditTrail || {}
             },
+            // Preserve original fields for audit trail and content
+            contractSnapshot: req.contractSnapshot,
+            auditRecords: req.auditRecords,
+            accessLogs: req.accessLogs,
+            signatureMetadata: req.signatureMetadata,
             auditTrailId: req.contractId
           }
         })
@@ -132,10 +137,24 @@ export async function GET(
     let auditTrailRecords = []
     try {
       const signRequestId = decryptedSignature._id?.toString() || contractId
+
+      // Determine which audit trail source to use (check multiple locations)
+      let auditTrailToUse = decryptedSignature.metadata?.auditTrail || decryptedSignature.auditTrail
+
+      // Priority 1: Use auditRecords field (newest format - from signature_requests)
+      if (decryptedSignature.auditRecords && Array.isArray(decryptedSignature.auditRecords)) {
+        auditTrailToUse = decryptedSignature.auditRecords
+      }
+      // Priority 2: Check metadata (newer signatures)
+      else if (decryptedSignature.metadata?.auditTrail?.trail?.records) {
+        auditTrailToUse = decryptedSignature.metadata.auditTrail
+      }
+
       const combinedTrail = await getCombinedAuditTrail({
         signRequestId,
         contractId,
-        oldAuditTrail: decryptedSignature.metadata?.auditTrail || decryptedSignature.auditTrail
+        oldAuditTrail: auditTrailToUse,
+        accessLogs: decryptedSignature.accessLogs
       })
 
       console.log('[PDF DEBUG] Combined audit trail events:', combinedTrail.length)
@@ -150,9 +169,13 @@ export async function GET(
       }))
     } catch (error) {
       console.error('[PDF DEBUG] Error getting combined audit trail:', error)
-      // Fallback to old audit trail
-      auditTrailRecords = decryptedSignature.metadata?.auditTrail?.trail?.records ||
-                          decryptedSignature.auditTrail?.trail?.records || []
+      // Fallback: try auditRecords directly
+      if (decryptedSignature.auditRecords && Array.isArray(decryptedSignature.auditRecords)) {
+        auditTrailRecords = decryptedSignature.auditRecords
+      } else {
+        auditTrailRecords = decryptedSignature.metadata?.auditTrail?.trail?.records ||
+                            decryptedSignature.auditTrail?.trail?.records || []
+      }
     }
 
     console.log('[PDF DEBUG] Final audit trail records for PDF:', auditTrailRecords.length)
@@ -160,28 +183,44 @@ export async function GET(
     // Verify audit trail integrity
     const auditVerification = auditTrailService.verifyAuditTrailIntegrity(contractId)
 
+    // Decrypt the contract for content access
+    const decryptedContract = CustomerEncryption.decryptSensitiveFields(contract, customerId)
+
+    // Use contractSnapshot content if available (already decrypted), fallback to decrypted contract
+    const contractContent = decryptedSignature.contractSnapshot?.content || decryptedContract.content || ''
+    const contractName = decryptedSignature.contractSnapshot?.name || decryptedContract.name || 'Contrato'
+
+    // Build signer info from the best available source
+    const signerInfo = decryptedSignature.metadata?.signerInfo || {}
+    const signerName = signerInfo.clientName || ''
+    const signerEmail = signerInfo.clientEmail || ''
+    const signerPhone = signerInfo.clientPhone || ''
+    const signerIdentifier = signerName || signerEmail || signerPhone || 'unknown'
+
     // Create SES signature object from our stored signature data
     const sesSignature = {
       id: decryptedSignature._id?.toString() || contractId,
       type: 'SES',
       signer: {
         method: decryptedSignature.metadata?.signatureMethod || 'electronic',
-        identifier: decryptedSignature.metadata?.signerInfo?.clientEmail || 'unknown',
+        identifier: signerIdentifier,
+        name: signerName,
         authenticatedAt: new Date(decryptedSignature.createdAt || Date.now()),
-        ipAddress: decryptedSignature.ipAddress || 'unknown',
-        userAgent: decryptedSignature.userAgent || 'unknown',
-        clientName: decryptedSignature.metadata?.signerInfo?.clientName,
-        clientTaxId: decryptedSignature.metadata?.signerInfo?.clientTaxId,
-        clientEmail: decryptedSignature.metadata?.signerInfo?.clientEmail,
-        clientPhone: decryptedSignature.metadata?.signerInfo?.clientPhone,
-        allFields: decryptedSignature.metadata?.signerInfo?.allFields || {}
+        ipAddress: decryptedSignature.ipAddress || decryptedSignature.signatureMetadata?.ipAddress || 'unknown',
+        userAgent: decryptedSignature.userAgent || decryptedSignature.signatureMetadata?.userAgent || 'unknown',
+        clientName: signerName,
+        clientTaxId: signerInfo.clientTaxId || '',
+        clientEmail: signerEmail,
+        clientPhone: signerPhone,
+        signatureImage: decryptedSignature.signature || null,
+        allFields: signerInfo.allFields || {}
       },
       document: {
-        hash: decryptedSignature.metadata?.documentHash || '',
+        hash: decryptedSignature.signatureMetadata?.documentHash || decryptedSignature.metadata?.documentHash || '',
         algorithm: 'SHA-256',
-        originalName: contract.name || 'Contrato',
-        content: contract.content || '',
-        size: contract.content?.length || 0
+        originalName: contractName,
+        content: contractContent,
+        size: contractContent?.length || 0
       },
       signature: {
         value: decryptedSignature.signature || '',
@@ -193,7 +232,7 @@ export async function GET(
         source: 'system',
         verified: true
       },
-      deviceMetadata: decryptedSignature.metadata?.deviceMetadata || {},
+      deviceMetadata: decryptedSignature.signatureMetadata || decryptedSignature.metadata?.deviceMetadata || {},
       evidence: {
         consentGiven: true,
         intentToBind: true,
@@ -237,14 +276,13 @@ export async function GET(
     const finalAccountVariableValues = { ...defaultValues, ...accountVariableValues }
     
     console.log('[PDF DEBUG] Final variable values:', finalAccountVariableValues)
-    console.log('[PDF DEBUG] Contract content before processing:', contract.content)
-    
+
     // Get dynamic field values from signature metadata
     const dynamicFieldValues = decryptedSignature.metadata?.signerInfo?.allFields || {}
-    
-    // Process contract content
+
+    // Process contract content (use already decrypted contractContent)
     const processedContent = processContractContent(
-      contract.content || '<p>Contract content not available</p>',
+      contractContent || '<p>Contract content not available</p>',
       finalAccountVariableValues,
       dynamicFieldValues
     )
@@ -325,30 +363,34 @@ export async function GET_CSV(
       }).sort({ createdAt: -1 }).toArray()
 
       if (signatureRequests.length > 0) {
-        signatures = signatureRequests.map(req => ({
-          _id: req._id,
-          contractId: req.contractId,
-          customerId: req.customerId,
-          type: 'signature',
-          signature: req.signatureData || req.signature || '',
-          createdAt: req.signedAt || req.updatedAt || req.createdAt,
-          ipAddress: req.ipAddress || '',
-          userAgent: req.userAgent || '',
-          metadata: {
-            signatureMethod: req.signatureType || 'electronic',
-            signerInfo: {
-              clientName: req.clientName || req.signerName || '',
-              clientTaxId: req.clientTaxId || '',
-              clientEmail: req.signerEmail || '',
-              clientPhone: req.signerPhone || '',
-              allFields: req.dynamicFieldValues || {}
+        signatures = signatureRequests.map(req => {
+          const si = req.signerInfo || {}
+          return {
+            _id: req._id,
+            contractId: req.contractId,
+            customerId: req.customerId,
+            type: 'signature',
+            signature: req.signatureData || req.signature || '',
+            createdAt: req.signedAt || req.updatedAt || req.createdAt,
+            ipAddress: req.signatureMetadata?.ipAddress || req.metadata?.ipAddress || '',
+            userAgent: req.signatureMetadata?.userAgent || req.metadata?.userAgent || '',
+            metadata: {
+              signatureMethod: req.signatureType || 'electronic',
+              signerInfo: {
+                clientName: si.clientName || req.clientName || req.signerName || '',
+                clientTaxId: si.clientTaxId || req.clientTaxId || '',
+                clientEmail: si.clientEmail || req.signerEmail || '',
+                clientPhone: si.clientPhone || req.signerPhone || '',
+                allFields: req.dynamicFieldValues || {}
+              },
+              documentHash: req.signatureMetadata?.documentHash || req.documentHash || '',
+              deviceMetadata: req.signatureMetadata || req.deviceMetadata || {},
+              auditTrail: req.auditTrail || {}
             },
-            documentHash: req.documentHash || '',
-            deviceMetadata: req.deviceMetadata || {},
-            auditTrail: req.auditTrail || {}
-          },
-          auditTrailId: req.contractId
-        }))
+            signatureMetadata: req.signatureMetadata,
+            auditTrailId: req.contractId
+          }
+        })
       }
     }
 
@@ -359,24 +401,30 @@ export async function GET_CSV(
     const latestSignatureDoc = signatures[0]
     const decryptedSignature = CustomerEncryption.decryptSensitiveFields(latestSignatureDoc, customerId)
 
+    const csvSignerInfo = decryptedSignature.metadata?.signerInfo || {}
+    const csvSignerName = csvSignerInfo.clientName || ''
+    const csvSignerEmail = csvSignerInfo.clientEmail || ''
+    const csvSignerPhone = csvSignerInfo.clientPhone || ''
+    const csvIdentifier = csvSignerName || csvSignerEmail || csvSignerPhone || 'unknown'
+
     // Create SES signature object from our stored signature data
     const sesSignature = {
       id: decryptedSignature._id?.toString() || contractId,
       type: 'SES',
       signer: {
         method: decryptedSignature.metadata?.signatureMethod || 'electronic',
-        identifier: decryptedSignature.metadata?.signerInfo?.clientEmail || 'unknown',
+        identifier: csvIdentifier,
         authenticatedAt: new Date(decryptedSignature.createdAt || Date.now()),
-        ipAddress: decryptedSignature.ipAddress || 'unknown',
-        userAgent: decryptedSignature.userAgent || 'unknown',
-        clientName: decryptedSignature.metadata?.signerInfo?.clientName,
-        clientTaxId: decryptedSignature.metadata?.signerInfo?.clientTaxId,
-        clientEmail: decryptedSignature.metadata?.signerInfo?.clientEmail,
-        clientPhone: decryptedSignature.metadata?.signerInfo?.clientPhone,
-        allFields: decryptedSignature.metadata?.signerInfo?.allFields || {}
+        ipAddress: decryptedSignature.ipAddress || decryptedSignature.signatureMetadata?.ipAddress || 'unknown',
+        userAgent: decryptedSignature.userAgent || decryptedSignature.signatureMetadata?.userAgent || 'unknown',
+        clientName: csvSignerName,
+        clientTaxId: csvSignerInfo.clientTaxId || '',
+        clientEmail: csvSignerEmail,
+        clientPhone: csvSignerPhone,
+        allFields: csvSignerInfo.allFields || {}
       },
       document: {
-        hash: decryptedSignature.metadata?.documentHash || '',
+        hash: decryptedSignature.signatureMetadata?.documentHash || decryptedSignature.metadata?.documentHash || '',
         algorithm: 'SHA-256',
         originalName: 'Contract',
         content: '',
@@ -392,7 +440,7 @@ export async function GET_CSV(
         source: 'system',
         verified: true
       },
-      deviceMetadata: decryptedSignature.metadata?.deviceMetadata || {},
+      deviceMetadata: decryptedSignature.signatureMetadata || decryptedSignature.metadata?.deviceMetadata || {},
       evidence: {
         consentGiven: true,
         intentToBind: true,
