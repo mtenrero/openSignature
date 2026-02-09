@@ -53,7 +53,7 @@ export async function GET(
       console.log('[PDF DEBUG] Looking for contractId:', contractId, 'customerId:', customerId)
 
       const db = await getDatabase()
-      const signatureRequestsCollection = db.collection('signature_requests')
+      const signatureRequestsCollection = db.collection('signatureRequests')
 
       const signatureRequests = await signatureRequestsCollection.find({
         contractId: contractId,
@@ -317,7 +317,7 @@ export async function GET_CSV(
     // Check signature_requests if no completed signatures found
     if (signatures.length === 0) {
       const db = await getDatabase()
-      const signatureRequestsCollection = db.collection('signature_requests')
+      const signatureRequestsCollection = db.collection('signatureRequests')
       const signatureRequests = await signatureRequestsCollection.find({
         contractId: contractId,
         customerId: customerId,
