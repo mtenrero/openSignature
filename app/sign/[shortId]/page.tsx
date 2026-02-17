@@ -10,11 +10,12 @@ import { SignaturePadComponent } from '../../../components/SignaturePad'
 import { DynamicField } from '../../../components/dataTypes/Contract'
 import { SigningStepper, defaultSigningSteps } from '../../../components/SigningStepper'
 import { DynamicFieldsForm } from '../../../components/DynamicFieldsForm'
-import { 
-  fetchAccountVariables, 
-  createAccountVariableValues, 
+import {
+  fetchAccountVariables,
+  createAccountVariableValues,
   processContractContent,
-  contractNeedsDynamicFields
+  contractNeedsDynamicFields,
+  getMissingContentFields
 } from '../../../lib/contractUtils'
 import { useSignData } from './layout'
 
@@ -73,17 +74,30 @@ export default function SignDocument() {
         }
     }, [signData])
 
+    // Merge userFields with any fields detected in content but missing from userFields
+    const allFormFields = contract ? [
+        ...(contract.userFields || []),
+        ...getMissingContentFields(
+            contract.content,
+            contract.userFields,
+            Object.keys(accountVariableValues)
+        )
+    ] : []
+
     // Determine if we need dynamic fields step
-    const needsDynamicFields = contract ? contractNeedsDynamicFields(contract.content) : false
+    const needsDynamicFields = contract ? (
+        contractNeedsDynamicFields(contract.content) ||
+        allFormFields.some((field: any) => field.enabled !== false)
+    ) : false
 
     // Check if all required dynamic fields are already filled
     const areAllFieldsFilled = () => {
-        if (!contract?.userFields || contract.userFields.length === 0) {
+        if (allFormFields.length === 0) {
             return true // No fields needed
         }
 
         // Check each required field
-        for (const field of contract.userFields) {
+        for (const field of allFormFields) {
             if (field.required) {
                 const value = dynamicFieldValues[field.name]
                 if (!value || value.trim() === '') {
@@ -369,32 +383,38 @@ export default function SignDocument() {
 
                 return (
                     <DynamicFieldsForm
-                        fields={contract?.userFields || []}
+                        fields={allFormFields}
                         values={dynamicFieldValues}
                         onValuesChange={setDynamicFieldValues}
                         onSubmit={handleDynamicFieldsSubmit}
                         contractName={contract?.name}
                         lockedFields={lockedFields}
-                        mode="standalone"
+                        mode="inline"
                     />
                 )
 
             case 'review':
                 return (
-                    <Container size="lg" py="md">
-                        <Stack gap="lg">
-                            {/* Header */}
-                            <Box ta="center">
-                                <Title size={rem(24)} fw={700} mb="xs">
-                                    {contract?.name || "Revisa tu contrato"}
-                                </Title>
-                                <Text c="dimmed" size="sm">
-                                    Lee cuidadosamente antes de firmar
-                                </Text>
-                            </Box>
+                    <Stack gap="lg">
+                        {/* Header */}
+                        <Box ta="center">
+                            <Title size={rem(24)} fw={700} mb="xs">
+                                {contract?.name || "Revisa tu contrato"}
+                            </Title>
+                            <Text c="dimmed" size="sm">
+                                Lee cuidadosamente antes de firmar
+                            </Text>
+                        </Box>
 
-                            {/* Contract Content */}
-                            <Card shadow="sm" padding="lg" radius="md" withBorder>
+                        {/* Contract Content - renders account-owned contract data processed by processContractContent */}
+                        <Box
+                            p="lg"
+                            style={{
+                                border: '1px solid var(--mantine-color-gray-3)',
+                                borderRadius: 'var(--mantine-radius-md)',
+                                backgroundColor: 'var(--mantine-color-gray-0)',
+                            }}
+                        >
                                 <Box
                                     dangerouslySetInnerHTML={{
                                         __html: getProcessedContent()
@@ -402,40 +422,31 @@ export default function SignDocument() {
                                     style={{
                                         lineHeight: 1.6,
                                         fontSize: rem(16),
-                                        '& h1, & h2, & h3, & h4, & h5, & h6': {
-                                            marginTop: '1.5em',
-                                            marginBottom: '0.5em',
-                                            fontWeight: 600,
-                                        },
-                                        '& p': {
-                                            marginBottom: '1em',
-                                        },
                                     }}
                                 />
-                            </Card>
+                        </Box>
 
-                            {/* Navigation */}
-                            <Group justify="space-between">
-                                {needsDynamicFields && !allFieldsFilled && (
-                                    <Button
-                                        variant="subtle"
-                                        onClick={handleBackToFields}
-                                        leftSection={<IconArrowLeft size={16} />}
-                                    >
-                                        Editar datos
-                                    </Button>
-                                )}
-
+                        {/* Navigation */}
+                        <Group justify="space-between">
+                            {needsDynamicFields && !allFieldsFilled && (
                                 <Button
-                                    onClick={handleContinueToSign}
-                                    rightSection={<IconSignature size={16} />}
-                                    style={{ marginLeft: needsDynamicFields && !allFieldsFilled ? undefined : 'auto' }}
+                                    variant="subtle"
+                                    onClick={handleBackToFields}
+                                    leftSection={<IconArrowLeft size={16} />}
                                 >
-                                    Continuar a firmar
+                                    Editar datos
                                 </Button>
-                            </Group>
-                        </Stack>
-                    </Container>
+                            )}
+
+                            <Button
+                                onClick={handleContinueToSign}
+                                rightSection={<IconSignature size={16} />}
+                                style={{ marginLeft: needsDynamicFields && !allFieldsFilled ? undefined : 'auto' }}
+                            >
+                                Continuar a firmar
+                            </Button>
+                        </Group>
+                    </Stack>
                 )
 
             case 'sign':
@@ -443,179 +454,175 @@ export default function SignDocument() {
                 console.log('[SIGN DEBUG] Dynamic field values at signing:', dynamicFieldValues)
                 
                 return (
-                    <Container size="lg" py="md">
-                        <Stack gap="lg">
-                            {/* Header */}
-                            <Box ta="center">
-                                <Title size={rem(24)} fw={700} mb="xs">
-                                    Firma tu contrato
-                                </Title>
-                                <Text c="dimmed" size="sm">
-                                    Tu firma digital tiene validez legal
+                    <Stack gap="lg">
+                        {/* Header */}
+                        <Box ta="center">
+                            <Title size={rem(24)} fw={700} mb="xs">
+                                Firma tu contrato
+                            </Title>
+                            <Text c="dimmed" size="sm">
+                                Tu firma digital tiene validez legal
+                            </Text>
+                        </Box>
+
+                        {/* Signature Section */}
+                        <Stack gap="md">
+                            <Text c="dimmed">
+                                Al firmar este documento, certificas que:
+                            </Text>
+
+                            <Box component="ul" style={{ paddingLeft: rem(20), margin: 0 }}>
+                                <li>Has leído y comprendido el contenido completo del contrato</li>
+                                <li>Aceptas los términos y condiciones establecidos</li>
+                                <li>Esta firma tiene valor legal y es vinculante</li>
+                            </Box>
+
+                            {/* Signer Info */}
+                            <Box
+                                style={{
+                                    padding: rem(16),
+                                    border: '1px solid var(--mantine-color-gray-3)',
+                                    borderRadius: rem(8),
+                                    backgroundColor: 'var(--mantine-color-gray-0)',
+                                }}
+                            >
+                                <Text fw={500} mb="xs" size="sm">
+                                    Información del firmante:
+                                </Text>
+                                <Text size="sm" c="dimmed">
+                                    <strong>Nombre:</strong> {dynamicFieldValues.clientName || contract.templateData?.name || 'No proporcionado'}
+                                    <br />
+                                    <strong>ID:</strong> {dynamicFieldValues.clientTaxId || contract.templateData?.idnum || 'No proporcionado'}
+                                    <br />
+                                    <strong>Teléfono:</strong> {dynamicFieldValues.clientPhone || contract.templateData?.phone || 'No proporcionado'}
+                                    <br />
+                                    <strong>Email:</strong> {dynamicFieldValues.clientEmail || contract.templateData?.mail || 'No proporcionado'}
                                 </Text>
                             </Box>
 
-                            {/* Signature Section */}
-                            <Card shadow="sm" padding="lg" radius="md" withBorder>
-                                <Stack gap="md">
-                                    <Text c="dimmed">
-                                        Al firmar este documento, certificas que:
-                                    </Text>
+                            {/* Signature Pad */}
+                            <Box>
+                                <Text size="sm" fw={500} mb="xs">Dibuja tu firma:</Text>
+                                <SignaturePadComponent
+                                    onSignatureChange={handleSignatureChange}
+                                    width={undefined}
+                                    height={150}
+                                />
+                            </Box>
 
-                                    <Box component="ul" style={{ paddingLeft: rem(20), margin: 0 }}>
-                                        <li>Has leído y comprendido el contenido completo del contrato</li>
-                                        <li>Aceptas los términos y condiciones establecidos</li>
-                                        <li>Esta firma tiene valor legal y es vinculante</li>
-                                    </Box>
+                            {/* Accept Checkbox */}
+                            <Checkbox
+                                label={<Text fw="bold">He leído y acepto los términos y condiciones del contrato</Text>}
+                                checked={acceptChecked}
+                                onChange={(event) => setAcceptChecked(event.currentTarget.checked)}
+                                size="sm"
+                            />
+                        </Stack>
 
-                                    {/* Signer Info */}
-                                    <Box
-                                        style={{
-                                            padding: rem(16),
-                                            border: '1px solid var(--mantine-color-gray-3)',
-                                            borderRadius: rem(8),
-                                            backgroundColor: 'var(--mantine-color-gray-0)',
-                                        }}
-                                    >
-                                        <Text fw={500} mb="xs" size="sm">
-                                            Información del firmante:
-                                        </Text>
-                                        <Text size="sm" c="dimmed">
-                                            <strong>Nombre:</strong> {dynamicFieldValues.clientName || contract.templateData?.name || 'No proporcionado'}
-                                            <br />
-                                            <strong>ID:</strong> {dynamicFieldValues.clientTaxId || contract.templateData?.idnum || 'No proporcionado'}
-                                            <br />
-                                            <strong>Teléfono:</strong> {dynamicFieldValues.clientPhone || contract.templateData?.phone || 'No proporcionado'}
-                                            <br />
-                                            <strong>Email:</strong> {dynamicFieldValues.clientEmail || contract.templateData?.mail || 'No proporcionado'}
-                                        </Text>
-                                    </Box>
-
-                                    {/* Signature Pad */}
-                                    <Box>
-                                        <Text size="sm" fw={500} mb="xs">Dibuja tu firma:</Text>
-                                        <SignaturePadComponent
-                                            onSignatureChange={handleSignatureChange}
-                                            width={undefined} // Let it be responsive
-                                            height={150}
-                                        />
-                                    </Box>
-
-                                    {/* Accept Checkbox */}
-                                    <Checkbox
-                                        label={<Text fw="bold">He leído y acepto los términos y condiciones del contrato</Text>}
-                                        checked={acceptChecked}
-                                        onChange={(event) => setAcceptChecked(event.currentTarget.checked)}
-                                        size="sm"
-                                    />
-                                </Stack>
-                            </Card>
-
-                            {/* Navigation */}
-                            <Group justify="space-between">
-                                <Button 
-                                    variant="subtle" 
-                                    onClick={handleBackToReview}
-                                    leftSection={<IconArrowLeft size={16} />}
-                                >
-                                    Volver a revisar
-                                </Button>
-                                
-                                <Button
-                                    onClick={handleSign}
-                                    disabled={!acceptChecked || !signatureData}
-                                    loading={signing || sendingOtp}
-                                    leftSection={<IconSignature size={16} />}
-                                    size="md"
-                                >
-                                    Firmar Contrato
-                                </Button>
-                            </Group>
-
-                            {/* OTP Verification Modal */}
-                            <Modal
-                                opened={requiresOtp && !otpVerified}
-                                onClose={() => {}}
-                                title="Verificación de seguridad"
-                                closeOnClickOutside={false}
-                                closeOnEscape={false}
-                                withCloseButton={false}
-                                centered
+                        {/* Navigation */}
+                        <Group justify="space-between">
+                            <Button
+                                variant="subtle"
+                                onClick={handleBackToReview}
+                                leftSection={<IconArrowLeft size={16} />}
                             >
-                                <Stack gap="md">
-                                    {otpSent ? (
-                                        <>
-                                            <Alert color="blue" variant="light">
-                                                <Text size="sm">
-                                                    Hemos enviado un código de 6 dígitos a tu {otpMethod === 'email' ? 'correo electrónico' : 'teléfono'}.
-                                                    Por favor, introdúcelo a continuación para completar la firma.
-                                                </Text>
-                                            </Alert>
+                                Volver a revisar
+                            </Button>
 
-                                            <Box>
-                                                <Text size="sm" fw={500} mb="xs">Código de verificación:</Text>
-                                                <Center>
-                                                    <PinInput
-                                                        length={6}
-                                                        type="number"
-                                                        value={otpCode}
-                                                        onChange={setOtpCode}
-                                                        size="lg"
-                                                        placeholder="0"
-                                                    />
-                                                </Center>
-                                            </Box>
+                            <Button
+                                onClick={handleSign}
+                                disabled={!acceptChecked || !signatureData}
+                                loading={signing || sendingOtp}
+                                leftSection={<IconSignature size={16} />}
+                                size="md"
+                            >
+                                Firmar Contrato
+                            </Button>
+                        </Group>
 
+                        {/* OTP Verification Modal */}
+                        <Modal
+                            opened={requiresOtp && !otpVerified}
+                            onClose={() => {}}
+                            title="Verificación de seguridad"
+                            closeOnClickOutside={false}
+                            closeOnEscape={false}
+                            withCloseButton={false}
+                            centered
+                        >
+                            <Stack gap="md">
+                                {otpSent ? (
+                                    <>
+                                        <Alert color="blue" variant="light">
+                                            <Text size="sm">
+                                                Hemos enviado un código de 6 dígitos a tu {otpMethod === 'email' ? 'correo electrónico' : 'teléfono'}.
+                                                Por favor, introdúcelo a continuación para completar la firma.
+                                            </Text>
+                                        </Alert>
+
+                                        <Box>
+                                            <Text size="sm" fw={500} mb="xs">Código de verificación:</Text>
+                                            <Center>
+                                                <PinInput
+                                                    length={6}
+                                                    type="number"
+                                                    value={otpCode}
+                                                    onChange={setOtpCode}
+                                                    size="lg"
+                                                    placeholder="0"
+                                                />
+                                            </Center>
+                                        </Box>
+
+                                        <Button
+                                            onClick={handleVerifyOtp}
+                                            disabled={otpCode.length !== 6}
+                                            loading={verifyingOtp}
+                                            fullWidth
+                                        >
+                                            Verificar y Firmar
+                                        </Button>
+
+                                        <Group grow>
                                             <Button
-                                                onClick={handleVerifyOtp}
-                                                disabled={otpCode.length !== 6}
-                                                loading={verifyingOtp}
-                                                fullWidth
+                                                variant="subtle"
+                                                onClick={() => handleRequestOtp(otpMethod)}
+                                                loading={sendingOtp}
                                             >
-                                                Verificar y Firmar
+                                                Reenviar por {otpMethod === 'email' ? 'Email' : 'SMS'}
                                             </Button>
-
-                                            <Group grow>
+                                            {availableOtpMethods.email && availableOtpMethods.sms && (
                                                 <Button
-                                                    variant="subtle"
-                                                    onClick={() => handleRequestOtp(otpMethod)}
+                                                    variant="outline"
+                                                    onClick={() => handleRequestOtp(otpMethod === 'email' ? 'sms' : 'email')}
                                                     loading={sendingOtp}
                                                 >
-                                                    Reenviar por {otpMethod === 'email' ? 'Email' : 'SMS'}
+                                                    Enviar por {otpMethod === 'email' ? 'SMS' : 'Email'}
                                                 </Button>
-                                                {availableOtpMethods.email && availableOtpMethods.sms && (
-                                                    <Button
-                                                        variant="outline"
-                                                        onClick={() => handleRequestOtp(otpMethod === 'email' ? 'sms' : 'email')}
-                                                        loading={sendingOtp}
-                                                    >
-                                                        Enviar por {otpMethod === 'email' ? 'SMS' : 'Email'}
-                                                    </Button>
-                                                )}
-                                            </Group>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Alert color="blue" variant="light">
-                                                <Text size="sm">
-                                                    Para completar la firma, necesitamos verificar tu identidad.
-                                                    Te enviaremos un código de seguridad.
-                                                </Text>
-                                            </Alert>
+                                            )}
+                                        </Group>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Alert color="blue" variant="light">
+                                            <Text size="sm">
+                                                Para completar la firma, necesitamos verificar tu identidad.
+                                                Te enviaremos un código de seguridad.
+                                            </Text>
+                                        </Alert>
 
-                                            <Button
-                                                onClick={() => handleRequestOtp()}
-                                                loading={sendingOtp}
-                                                fullWidth
-                                            >
-                                                Enviar código de verificación
-                                            </Button>
-                                        </>
-                                    )}
-                                </Stack>
-                            </Modal>
-                        </Stack>
-                    </Container>
+                                        <Button
+                                            onClick={() => handleRequestOtp()}
+                                            loading={sendingOtp}
+                                            fullWidth
+                                        >
+                                            Enviar código de verificación
+                                        </Button>
+                                    </>
+                                )}
+                            </Stack>
+                        </Modal>
+                    </Stack>
                 )
 
             default:
@@ -642,22 +649,31 @@ export default function SignDocument() {
                 </Container>
             </Box>
 
-            {/* Error Alert */}
-            {error && (
-                <Container size="lg" mt="md">
-                    <Alert 
-                        icon={<IconAlertTriangle size={16} />} 
-                        title="Error" 
-                        color="red" 
-                        variant="light"
-                    >
-                        {error}
-                    </Alert>
-                </Container>
-            )}
+            {/* Content Area */}
+            <Box
+                w={{ base: '100%', sm: '92%', md: '76%', lg: '70%', xl: '60%' }}
+                mx="auto"
+                py="xl"
+                px={{ base: 'sm', sm: 0 }}
+            >
+                <Card shadow="sm" padding={{ base: 'md', sm: 'lg', md: 'xl' }} radius="lg" withBorder>
+                    {/* Error Alert */}
+                    {error && (
+                        <Alert
+                            icon={<IconAlertTriangle size={16} />}
+                            title="Error"
+                            color="red"
+                            variant="light"
+                            mb="lg"
+                        >
+                            {error}
+                        </Alert>
+                    )}
 
-            {/* Current Step Content */}
-            {renderCurrentStep()}
+                    {/* Current Step Content */}
+                    {renderCurrentStep()}
+                </Card>
+            </Box>
         </Box>
     )
 }

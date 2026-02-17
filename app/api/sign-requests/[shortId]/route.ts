@@ -167,24 +167,34 @@ export async function GET(
 
     // Get account variables for the customer
     const variablesCollection = await getVariablesCollection()
-    const variableDoc = await variablesCollection.findOne({ 
-      customerId: signatureRequest.customerId, 
-      type: 'variables' 
+    const variableDoc = await variablesCollection.findOne({
+      customerId: signatureRequest.customerId,
+      type: 'variables'
     })
-    
+
     // Create account variable values
-    let accountVariableValues = {
+    let accountVariableValues: {[key: string]: string} = {
       // Internal variables (always available)
       'fecha': new Date().toLocaleDateString('es-ES'),
       'fechaHora': new Date().toLocaleString('es-ES')
     }
-    
+
     if (variableDoc?.variables) {
       variableDoc.variables.forEach((variable: any) => {
         if (variable.enabled && variable.name !== 'fecha' && variable.placeholder) {
           accountVariableValues[variable.name] = variable.placeholder
         }
       })
+    }
+
+    // Merge variable overrides from API caller (e.g., partner sent variable:clinicName)
+    if (signatureRequest.variableOverrides && typeof signatureRequest.variableOverrides === 'object') {
+      Object.entries(signatureRequest.variableOverrides).forEach(([key, value]) => {
+        if (value && typeof value === 'string') {
+          accountVariableValues[key] = value
+        }
+      })
+      console.log('[DEBUG] Applied variable overrides:', signatureRequest.variableOverrides)
     }
 
     // Add structured document access audit entry

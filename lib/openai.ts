@@ -143,7 +143,7 @@ FORMATO DE RESPUESTA (JSON válido):
       "name": "nombreCampo",
       "type": "text|textarea|number|email|phone|checkbox|date",
       "required": true|false,
-      "placeholder": "Texto de ayuda opcional"
+      "placeholder": "Texto de ayuda descriptivo para el usuario"
     }
   ],
   "needsMoreInfo": [
@@ -151,6 +151,12 @@ FORMATO DE RESPUESTA (JSON válido):
     "¿Cuál es el precio o tarifa del servicio?"
   ]
 }
+
+⚠️ REGLA CRÍTICA PARA suggestedDynamicFields:
+- TODOS los campos {{dynamic:X}} usados en el contenido DEBEN aparecer en suggestedDynamicFields
+- Si el contenido usa {{dynamic:petName}}, {{dynamic:clinicName}}, etc., TODOS deben estar listados
+- Incluye clientName y clientTaxId (obligatorios) además de cualquier campo personalizado
+- El placeholder debe ser descriptivo para ayudar al usuario (ej: "Nombre de la mascota", "Número de chip")
 
 IMPORTANTE PARA EL CONTENIDO:
 - Mantén el contenido del contrato CONCISO pero legalmente completo

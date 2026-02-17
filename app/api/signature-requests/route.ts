@@ -8,7 +8,7 @@ import { auditTrailService } from '@/lib/auditTrail'
 import { extractClientIP } from '@/lib/deviceMetadata'
 import { UsageAuditService } from '@/lib/usage/usageAudit'
 import { UsageTracker } from '@/lib/subscription/usage'
-import { extractSignerInfo } from '@/lib/contractUtils'
+import { extractSignerInfo, extractDynamicFieldNames } from '@/lib/contractUtils'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { isSMSEnabled } from '@/lib/utils/smsConfig'
 import { getCombinedAuditTrail } from '@/lib/audit/integration'
@@ -56,7 +56,35 @@ export async function POST(request: NextRequest) {
     const { userId, customerId } = authContext
 
     const body = await request.json()
-    const { contractId, signatureType, signerName, signerEmail, signerPhone, clientName, clientTaxId, dynamicFieldValues: inputDynamicFieldValues, isResend } = body
+    const { contractId, signatureType, signerName, signerEmail, signerPhone, clientName, clientTaxId, dynamicFieldValues: inputDynamicFieldValues, fields: inputFields, isResend } = body
+
+    // Normalize fields from API: accept both 'dynamicFieldValues' and 'fields' (with optional prefixes)
+    // Callers can send: { "fields": { "variable:clinicName": "X", "dynamic:clientName": "Y" } }
+    // or: { "dynamicFieldValues": { "clientName": "Y" } }
+    const normalizeFields = (raw: Record<string, any> | undefined): { dynamicFields: Record<string, string | boolean>, variableOverrides: Record<string, string> } => {
+      const dynamicFields: Record<string, string | boolean> = {}
+      const variableOverrides: Record<string, string> = {}
+      if (!raw || typeof raw !== 'object') return { dynamicFields, variableOverrides }
+
+      for (const [key, value] of Object.entries(raw)) {
+        if (key.startsWith('variable:')) {
+          const cleanKey = key.replace('variable:', '')
+          variableOverrides[cleanKey] = String(value)
+        } else if (key.startsWith('dynamic:')) {
+          const cleanKey = key.replace('dynamic:', '')
+          dynamicFields[cleanKey] = value
+        } else {
+          // Plain key - treat as dynamic field
+          dynamicFields[key] = value
+        }
+      }
+      return { dynamicFields, variableOverrides }
+    }
+
+    // Merge: prefer inputDynamicFieldValues (legacy format), then parse inputFields (new format)
+    const { dynamicFields: fieldsFromNew, variableOverrides } = normalizeFields(inputFields)
+    const { dynamicFields: fieldsFromLegacy } = normalizeFields(inputDynamicFieldValues)
+    const mergedInputDynamicFieldValues = { ...fieldsFromNew, ...fieldsFromLegacy, ...(inputDynamicFieldValues && !Object.keys(inputDynamicFieldValues).some(k => k.includes(':')) ? inputDynamicFieldValues : {}) }
 
     if (!contractId || !signatureType) {
       return NextResponse.json({
@@ -110,7 +138,7 @@ export async function POST(request: NextRequest) {
     // - clientPhone (optional)
     // - clientEmail (optional)
 
-    const dynamicFieldValues: { [key: string]: string | boolean } = { ...(inputDynamicFieldValues || {}) }
+    const dynamicFieldValues: { [key: string]: string | boolean } = { ...mergedInputDynamicFieldValues }
 
     if (signerName && !dynamicFieldValues.clientName) {
       dynamicFieldValues.clientName = signerName
@@ -127,6 +155,39 @@ export async function POST(request: NextRequest) {
     if (clientTaxId && !dynamicFieldValues.clientTaxId) {
       dynamicFieldValues.clientTaxId = clientTaxId
     }
+
+    // Normalize field names to match contract's userFields and content fields (case-insensitive)
+    // This ensures that fields sent as "clientname" match "clientName" in the contract
+    const contractUserFieldNames = (decryptedContract.userFields || []).map((f: any) => f.name).filter(Boolean)
+    const contentFieldNames = extractDynamicFieldNames(decryptedContract.content || '')
+    const knownFieldNames = Array.from(new Set([...contractUserFieldNames, ...contentFieldNames]))
+
+    if (knownFieldNames.length > 0) {
+      // Build a lowercase→correct case lookup
+      const caseMap = new Map<string, string>()
+      for (const name of knownFieldNames) {
+        caseMap.set(name.toLowerCase(), name)
+      }
+
+      // Re-key dynamicFieldValues to match the contract's field names
+      const normalized: { [key: string]: string | boolean } = {}
+      for (const [key, value] of Object.entries(dynamicFieldValues)) {
+        const correctCase = caseMap.get(key.toLowerCase())
+        if (correctCase && correctCase !== key) {
+          // Map to the correct case (e.g., "clientname" → "clientName")
+          normalized[correctCase] = value
+          console.log(`[Signature Request] Normalized field key: "${key}" → "${correctCase}"`)
+        } else {
+          normalized[key] = value
+        }
+      }
+
+      // Replace dynamicFieldValues with normalized version
+      Object.keys(dynamicFieldValues).forEach(k => delete dynamicFieldValues[k])
+      Object.assign(dynamicFieldValues, normalized)
+    }
+
+    console.log('[Signature Request] Final dynamicFieldValues:', JSON.stringify(dynamicFieldValues, null, 2))
 
     // Extract signer info from dynamic fields
     let signerInfoFromFields: any = null
@@ -368,6 +429,8 @@ export async function POST(request: NextRequest) {
 
         // 🔥 SOURCE OF TRUTH: Dynamic field values with all predefined fields
         dynamicFieldValues: Object.keys(finalDynamicFieldValues).length > 0 ? finalDynamicFieldValues : null,
+        // Account variable overrides from API caller (e.g., variable:clinicName)
+        variableOverrides: Object.keys(variableOverrides).length > 0 ? variableOverrides : null,
         signerInfo: finalSignerInfo || null,
 
         // Metadata

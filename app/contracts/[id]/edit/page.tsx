@@ -8,6 +8,7 @@ import { notifications } from '@mantine/notifications'
 import { RichTextEditor } from '../../../../components/RichTextEditor'
 
 import { DynamicField, UserField, ContractParameters } from '../../../../components/dataTypes/Contract'
+import { getMissingContentFields } from '../../../../lib/contractUtils'
 
 // Using DynamicField from Contract.ts - no need for separate interface
 
@@ -123,6 +124,7 @@ export default function ContractEditorPage() {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [userFieldModalOpen, setUserFieldModalOpen] = useState(false)
+  const [editingFieldId, setEditingFieldId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('editor')
   const [accountVariables, setAccountVariables] = useState<DynamicField[]>(userDynamicFieldsConfig)
   
@@ -266,6 +268,28 @@ export default function ContractEditorPage() {
     loadAccountVariables()
   }, [contractId])
 
+  // Auto-detect dynamic fields from content and add missing ones to userFields
+  useEffect(() => {
+    if (!contenido) return
+
+    const accountVarNames = accountVariables.map(v => v.name)
+    const missingFields = getMissingContentFields(contenido, contrato.userFields, accountVarNames)
+
+    if (missingFields.length === 0) return
+
+    setContrato(prev => {
+      // Re-check against latest state to avoid race conditions
+      const existingNames = new Set((prev.userFields || []).map(f => f.name))
+      const fieldsToAdd = missingFields.filter(f => !existingNames.has(f.name))
+      if (fieldsToAdd.length === 0) return prev
+
+      return {
+        ...prev,
+        userFields: [...(prev.userFields || []), ...fieldsToAdd]
+      }
+    })
+  }, [contenido, accountVariables])
+
   const handleGenerateWithAI = async () => {
     if (!aiDescription.trim()) {
       notifications.show({
@@ -338,52 +362,33 @@ export default function ContractEditorPage() {
         }))
       }
 
-      // Add AI-suggested dynamic fields as userFields (only genuine client fields)
+      // Add AI-suggested dynamic fields as userFields
+      // All suggestedDynamicFields are signer/client fields by design (AI uses {{variable:X}} for emisor data)
       if (aiContract.suggestedDynamicFields && aiContract.suggestedDynamicFields.length > 0) {
-        console.log('[AI] Reviewing suggested fields:', aiContract.suggestedDynamicFields)
-        
-        // Filter to only include genuine client/signer fields
-        const validClientFields = aiContract.suggestedDynamicFields.filter((field: any) => {
-          // Always keep mandatory fields
-          if (field.name === 'clientName' || field.name === 'clientTaxId') {
-            return true
-          }
-          
-          // Only include fields that are clearly client/signer data
-          const isClientField = ['email', 'phone', 'address'].some(type => 
-            field.type === type || field.name.toLowerCase().includes(type)
-          ) || field.name.toLowerCase().includes('client') || field.name.toLowerCase().includes('signer')
-          
-          console.log(`[AI] Field "${field.name}" is client field: ${isClientField}`)
-          return isClientField
-        })
-        
-        if (validClientFields.length > 0) {
-          const newUserFields = validClientFields.map((field: any, index: number) => ({
-            id: `ai-${Date.now()}-${index}`,
-            name: field.name,
-            type: field.type === 'textarea' ? 'text' : field.type, // Map textarea to text for compatibility
-            required: field.required || false,
-            placeholder: field.placeholder || `Ingrese ${field.name}`,
-            label: field.placeholder || field.name,
-            order: (contrato.userFields?.length || 0) + index + 1
-          }))
+        console.log('[AI] Adding suggested fields:', aiContract.suggestedDynamicFields)
 
-          // Merge with existing userFields, avoiding duplicates by name
-          setContrato(prev => {
-            const existingNames = new Set((prev.userFields || []).map(f => f.name))
-            const fieldsToAdd = newUserFields.filter(field => !existingNames.has(field.name))
-            
-            console.log(`[AI] Adding ${fieldsToAdd.length} valid client fields:`, fieldsToAdd.map(f => f.name))
-            
-            return {
-              ...prev,
-              userFields: [...(prev.userFields || []), ...fieldsToAdd]
-            }
-          })
-        } else {
-          console.log('[AI] No additional client fields needed from initial generation')
-        }
+        const newUserFields = aiContract.suggestedDynamicFields.map((field: any, index: number) => ({
+          id: `ai-${Date.now()}-${index}`,
+          name: field.name,
+          type: field.type === 'textarea' ? 'text' : field.type,
+          required: field.required || false,
+          placeholder: field.placeholder || `Ingrese ${field.name}`,
+          label: field.placeholder || field.name,
+          order: (contrato.userFields?.length || 0) + index + 1
+        }))
+
+        // Merge with existing userFields, avoiding duplicates by name
+        setContrato(prev => {
+          const existingNames = new Set((prev.userFields || []).map(f => f.name))
+          const fieldsToAdd = newUserFields.filter((field: any) => !existingNames.has(field.name))
+
+          console.log(`[AI] Adding ${fieldsToAdd.length} fields:`, fieldsToAdd.map((f: any) => f.name))
+
+          return {
+            ...prev,
+            userFields: [...(prev.userFields || []), ...fieldsToAdd]
+          }
+        })
       }
 
       // Check if AI needs more information
@@ -399,7 +404,7 @@ export default function ContractEditorPage() {
       } else {
         notifications.show({
           title: aiMode === 'adapt' ? '🎉 ¡Contrato adaptado con IA!' : '🎉 ¡Contrato generado con IA!',
-          message: `${aiMode === 'adapt' ? 'Se adaptó el contrato al formato del sistema' : 'Se generó un contrato completo'}.${aiContract.contractType ? ` Tipo: ${aiContract.contractType}` : ''} Tokens usados: ${aiContract.metadata?.tokensUsed || 'N/A'}. Costo estimado: $${(aiContract.metadata?.estimatedCost || 0).toFixed(4)}`,
+          message: `${aiMode === 'adapt' ? 'Se adaptó el contrato al formato del sistema' : 'Se generó un contrato completo'}.${aiContract.contractType ? ` Tipo: ${aiContract.contractType}` : ''}`,
           color: 'green',
           autoClose: 10000,
         })
@@ -489,57 +494,36 @@ export default function ContractEditorPage() {
         }))
       }
 
-      // Add any additional suggested fields, but be very conservative
-      // Only add fields that are genuinely for client data, not for info already provided in Q&A
+      // Add AI-suggested dynamic fields as userFields
       if (aiContract.suggestedDynamicFields && aiContract.suggestedDynamicFields.length > 0) {
-        console.log('[AI Q&A] Reviewing suggested fields after Q&A:', aiContract.suggestedDynamicFields)
-        
-        // Filter out fields that might be related to the Q&A answers
-        const validClientFields = aiContract.suggestedDynamicFields.filter((field: any) => {
-          // Always keep mandatory fields
-          if (field.name === 'clientName' || field.name === 'clientTaxId') {
-            return true
-          }
-          
-          // Only include fields that are clearly client/signer data
-          const isClientField = ['email', 'phone', 'address'].some(type => 
-            field.type === type || field.name.toLowerCase().includes(type)
-          ) || field.name.toLowerCase().includes('client')
-          
-          console.log(`[AI Q&A] Field "${field.name}" is client field: ${isClientField}`)
-          return isClientField
-        })
-        
-        if (validClientFields.length > 0) {
-          const newUserFields = validClientFields.map((field: any, index: number) => ({
-            id: `ai-complete-${Date.now()}-${index}`,
-            name: field.name,
-            type: field.type === 'textarea' ? 'text' : field.type,
-            required: field.required || false,
-            placeholder: field.placeholder || `Ingrese ${field.name}`,
-            label: field.placeholder || field.name,
-            order: (contrato.userFields?.length || 0) + index + 1
-          }))
+        console.log('[AI Q&A] Adding suggested fields:', aiContract.suggestedDynamicFields)
 
-          setContrato(prev => {
-            const existingNames = new Set((prev.userFields || []).map(f => f.name))
-            const fieldsToAdd = newUserFields.filter(field => !existingNames.has(field.name))
-            
-            console.log(`[AI Q&A] Adding ${fieldsToAdd.length} valid client fields:`, fieldsToAdd.map(f => f.name))
-            
-            return {
-              ...prev,
-              userFields: [...(prev.userFields || []), ...fieldsToAdd]
-            }
-          })
-        } else {
-          console.log('[AI Q&A] No additional client fields needed after Q&A completion')
-        }
+        const newUserFields = aiContract.suggestedDynamicFields.map((field: any, index: number) => ({
+          id: `ai-complete-${Date.now()}-${index}`,
+          name: field.name,
+          type: field.type === 'textarea' ? 'text' : field.type,
+          required: field.required || false,
+          placeholder: field.placeholder || `Ingrese ${field.name}`,
+          label: field.placeholder || field.name,
+          order: (contrato.userFields?.length || 0) + index + 1
+        }))
+
+        setContrato(prev => {
+          const existingNames = new Set((prev.userFields || []).map(f => f.name))
+          const fieldsToAdd = newUserFields.filter((field: any) => !existingNames.has(field.name))
+
+          console.log(`[AI Q&A] Adding ${fieldsToAdd.length} fields:`, fieldsToAdd.map((f: any) => f.name))
+
+          return {
+            ...prev,
+            userFields: [...(prev.userFields || []), ...fieldsToAdd]
+          }
+        })
       }
 
       notifications.show({
         title: aiMode === 'adapt' ? '🎉 ¡Contrato adaptado completamente!' : '🎉 ¡Contrato completado con IA!',
-        message: `${aiMode === 'adapt' ? 'Se completó la adaptación del contrato' : 'Se generó el contrato final'} con toda la información.${aiContract.contractType ? ` Tipo: ${aiContract.contractType}` : ''} Tokens usados: ${aiContract.metadata?.tokensUsed || 'N/A'}. Costo estimado: $${(aiContract.metadata?.estimatedCost || 0).toFixed(4)}`,
+        message: `${aiMode === 'adapt' ? 'Se completó la adaptación del contrato' : 'Se generó el contrato final'} con toda la información.${aiContract.contractType ? ` Tipo: ${aiContract.contractType}` : ''}`,
         color: 'green',
         autoClose: 10000,
       })
@@ -682,6 +666,35 @@ export default function ContractEditorPage() {
       ...contrato,
       userFields: contrato.userFields?.filter(field => field.id !== fieldId) || []
     })
+  }
+
+  const handleStartEditField = (field: LocalUserField) => {
+    setNewUserField({
+      name: field.name,
+      type: field.type,
+      required: field.required,
+      placeholder: field.placeholder,
+      label: field.label,
+      order: field.order
+    })
+    setEditingFieldId(field.id)
+    setUserFieldModalOpen(true)
+  }
+
+  const handleSaveEditField = () => {
+    if (!editingFieldId || !newUserField.label.trim()) return
+
+    setContrato(prev => ({
+      ...prev,
+      userFields: (prev.userFields || []).map(field =>
+        field.id === editingFieldId
+          ? { ...field, label: newUserField.label, type: newUserField.type, required: newUserField.required, placeholder: newUserField.placeholder }
+          : field
+      )
+    }))
+    setNewUserField({ name: '', type: 'text', required: false, placeholder: '', label: '', order: 0 })
+    setEditingFieldId(null)
+    setUserFieldModalOpen(false)
   }
 
   const handleInsertField = (fieldName: string, isUserField: boolean = false, fieldType: string = 'dynamic') => {
@@ -1230,7 +1243,11 @@ export default function ContractEditorPage() {
                 </Box>
                 <Button
                   leftSection={<IconPlus size={16} />}
-                  onClick={() => setUserFieldModalOpen(true)}
+                  onClick={() => {
+                    setEditingFieldId(null)
+                    setNewUserField({ name: '', type: 'text', required: false, placeholder: '', label: '', order: 0 })
+                    setUserFieldModalOpen(true)
+                  }}
                   color="blue"
                 >
                   Agregar Campo
@@ -1293,13 +1310,22 @@ export default function ContractEditorPage() {
                             Insertar
                           </Button>
                           {!isPredefined && (
-                            <ActionIcon
-                              color="red"
-                              variant="subtle"
-                              onClick={() => handleRemoveUserField(field.id)}
-                            >
-                              <IconTrash size={16} />
-                            </ActionIcon>
+                            <>
+                              <ActionIcon
+                                color="blue"
+                                variant="subtle"
+                                onClick={() => handleStartEditField(field as LocalUserField)}
+                              >
+                                <IconEdit size={16} />
+                              </ActionIcon>
+                              <ActionIcon
+                                color="red"
+                                variant="subtle"
+                                onClick={() => handleRemoveUserField(field.id)}
+                              >
+                                <IconTrash size={16} />
+                              </ActionIcon>
+                            </>
                           )}
                         </Group>
                       </Group>
@@ -1378,11 +1404,15 @@ export default function ContractEditorPage() {
       </Stack>
 
 
-      {/* Add Dynamic Field Modal */}
+      {/* Add/Edit Dynamic Field Modal */}
       <Modal
         opened={userFieldModalOpen}
-        onClose={() => setUserFieldModalOpen(false)}
-        title="Agregar Campo Dinámico"
+        onClose={() => {
+          setUserFieldModalOpen(false)
+          setEditingFieldId(null)
+          setNewUserField({ name: '', type: 'text', required: false, placeholder: '', label: '', order: 0 })
+        }}
+        title={editingFieldId ? 'Editar Campo Dinámico' : 'Agregar Campo Dinámico'}
         centered
       >
         <Stack gap="md">
@@ -1398,11 +1428,15 @@ export default function ContractEditorPage() {
             placeholder="ej: nombreCompleto"
             value={newUserField.name}
             onChange={(event) => setNewUserField({ ...newUserField, name: event.target.value })}
-            description="Los espacios se convertirán a guiones bajos automáticamente. Ej: 'nombre cliente' → 'nombre_cliente'"
+            description={editingFieldId
+              ? 'El nombre técnico no se puede cambiar porque está referenciado en el contenido del contrato'
+              : "Los espacios se convertirán a guiones bajos automáticamente. Ej: 'nombre cliente' → 'nombre_cliente'"
+            }
+            disabled={!!editingFieldId}
           />
 
           <TextInput
-            label="Texto de ayuda"
+            label="Texto de ayuda (placeholder)"
             placeholder="ej: Ingrese su nombre completo"
             value={newUserField.placeholder}
             onChange={(event) => setNewUserField({ ...newUserField, placeholder: event.target.value })}
@@ -1435,12 +1469,22 @@ export default function ContractEditorPage() {
           </Group>
 
           <Group justify="flex-end">
-            <Button variant="light" onClick={() => setUserFieldModalOpen(false)}>
+            <Button variant="light" onClick={() => {
+              setUserFieldModalOpen(false)
+              setEditingFieldId(null)
+              setNewUserField({ name: '', type: 'text', required: false, placeholder: '', label: '', order: 0 })
+            }}>
               Cancelar
             </Button>
-            <Button onClick={handleAddUserField} disabled={!newUserField.name.trim() || !newUserField.label.trim()}>
-              Agregar Campo
-            </Button>
+            {editingFieldId ? (
+              <Button onClick={handleSaveEditField} disabled={!newUserField.label.trim()}>
+                Guardar Cambios
+              </Button>
+            ) : (
+              <Button onClick={handleAddUserField} disabled={!newUserField.name.trim() || !newUserField.label.trim()}>
+                Agregar Campo
+              </Button>
+            )}
           </Group>
         </Stack>
       </Modal>

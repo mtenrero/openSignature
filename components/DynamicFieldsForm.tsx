@@ -40,7 +40,7 @@ interface DynamicFieldsFormProps {
   loading?: boolean
   contractName?: string
   lockedFields?: string[]
-  mode?: 'standalone' | 'modal' // standalone: full UI with container & button, modal: just fields
+  mode?: 'standalone' | 'modal' | 'inline' // standalone: full UI with container & button, modal: just fields, inline: full UI without container (for embedding in parent cards)
   skipMandatoryValidation?: boolean // Skip mandatory field validation (e.g., when fields were collected in a previous step)
 }
 
@@ -156,9 +156,10 @@ export function DynamicFieldsForm({
     return labelMap[fieldName] || fieldName
   }
 
-  const validateField = (field: DynamicField, value: string) => {
+  const validateField = (field: DynamicField | UserField, value: string) => {
+    const label = ('label' in field && field.label) ? field.label : getFieldLabel(field.name)
     if (field.required && !value?.trim()) {
-      return `${getFieldLabel(field.name)} es obligatorio`
+      return `${label} es obligatorio`
     }
 
     if (value?.trim()) {
@@ -253,12 +254,13 @@ export function DynamicFieldsForm({
       {userInputFields.map((field, index) => {
         const fieldError = errors[field.name]
         const isLocked = lockedFields.includes(field.name)
+        const displayLabel = ('label' in field && field.label) ? field.label : getFieldLabel(field.name)
 
         return (
           <Box key={field.id}>
             {field.type === 'accept' ? (
               <Checkbox
-                label={getFieldLabel(field.name)}
+                label={displayLabel}
                 description={field.placeholder}
                 checked={values[field.name] === 'true'}
                 onChange={(event) =>
@@ -271,8 +273,8 @@ export function DynamicFieldsForm({
             ) : (
               <Box>
                 <TextInput
-                  label={getFieldLabel(field.name)}
-                  placeholder={field.placeholder || `Ingresa tu ${getFieldLabel(field.name).toLowerCase()}`}
+                  label={displayLabel}
+                  placeholder={field.placeholder || `Ingresa tu ${displayLabel.toLowerCase()}`}
                   value={values[field.name] || ''}
                   onChange={(event) => handleFieldChange(field.name, event.target.value)}
                   leftSection={isLocked ? <IconLock size={16} /> : getFieldIcon(field.type)}
@@ -353,88 +355,102 @@ export function DynamicFieldsForm({
     )
   }
 
-  // Standalone mode: full UI with container and button
-  return (
-    <Container size="sm" py="md">
-      <Stack gap="lg">
-        {/* Header */}
-        <Box ta="center">
-          <Title size={rem(24)} fw={700} mb="xs">
-            Completa tu información
-          </Title>
-          <Text c="dimmed" size="sm">
-            {contractName && (
-              <>
-                Para firmar <strong>{contractName}</strong>, necesitamos
-                <br />
-              </>
-            )}
-            que completes los siguientes datos
+  // Shared content for standalone and inline modes
+  const fullFormContent = (
+    <Stack gap="lg">
+      {/* Header */}
+      <Box ta="center">
+        <Title size={rem(24)} fw={700} mb="xs">
+          Completa tu información
+        </Title>
+        <Text c="dimmed" size="sm">
+          {contractName && (
+            <>
+              Para firmar <strong>{contractName}</strong>, necesitamos
+              <br />
+            </>
+          )}
+          que completes los siguientes datos
+        </Text>
+      </Box>
+
+      {/* Mandatory Fields Warning */}
+      {mandatoryValidation && !mandatoryValidation.isValid && (
+        <Alert
+          icon={<IconAlertTriangle size={16} />}
+          title="Campos obligatorios faltantes"
+          color="red"
+          variant="light"
+        >
+          <Text size="sm">
+            Para cumplir con los requisitos legales, este contrato debe incluir los siguientes campos:
           </Text>
-        </Box>
+          <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
+            {mandatoryValidation.missingFields.map((field, index) => (
+              <li key={index} style={{ fontSize: '14px', color: '#d32f2f' }}>
+                {field}
+              </li>
+            ))}
+          </ul>
+          <Text size="xs" c="dimmed" mt="xs">
+            Por favor, agrega estos campos en la configuración del contrato antes de continuar.
+          </Text>
+        </Alert>
+      )}
 
-        {/* Mandatory Fields Warning */}
-        {mandatoryValidation && !mandatoryValidation.isValid && (
-          <Alert
-            icon={<IconAlertTriangle size={16} />}
-            title="Campos obligatorios faltantes"
-            color="red"
-            variant="light"
-          >
-            <Text size="sm">
-              Para cumplir con los requisitos legales, este contrato debe incluir los siguientes campos:
-            </Text>
-            <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
-              {mandatoryValidation.missingFields.map((field, index) => (
-                <li key={index} style={{ fontSize: '14px', color: '#d32f2f' }}>
-                  {field}
-                </li>
-              ))}
-            </ul>
-            <Text size="xs" c="dimmed" mt="xs">
-              Por favor, agrega estos campos en la configuración del contrato antes de continuar.
-            </Text>
-          </Alert>
-        )}
-
-        {/* Form */}
+      {/* Form */}
+      {mode === 'standalone' ? (
         <Card shadow="sm" padding="lg" radius="md" withBorder>
           {fieldsContent}
         </Card>
+      ) : (
+        fieldsContent
+      )}
 
-        {/* Action Buttons */}
-        <Group justify="space-between" mt="lg">
-          {onBack && (
-            <Button
-              variant="subtle"
-              onClick={onBack}
-              disabled={loading}
-              size="sm"
-            >
-              Volver
-            </Button>
-          )}
-
+      {/* Action Buttons */}
+      <Group justify="space-between" mt="lg">
+        {onBack && (
           <Button
-            onClick={handleSubmit}
-            loading={loading}
-            rightSection={<IconArrowRight size={16} />}
+            variant="subtle"
+            onClick={onBack}
+            disabled={loading}
             size="sm"
-            style={{ marginLeft: 'auto' }}
-            disabled={mandatoryValidation && !mandatoryValidation.isValid}
           >
-            Continuar con el contrato
+            Volver
           </Button>
-        </Group>
+        )}
 
-        {/* Help Text */}
-        <Box ta="center">
-          <Text size="xs" c="dimmed">
-            <IconCheck size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-            Tus datos están seguros y encriptados
-          </Text>
-        </Box>
-      </Stack>
+        <Button
+          onClick={handleSubmit}
+          loading={loading}
+          rightSection={<IconArrowRight size={16} />}
+          size="sm"
+          style={{ marginLeft: 'auto' }}
+          disabled={mandatoryValidation && !mandatoryValidation.isValid}
+        >
+          Continuar con el contrato
+        </Button>
+      </Group>
+
+      {/* Help Text */}
+      <Box ta="center">
+        <Text size="xs" c="dimmed">
+          <IconCheck size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+          Tus datos están seguros y encriptados
+        </Text>
+      </Box>
+    </Stack>
+  )
+
+  // Inline mode: full UI without container (for embedding in parent card layouts)
+  if (mode === 'inline') {
+    return fullFormContent
+  }
+
+  // Standalone mode: full UI with container
+  return (
+    <Container size="sm" py="md">
+      {fullFormContent}
     </Container>
   )
 }

@@ -119,6 +119,46 @@ export function createAccountVariableValues(variables: Variable[]): {[key: strin
 }
 
 /**
+ * Get account variable names used in content that don't have configured values
+ */
+export function getUnconfiguredAccountVariables(
+  content: string,
+  accountVariableValues: {[key: string]: string}
+): string[] {
+  if (!content) return []
+
+  const unconfigured: string[] = []
+  // Internal variables that are always auto-filled
+  const internalVars = new Set(['fecha', 'fechaHora'])
+
+  // Check {{variable:X}} patterns
+  const variablePattern = /\{\{variable:([^}]+)\}\}/g
+  for (const match of content.matchAll(variablePattern)) {
+    const fieldName = match[1]
+    if (!internalVars.has(fieldName) && !accountVariableValues[fieldName]) {
+      unconfigured.push(fieldName)
+    }
+  }
+
+  return [...new Set(unconfigured)]
+}
+
+/**
+ * Get user-friendly label for account variable names
+ */
+export function getAccountVariableLabel(name: string): string {
+  const labels: {[key: string]: string} = {
+    'miNombre': 'Nombre de la empresa',
+    'miDireccion': 'Dirección',
+    'miTelefono': 'Teléfono',
+    'miIdentificacionFiscal': 'Identificación fiscal',
+    'miEmail': 'Email',
+    'miCuentaBancaria': 'Cuenta bancaria'
+  }
+  return labels[name] || name
+}
+
+/**
  * Process contract content by replacing variables and dynamic fields
  */
 export function processContractContent(
@@ -136,9 +176,10 @@ export function processContractContent(
   let processedContent = content
 
   // Replace account variables {{variable:fieldName}}
+  // Also check dynamicFieldValues as fallback (for API-provided variable overrides)
   const variablePattern = /\{\{variable:([^}]+)\}\}/g
   processedContent = processedContent.replace(variablePattern, (match, fieldName) => {
-    const value = accountVariableValues[fieldName]
+    const value = accountVariableValues[fieldName] || (dynamicFieldValues[fieldName] !== undefined ? String(dynamicFieldValues[fieldName]) : '')
     if (value) {
       return `<span style="background: #f3e5f5; padding: 2px 6px; border-radius: 4px; border: 1px solid #9c27b0; color: #7c3aed; font-weight: 600; margin: 0 4px;">${value}</span>`
     }
@@ -206,58 +247,60 @@ export function processContractContent(
  */
 export function contractNeedsDynamicFields(content: string): boolean {
   if (!content) return false
-  
+
   // Check for internal format {{dynamic:name}}
   const dynamicPattern = /\{\{dynamic:([^}]+)\}\}/g
   const internalMatches = content.match(dynamicPattern)
-  
+
   // Also check for HTML spans with data-dynamic-field (from TipTap nodes)
   const spanPattern = /<span[^>]*data-dynamic-field[^>]*>/g
   const spanMatches = content.match(spanPattern)
-  
+
   // Check for data-field attributes (from styled badges)
   const badgePattern = /data-field="[^"]+"/g
   const badgeMatches = content.match(badgePattern)
-  
-  return !!(internalMatches || spanMatches || badgeMatches)
+
+  // Check for bracket format [fieldName] (AI-generated content)
+  const bracketPattern = /\[([a-zA-Z][a-zA-Z0-9]*)\]/g
+  const bracketMatches = content.match(bracketPattern)
+
+  return !!(internalMatches || spanMatches || badgeMatches || bracketMatches)
 }
 
 /**
- * Extract dynamic field names from contract content
+ * Extract dynamic field names from contract content (all formats)
  */
 export function extractDynamicFieldNames(content: string): string[] {
   if (!content) return []
-  
+
   const fieldNames = new Set<string>()
-  console.log('[EXTRACT DEBUG] Input content:', JSON.stringify(content))
-  
+
   // Extract from internal format {{dynamic:name}}
   const dynamicPattern = /\{\{dynamic:([^}]+)\}\}/g
-  const internalMatches = content.matchAll(dynamicPattern)
-  for (const match of internalMatches) {
-    console.log('[EXTRACT DEBUG] Found dynamic field:', match[0], '->', match[1])
+  for (const match of content.matchAll(dynamicPattern)) {
     fieldNames.add(match[1])
   }
-  
+
   // Extract from HTML spans with data-field-name
   const spanPattern = /data-field-name="([^"]+)"/g
-  const spanMatches = content.matchAll(spanPattern)
-  for (const match of spanMatches) {
-    console.log('[EXTRACT DEBUG] Found span field:', match[0], '->', match[1])
+  for (const match of content.matchAll(spanPattern)) {
     fieldNames.add(match[1])
   }
-  
+
   // Extract from styled badges with data-field
   const badgePattern = /data-field="([^"]+)"/g
-  const badgeMatches = content.matchAll(badgePattern)
-  for (const match of badgeMatches) {
-    console.log('[EXTRACT DEBUG] Found badge field:', match[0], '->', match[1])
+  for (const match of content.matchAll(badgePattern)) {
     fieldNames.add(match[1])
   }
-  
-  const result = Array.from(fieldNames)
-  console.log('[EXTRACT DEBUG] Final result:', result)
-  return result
+
+  // Extract from bracket format [fieldName] (AI-generated content)
+  // Match camelCase or simple alphanumeric names, exclude HTML attributes
+  const bracketPattern = /\[([a-zA-Z][a-zA-Z0-9]*)\]/g
+  for (const match of content.matchAll(bracketPattern)) {
+    fieldNames.add(match[1])
+  }
+
+  return Array.from(fieldNames)
 }
 
 /**
@@ -383,6 +426,74 @@ export function validateMandatoryFields(
     missingFields,
     warnings
   }
+}
+
+/**
+ * Detect fields present in contract content but missing from userFields.
+ * Returns UserField-compatible objects for those missing fields so they
+ * can be merged into the form shown to the signer.
+ */
+export function getMissingContentFields(
+  content: string,
+  existingUserFields: any[] = [],
+  accountVariableNames: string[] = []
+): { id: string; name: string; type: 'text' | 'number' | 'phone' | 'email' | 'accept'; required: boolean; placeholder: string; label: string; order: number }[] {
+  if (!content) return []
+
+  const allContentFields = extractDynamicFieldNames(content)
+
+  // Names already covered by existing userFields
+  const existingNames = new Set(
+    (existingUserFields || []).map((f: any) => f.name)
+  )
+
+  // Account variable names (issuer data, not signer data)
+  const accountVarSet = new Set(accountVariableNames)
+
+  // Internal system variables
+  const internalVars = new Set(['fecha', 'fechaHora'])
+
+  // Also exclude variable-format fields from content ({{variable:X}} are account vars)
+  const variablePattern = /\{\{variable:([^}]+)\}\}/g
+  for (const match of content.matchAll(variablePattern)) {
+    accountVarSet.add(match[1])
+  }
+
+  const missingFields = allContentFields.filter(name =>
+    !existingNames.has(name) &&
+    !accountVarSet.has(name) &&
+    !internalVars.has(name)
+  )
+
+  // Convert to UserField-compatible objects
+  const baseOrder = (existingUserFields || []).length
+  return missingFields.map((name, index) => ({
+    id: `content-detected-${name}`,
+    name,
+    type: inferFieldType(name),
+    required: true,
+    placeholder: `Ingrese ${formatFieldLabel(name)}`,
+    label: formatFieldLabel(name),
+    order: baseOrder + index + 1
+  }))
+}
+
+/** Infer field type from field name */
+function inferFieldType(name: string): 'text' | 'number' | 'phone' | 'email' | 'accept' {
+  const lower = name.toLowerCase()
+  if (lower.includes('email') || lower.includes('correo') || lower.includes('mail')) return 'email'
+  if (lower.includes('phone') || lower.includes('telefono') || lower.includes('tel') || lower.includes('movil')) return 'phone'
+  if (lower.includes('number') || lower.includes('numero') || lower.includes('cantidad') || lower.includes('monto')) return 'number'
+  if (lower.includes('accept') || lower.includes('acepta')) return 'accept'
+  return 'text'
+}
+
+/** Convert camelCase field name to user-friendly label */
+function formatFieldLabel(name: string): string {
+  // Split camelCase into words
+  const words = name.replace(/([A-Z])/g, ' $1').trim()
+  // Capitalize first letter
+  return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
 /**
