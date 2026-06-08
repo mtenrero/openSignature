@@ -267,17 +267,14 @@ export class RefundSystem {
    */
   private static async refundToWallet(customerId: string, amount: number, reason: string, referenceId: string): Promise<boolean> {
     try {
-      const wallet = new VirtualWallet(customerId)
-
-      await wallet.addFunds(
+      // VirtualWallet is a static API — `new VirtualWallet(...).addFunds(...)` never
+      // existed, so refunds were silently swallowed (caught below) and the wallet was
+      // never actually credited. Use the real static addCredits with reason 'refund'.
+      await VirtualWallet.addCredits(
+        customerId,
         amount,
-        `refund_${reason}`,
-        `Reembolso por ${reason.replace('_', ' ')}: ${referenceId}`,
-        {
-          type: 'refund',
-          originalReferenceId: referenceId,
-          reason
-        }
+        'refund',
+        `Reembolso por ${reason.replace(/_/g, ' ')}: ${referenceId}`,
       )
 
       console.log(`Refunded ${amount} cents to wallet for customer ${customerId}`)

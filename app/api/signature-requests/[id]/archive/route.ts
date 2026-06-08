@@ -57,9 +57,11 @@ export async function POST(
       )
     }
 
-    // Parse request body for reason
-    const body = await request.json()
-    const reason = body.reason || 'manual_archive'
+    // Parse request body for reason. Tolerate a missing/empty body (mivet's
+    // OSignClient.archiveSignatureRequest POSTs with no body) — otherwise
+    // request.json() throws on empty input and the archive 500s.
+    const body = await request.json().catch(() => ({} as any))
+    const reason = body?.reason || 'manual_archive'
 
     // Update signature request status to archived
     const updateResult = await signatureCollection.updateOne(

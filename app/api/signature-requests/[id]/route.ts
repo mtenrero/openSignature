@@ -406,7 +406,9 @@ export async function DELETE(
 
     const params = await context.params
     const id = params.id
-    const body = await request.json()
+    // Tolerate a missing/empty body so this returns the intended 400
+    // ("Discard reason is required") instead of a 500 on request.json().
+    const body = await request.json().catch(() => ({} as any))
     const { discardReason } = body
 
     if (!ObjectId.isValid(id)) {

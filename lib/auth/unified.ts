@@ -15,6 +15,23 @@ export interface AuthContext {
  * Supports both NextAuth session and OAuth2 JWT tokens
  */
 export async function getAuthContext(request?: NextRequest): Promise<AuthContext | null> {
+  // Local auth bypass for cloud-free testing. Two triggers, both off in production:
+  //  - DEV_AUTH_BYPASS=true: unconditional (the `dev:isolated` local server, so you
+  //    can use the app — e.g. the contract editor — without a real login).
+  //  - E2E_TEST_MODE=true + e2e_session cookie: cookie-gated, so the e2e API-key /
+  //    "401 without credentials" tests stay unaffected.
+  // The identity is env-configurable so it can match the seeded customer/data.
+  const bypass =
+    process.env.DEV_AUTH_BYPASS === 'true' ||
+    (process.env.E2E_TEST_MODE === 'true' && !!request?.cookies?.get('e2e_session'))
+  if (bypass) {
+    return {
+      userId: process.env.E2E_USER_ID || 'e2e-user',
+      customerId: process.env.E2E_CUSTOMER_ID || 'e2e-customer',
+      isOAuth: false,
+    }
+  }
+
   // Try session-based auth first
   try {
     const session = await auth()

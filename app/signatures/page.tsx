@@ -339,6 +339,27 @@ function FirmasPageContent() {
         setPrefillContract(null)
       }
 
+      // Seed dynamic field values from the ORIGINAL request so that if a new
+      // request is created (e.g. switching method after a previous submission),
+      // the NIF, client identity and custom fields carry over instead of being
+      // lost. The pending-resend (PATCH) path already preserves these server-side.
+      try {
+        const reqResp = await fetch(`/api/signature-requests/${firma.id}`)
+        if (reqResp.ok) {
+          const reqJson = await reqResp.json()
+          const original = reqJson?.request?.dynamicFieldValues
+          if (original && typeof original === 'object') {
+            const seed: { [k: string]: string } = {}
+            Object.entries(original).forEach(([k, v]) => {
+              if (v !== null && v !== undefined) seed[k] = String(v)
+            })
+            setDynamicValuesForNew(seed)
+          }
+        }
+      } catch (seedErr) {
+        console.warn('Could not seed dynamic values from original request:', seedErr)
+      }
+
       // Open the unified modal directly with all information
       if (method === 'email') {
         setRequestMethod('email')

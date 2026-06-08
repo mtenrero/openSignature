@@ -1,6 +1,7 @@
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { findTokenDeletionRange } from '../../lib/editor/tokenDeletion'
 
 interface FieldStylingOptions {
   variables: Array<{ name: string; type: string }>;
@@ -14,6 +15,37 @@ export const FieldStylingExtension = Extension.create<FieldStylingOptions>({
     return {
       variables: [],
       dynamicFields: []
+    }
+  },
+
+  // Delete field tokens ({{variable:X}} / {{dynamic:X}}) as a single atomic unit.
+  // Without this, Backspace/Delete removes one character at a time, breaking the
+  // badge into a partial token (e.g. leaving "{{variable:miNombre").
+  addKeyboardShortcuts() {
+    const deleteAdjacentToken = (direction: 'backward' | 'forward'): boolean => {
+      const { state } = this.editor
+      const { selection } = state
+      // Only handle a collapsed cursor; let range selections delete normally.
+      if (!selection.empty) return false
+
+      const $from = selection.$from
+      const parent = $from.parent
+      if (!parent.isTextblock) return false
+
+      const range = findTokenDeletionRange(parent.textContent, $from.parentOffset, direction)
+      if (!range) return false
+
+      const blockStart = $from.start()
+      return this.editor
+        .chain()
+        .focus()
+        .deleteRange({ from: blockStart + range.start, to: blockStart + range.end })
+        .run()
+    }
+
+    return {
+      Backspace: () => deleteAdjacentToken('backward'),
+      Delete: () => deleteAdjacentToken('forward'),
     }
   },
 

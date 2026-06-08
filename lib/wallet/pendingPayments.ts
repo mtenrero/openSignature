@@ -130,10 +130,11 @@ export class PendingPaymentManager {
 
       console.log(`Checking payment ${paymentIntentId} (type: ${typeof paymentIntentId})`)
 
-      // Get payment intent from Stripe
+      // Get payment intent from Stripe (expand latest_charge — PaymentIntent.charges
+      // was removed in API version 2022-11-15).
       const paymentIntent = await stripe.paymentIntents.retrieve(
         paymentIntentId,
-        { expand: ['charges.data'] }
+        { expand: ['latest_charge'] }
       )
 
       console.log(`Checking payment ${paymentIntentId}: status=${paymentIntent.status}`)
@@ -147,8 +148,11 @@ export class PendingPaymentManager {
       }
 
       // Update charge ID if available
-      if (paymentIntent.charges?.data?.[0]?.id && !pendingPayment.stripeChargeId) {
-        updateData.stripeChargeId = paymentIntent.charges.data[0].id
+      const latestChargeId = typeof paymentIntent.latest_charge === 'string'
+        ? paymentIntent.latest_charge
+        : paymentIntent.latest_charge?.id
+      if (latestChargeId && !pendingPayment.stripeChargeId) {
+        updateData.stripeChargeId = latestChargeId
       }
 
       switch (paymentIntent.status) {

@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 module.exports = {
     reactStrictMode: false,
+    // Pin the workspace root to this project. Without it, Next can pick up a
+    // stray package-lock.json elsewhere (e.g. in $HOME) and misdetect the root.
+    outputFileTracingRoot: __dirname,
     typescript: {
         // WARNING: This is dangerous but necessary for build compatibility
         // Remove this once NextAuth v5 types are fully compatible
@@ -23,6 +26,6 @@ module.exports = {
     },
     // Add dev origin configuration for cross-origin warnings
     devIndicators: {
-        buildActivityPosition: 'bottom-left',
+        position: 'bottom-left',
     },
 }

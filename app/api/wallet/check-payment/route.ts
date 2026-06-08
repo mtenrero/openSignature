@@ -25,9 +25,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Retrieve the payment intent from Stripe
+    // Retrieve the payment intent from Stripe (expand latest_charge — the `charges`
+    // collection was removed from PaymentIntent in API version 2022-11-15).
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
-      expand: ['charges.data']
+      expand: ['latest_charge']
     })
 
     console.log('Payment Intent details:', {
@@ -60,7 +61,9 @@ export async function POST(request: NextRequest) {
 
         if (!existingTransaction && customerId && amountInCents) {
           // Get charge ID for receipt access
-          const chargeId = paymentIntent.charges?.data?.[0]?.id
+          const chargeId = typeof paymentIntent.latest_charge === 'string'
+            ? paymentIntent.latest_charge
+            : paymentIntent.latest_charge?.id
 
           // Add credits manually
           await VirtualWallet.addCredits(

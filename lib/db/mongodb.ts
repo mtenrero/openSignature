@@ -7,7 +7,9 @@ const MONGO_DB = process.env.MONGO_DB
 const MONGO_USER = process.env.MONGO_USER
 const MONGO_PASSWORD = process.env.MONGO_PASSWORD
 
-if (!MONGO_URL || !MONGO_DB || !MONGO_USER || !MONGO_PASSWORD) {
+// In test mode (MONGODB_TEST_URI set) we skip the strict env check — the test
+// URI brings its own host/port and no auth is needed for mongodb-memory-server.
+if (!process.env.MONGODB_TEST_URI && (!MONGO_URL || !MONGO_DB || !MONGO_USER || !MONGO_PASSWORD)) {
   throw new Error('Missing required MongoDB environment variables')
 }
 
@@ -18,6 +20,17 @@ let db: Db | null = null
 // Initialize MongoDB connection
 const initializeMongoDB = async (): Promise<Db> => {
   if (db) return db
+
+  // E2E test escape hatch: when MONGODB_TEST_URI is set we bypass TLS+auth and
+  // connect directly to a plain mongodb-memory-server instance. Production
+  // never sets this variable, so default behavior is unchanged.
+  if (process.env.MONGODB_TEST_URI) {
+    client = new MongoClient(process.env.MONGODB_TEST_URI)
+    await client.connect()
+    db = client.db(MONGO_DB)
+    console.log('✅ MongoDB connected via MONGODB_TEST_URI (test mode)')
+    return db
+  }
 
   try {
     // Convert HTTPS URL to MongoDB format if needed

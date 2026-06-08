@@ -15,19 +15,45 @@ import {
   createAccountVariableValues,
   processContractContent,
   contractNeedsDynamicFields,
-  getMissingContentFields
+  getMissingContentFields,
+  getUnfilledContentDynamicFields
 } from '../../../lib/contractUtils'
 import { useSignData } from './layout'
 
 export default function SignDocument() {
     console.log('[DEBUG] SignDocument component rendered')
     
+    // Get data from context (passed from layout) — read BEFORE useState so the
+    // lazy initializer below can seed dynamicFieldValues from the API on first
+    // render. Doing this in a useEffect (the old behavior) caused the steps
+    // useState below to compute against an empty {} on mount, which always
+    // included the "Datos" step even when all required fields were already
+    // pre-filled by the partner.
+    const { signData, shortId, accessKey } = useSignData()
+    const contract = signData?.contract
+    const signRequest = signData?.signRequest
+    const accountVariableValues = signData?.accountVariableValues || {}
+
     const [currentStep, setCurrentStep] = useState(0)
     const [signing, setSigning] = useState(false)
     const [signatureData, setSignatureData] = useState<string | null>(null)
     const [acceptChecked, setAcceptChecked] = useState(false)
     const [error, setError] = useState('')
-    const [dynamicFieldValues, setDynamicFieldValues] = useState<{[key: string]: string}>({})
+    const [dynamicFieldValues, setDynamicFieldValues] = useState<{[key: string]: string}>(() => {
+        const initial: { [key: string]: string } = {}
+        // PRIORITY 1: API-supplied dynamicFieldValues (partner pre-fill)
+        const apiValues = signData?.signRequest?.dynamicFieldValues
+        if (apiValues && typeof apiValues === 'object') {
+            for (const [k, v] of Object.entries(apiValues)) {
+                if (v !== null && v !== undefined) initial[k] = String(v)
+            }
+        }
+        // PRIORITY 2: Fallback to basic signer fields from the request
+        if (signRequest?.signerName && !initial.clientName) initial.clientName = signRequest.signerName
+        if (signRequest?.signerEmail && !initial.clientEmail) initial.clientEmail = signRequest.signerEmail
+        if (signRequest?.signerPhone && !initial.clientPhone) initial.clientPhone = signRequest.signerPhone
+        return initial
+    })
     const [completed, setCompleted] = useState(false)
     const [otpCode, setOtpCode] = useState('')
     const [otpSent, setOtpSent] = useState(false)
@@ -39,54 +65,32 @@ export default function SignDocument() {
     const [availableOtpMethods, setAvailableOtpMethods] = useState({ email: false, sms: false })
     const router = useRouter()
 
-    // Get data from context (passed from layout)
-    const { signData, shortId, accessKey } = useSignData()
-    console.log('[DEBUG] SignDocument got data from context:', { signData, shortId, accessKey })
-    const contract = signData?.contract
-    const signRequest = signData?.signRequest
-    const accountVariableValues = signData?.accountVariableValues || {}
-
-    // Initialize dynamic fields with pre-filled data from API or signer data from email request
-    useEffect(() => {
-        if (signData && Object.keys(dynamicFieldValues).length === 0) {
-            const initialValues: { [key: string]: string } = {}
-
-            // PRIORITY 1: Pre-filled dynamic field values from the API (when partner provides them)
-            if (signData.signRequest?.dynamicFieldValues && typeof signData.signRequest.dynamicFieldValues === 'object') {
-                Object.assign(initialValues, signData.signRequest.dynamicFieldValues)
-                console.log('[DEBUG] Pre-filling from API dynamicFieldValues:', signData.signRequest.dynamicFieldValues)
-            }
-
-            // PRIORITY 2: Fallback to basic signer data from the signature request
-            // Only fill these if not already provided in dynamicFieldValues
-            if (signRequest.signerName && !initialValues.clientName) {
-                initialValues.clientName = signRequest.signerName
-            }
-            if (signRequest.signerEmail && !initialValues.clientEmail) {
-                initialValues.clientEmail = signRequest.signerEmail
-            }
-            if (signRequest.signerPhone && !initialValues.clientPhone) {
-                initialValues.clientPhone = signRequest.signerPhone
-            }
-
-            console.log('[DEBUG] Final pre-filled dynamic fields:', initialValues)
-            setDynamicFieldValues(initialValues)
-        }
-    }, [signData])
-
     // Merge userFields with any fields detected in content but missing from userFields
-    const allFormFields = contract ? [
+    const accountVariableNames = Object.keys(accountVariableValues)
+    const baseFormFields = contract ? [
         ...(contract.userFields || []),
         ...getMissingContentFields(
             contract.content,
             contract.userFields,
-            Object.keys(accountVariableValues)
+            accountVariableNames
         )
     ] : []
+
+    // Dynamic fields used in the content that still have no value: the signer
+    // MUST fill these before review (otherwise the document shows a [placeholder]).
+    // Force them required so the "Datos" step appears and blocks until completed.
+    const unfilledContentFields = contract
+        ? getUnfilledContentDynamicFields(contract.content, dynamicFieldValues, accountVariableNames)
+        : []
+    const unfilledSet = new Set(unfilledContentFields)
+    const allFormFields = baseFormFields.map((field: any) =>
+        unfilledSet.has(field.name) ? { ...field, required: true } : field
+    )
 
     // Determine if we need dynamic fields step
     const needsDynamicFields = contract ? (
         contractNeedsDynamicFields(contract.content) ||
+        unfilledContentFields.length > 0 ||
         allFormFields.some((field: any) => field.enabled !== false)
     ) : false
 
@@ -381,6 +385,14 @@ export default function SignDocument() {
 
                 console.log('[DEBUG] Locked fields for form:', lockedFields)
 
+                // Skip template-level mandatory validation when the partner
+                // already supplied dynamicFieldValues via API — those values
+                // implicitly satisfy the form contract for this signer flow.
+                // Only skip mandatory validation when the partner pre-filled values
+                // AND there are no still-empty content fields to collect.
+                const hasApiPrefill = Object.keys(signData?.signRequest?.dynamicFieldValues || {}).length > 0
+                    && unfilledContentFields.length === 0
+
                 return (
                     <DynamicFieldsForm
                         fields={allFormFields}
@@ -389,6 +401,7 @@ export default function SignDocument() {
                         onSubmit={handleDynamicFieldsSubmit}
                         contractName={contract?.name}
                         lockedFields={lockedFields}
+                        skipMandatoryValidation={hasApiPrefill}
                         mode="inline"
                     />
                 )

@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 import { auth } from '@/lib/auth/config'
-import { 
+import {
   getDatabase,
-  mongoHelpers, 
+  getContractsCollection,
+  mongoHelpers,
   handleDatabaseError,
-  CustomerEncryption 
+  CustomerEncryption
 } from '@/lib/db/mongodb'
 import { ObjectId } from 'mongodb'
+import { getReferencedVariableNames } from '@/lib/contractUtils'
 
 export async function GET(request: NextRequest) {
   try {
@@ -80,24 +82,9 @@ export async function GET(request: NextRequest) {
         required: false,
         placeholder: '',
         enabled: false
-      },
-      // 🔥 NEW: Client information fields for contract binding
-      {
-        id: '8',
-        name: 'clientName',
-        type: 'text',
-        required: false,
-        placeholder: 'Nombre del cliente',
-        enabled: true
-      },
-      {
-        id: '9',
-        name: 'clientTaxId',
-        type: 'text',
-        required: false,
-        placeholder: 'Identificador fiscal del cliente',
-        enabled: true
       }
+      // NOTE: clientName / clientTaxId are SIGNER fields ({{dynamic:...}}), not
+      // account variables, so they are intentionally NOT part of this template.
     ]
 
     // Try to find existing variables for this customer
@@ -126,6 +113,42 @@ export async function GET(request: NextRequest) {
     const decrypted = CustomerEncryption.decryptSensitiveFields(variableDoc, customerId)
     const cleanDoc = mongoHelpers.cleanDocument(decrypted)
 
+    // Signer fields ({{dynamic:clientName}} etc.) are NEVER account variables —
+    // they're filled by the signer. Drop any that leaked into storage so they
+    // don't appear in the account-variables panel.
+    const SIGNER_FIELD_NAMES = ['clientName', 'clientTaxId', 'clientPhone', 'clientEmail']
+    const storedVariables = (cleanDoc.variables || []).filter((v: any) => !SIGNER_FIELD_NAMES.includes(v.name))
+
+    // 🔎 Auto-detect account variables ({{variable:X}}) that the customer's
+    // contracts reference but that aren't configured yet, and surface them here
+    // (empty value) so they're easy to fill. Otherwise the user lands on this
+    // panel after the "missing variables" modal and can't see them.
+    const configuredNames = new Set<string>(storedVariables.map((v: any) => v.name))
+    let autoDetectedVariables: any[] = []
+    try {
+      const contractsCollection = await getContractsCollection()
+      const contracts = await contractsCollection
+        .find({ customerId, type: 'contract' }, { projection: { content: 1 } })
+        .toArray()
+      const contents = contracts.map((c: any) => {
+        const dec = CustomerEncryption.decryptSensitiveFields(c, customerId)
+        return typeof dec.content === 'string' ? dec.content : ''
+      })
+      autoDetectedVariables = getReferencedVariableNames(contents)
+        .filter(name => !configuredNames.has(name) && !SIGNER_FIELD_NAMES.includes(name))
+        .map(name => ({
+          id: `auto-${name}`,
+          name,
+          type: 'text',
+          required: false,
+          placeholder: '',
+          enabled: true,
+          autoDetected: true,
+        }))
+    } catch (error) {
+      console.error('Error auto-detecting contract variables:', error)
+    }
+
     // Add internal variables that don't get stored in DB
     const responseData = {
       ...cleanDoc,
@@ -140,8 +163,10 @@ export async function GET(request: NextRequest) {
           enabled: true,
           internal: true
         },
-        // Database variables
-        ...(cleanDoc.variables || [])
+        // Database variables (signer fields filtered out)
+        ...storedVariables,
+        // Variables referenced by contracts but not yet configured
+        ...autoDetectedVariables
       ]
     }
 

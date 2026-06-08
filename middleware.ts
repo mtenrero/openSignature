@@ -24,6 +24,17 @@ export default auth(async (req) => {
       }
     }
   }
+
+  // Local auth bypass for cloud-free testing (off in production):
+  //  - DEV_AUTH_BYPASS=true: unconditional (the `dev:isolated` local server).
+  //  - E2E_TEST_MODE=true + e2e_session cookie: cookie-gated for Playwright.
+  if (
+    !isAuth &&
+    (process.env.DEV_AUTH_BYPASS === 'true' ||
+      (process.env.E2E_TEST_MODE === 'true' && req.cookies.get('e2e_session')))
+  ) {
+    isAuth = true
+  }
   const isAuthPage = req.nextUrl.pathname.startsWith('/auth')
   const isApiRoute = req.nextUrl.pathname.startsWith('/api')
   const isSignPage = req.nextUrl.pathname.startsWith('/sign')

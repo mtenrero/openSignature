@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Container, Title, Button, Card, TextInput, Textarea, Stack, Group, Tabs, Select, ActionIcon, Modal, Box, Text, Loader, Badge, Menu, Alert, Divider, SegmentedControl, Checkbox } from '@mantine/core'
+import { Container, Title, Button, Card, TextInput, Textarea, Stack, Group, Tabs, Select, ActionIcon, Modal, Box, Text, Loader, Badge, Menu, Alert, Divider, SegmentedControl, Checkbox, SimpleGrid, ScrollArea } from '@mantine/core'
 import { IconDeviceFloppy, IconPlus, IconTrash, IconEye, IconArrowLeft, IconEdit, IconCode, IconChevronDown, IconCheck, IconArchive, IconRefresh, IconRobot, IconWand, IconSparkles } from '@tabler/icons-react'
 import { useRouter, useParams } from 'next/navigation'
 import { notifications } from '@mantine/notifications'
@@ -811,8 +811,8 @@ export default function ContractEditorPage() {
     <Container size="xl">
       <Stack gap="lg">
         {/* Header */}
-        <Group justify="space-between" align="center">
-          <Group>
+        <Group justify="space-between" align="center" wrap="wrap" gap="sm">
+          <Group gap="xs" style={{ minWidth: 0, flex: '1 1 auto' }}>
             <ActionIcon variant="subtle" onClick={() => router.push('/contracts')}>
               <IconArrowLeft size={20} />
             </ActionIcon>
@@ -826,7 +826,7 @@ export default function ContractEditorPage() {
             </Box>
           </Group>
 
-          <Group>
+          <Group gap="xs" wrap="wrap">
             {/* Contract Status */}
             <Menu shadow="md" width={200}>
               <Menu.Target>
@@ -890,7 +890,7 @@ export default function ContractEditorPage() {
         {/* Contract Info */}
         <Card shadow="sm" padding="lg" radius="md" withBorder>
           <Stack gap="md">
-            <Group grow>
+            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
               <TextInput
                 label="Nombre del contrato"
                 value={contrato.name}
@@ -901,7 +901,7 @@ export default function ContractEditorPage() {
                 value={contrato.description}
                 onChange={(event) => setContrato({ ...contrato, description: event.target.value })}
               />
-            </Group>
+            </SimpleGrid>
 
             <Divider label="Configuración de Seguridad" labelPosition="center" />
 
@@ -922,23 +922,26 @@ export default function ContractEditorPage() {
         </Card>
 
         <Tabs value={activeTab} onChange={setActiveTab}>
-          <Tabs.List>
-            <Tabs.Tab value="editor" leftSection={<IconEdit size={16} />}>
-              Editor
-            </Tabs.Tab>
-            <Tabs.Tab value="variables">
-              Variables ({accountVariables.length})
-            </Tabs.Tab>
-            <Tabs.Tab value="dynamicFields">
-              Campos Dinámicos ({contrato.userFields?.length || 0})
-            </Tabs.Tab>
-            <Tabs.Tab value="parameters">
-              Parámetros
-            </Tabs.Tab>
-            <Tabs.Tab value="code" leftSection={<IconCode size={16} />}>
-              Código
-            </Tabs.Tab>
-          </Tabs.List>
+          {/* Scrollable on mobile so the 5 tabs never overflow / wrap awkwardly. */}
+          <ScrollArea type="auto" scrollbarSize={6} offsetScrollbars="x">
+            <Tabs.List style={{ flexWrap: 'nowrap' }}>
+              <Tabs.Tab value="editor" leftSection={<IconEdit size={16} />}>
+                Editor
+              </Tabs.Tab>
+              <Tabs.Tab value="variables">
+                Variables ({accountVariables.length})
+              </Tabs.Tab>
+              <Tabs.Tab value="dynamicFields">
+                Campos Dinámicos ({contrato.userFields?.length || 0})
+              </Tabs.Tab>
+              <Tabs.Tab value="parameters">
+                Parámetros
+              </Tabs.Tab>
+              <Tabs.Tab value="code" leftSection={<IconCode size={16} />}>
+                Código
+              </Tabs.Tab>
+            </Tabs.List>
+          </ScrollArea>
 
           <Tabs.Panel value="editor" pt="md">
             {/* AI Generation Section */}
@@ -1178,6 +1181,11 @@ export default function ContractEditorPage() {
                 variables={accountVariables}
                 dynamicFields={contrato.userFields || []}
                 onInsertField={handleInsertField}
+                onAddField={() => {
+                  setEditingFieldId(null)
+                  setNewUserField({ name: '', type: 'text', required: false, placeholder: '', label: '', order: 0 })
+                  setUserFieldModalOpen(true)
+                }}
               />
             </Card>
           </Tabs.Panel>
@@ -1412,15 +1420,24 @@ export default function ContractEditorPage() {
           setEditingFieldId(null)
           setNewUserField({ name: '', type: 'text', required: false, placeholder: '', label: '', order: 0 })
         }}
-        title={editingFieldId ? 'Editar Campo Dinámico' : 'Agregar Campo Dinámico'}
+        title={editingFieldId ? 'Editar campo del firmante' : 'Nuevo campo del firmante'}
         centered
       >
         <Stack gap="md">
+          <Alert color="blue" variant="light" icon={<IconSparkles size={16} />}>
+            <Text size="sm">
+              Crea un campo para pedir información a quien firma (por ejemplo un importe o una matrícula).
+              Aparecerá en el formulario de firma y podrás insertarlo en el texto del contrato.
+            </Text>
+          </Alert>
+
           <TextInput
             label="Etiqueta del campo"
+            description="Lo que verá el firmante"
             placeholder="ej: Nombre Completo"
             value={newUserField.label}
             onChange={(event) => setNewUserField({ ...newUserField, label: event.target.value })}
+            data-autofocus
           />
 
           <TextInput
@@ -1456,16 +1473,13 @@ export default function ContractEditorPage() {
               onChange={(value) => setNewUserField({ ...newUserField, type: value as any })}
             />
 
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                <input
-                  type="checkbox"
-                  checked={newUserField.required}
-                  onChange={(event) => setNewUserField({ ...newUserField, required: event.target.checked })}
-                />
-                Requerido
-              </label>
-            </div>
+            <Checkbox
+              label="Obligatorio"
+              description="El firmante deberá rellenarlo"
+              checked={newUserField.required}
+              onChange={(event) => setNewUserField({ ...newUserField, required: event.currentTarget.checked })}
+              styles={{ root: { alignSelf: 'center' } }}
+            />
           </Group>
 
           <Group justify="flex-end">

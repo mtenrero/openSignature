@@ -899,9 +899,11 @@ export class StripeManager {
           try {
             const paymentIntent = await stripe.paymentIntents.retrieve(
               session.payment_intent as string,
-              { expand: ['charges.data'] }
+              { expand: ['latest_charge'] }
             )
-            chargeId = paymentIntent.charges?.data?.[0]?.id
+            chargeId = typeof paymentIntent.latest_charge === 'string'
+              ? paymentIntent.latest_charge
+              : paymentIntent.latest_charge?.id
           } catch (error) {
             console.warn('Could not retrieve charge ID:', error)
           }
@@ -926,9 +928,10 @@ export class StripeManager {
   private static async handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent): Promise<void> {
     console.log('Processing payment_intent.succeeded:', paymentIntent.id)
 
-    // Expand the payment intent to get charges for receipt access
+    // Expand latest_charge for receipt access (the `charges` collection was removed
+    // from PaymentIntent in API version 2022-11-15; use `latest_charge` instead).
     const expandedPaymentIntent = await stripe.paymentIntents.retrieve(paymentIntent.id, {
-      expand: ['charges.data']
+      expand: ['latest_charge']
     })
 
     // Check if this is a wallet top-up payment
@@ -961,7 +964,9 @@ export class StripeManager {
         }
 
         // Get the charge ID for receipt access
-        const chargeId = expandedPaymentIntent.charges?.data?.[0]?.id
+        const chargeId = typeof expandedPaymentIntent.latest_charge === 'string'
+          ? expandedPaymentIntent.latest_charge
+          : expandedPaymentIntent.latest_charge?.id
 
         // Add credits directly (for immediate card payments)
         await VirtualWallet.addCredits(
@@ -1020,15 +1025,19 @@ export class StripeManager {
           const customerId = paymentIntent.metadata.oSignEUCustomerId
           const amountInCents = parseInt(paymentIntent.metadata.amountInCents || '0')
 
-          // Expand payment intent to get charges for payment method detection
+          // Expand latest_charge for payment method detection (PaymentIntent.charges
+          // was removed in API version 2022-11-15; use latest_charge instead).
           const expandedPaymentIntent = await stripe.paymentIntents.retrieve(paymentIntent.id, {
-            expand: ['charges.data']
-          }) as Stripe.PaymentIntent & { charges?: { data: Stripe.Charge[] } }
+            expand: ['latest_charge']
+          })
+          const latestCharge = typeof expandedPaymentIntent.latest_charge === 'string'
+            ? null
+            : expandedPaymentIntent.latest_charge
 
           // Determine payment method
           let paymentMethod: 'sepa_debit' | 'card' | 'other' = 'other'
-          if (expandedPaymentIntent.charges?.data?.[0]?.payment_method_details?.type) {
-            const methodType = expandedPaymentIntent.charges.data[0].payment_method_details.type
+          if (latestCharge?.payment_method_details?.type) {
+            const methodType = latestCharge.payment_method_details.type
             paymentMethod = methodType === 'sepa_debit' ? 'sepa_debit' :
                            methodType === 'card' ? 'card' : 'other'
           }

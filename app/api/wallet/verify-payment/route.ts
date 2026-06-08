@@ -61,6 +61,13 @@ export async function POST(request: NextRequest) {
       (checkoutSession.payment_intent as any)?.payment_method_types?.includes('sepa_debit')
     const amount = checkoutSession.amount_total ? (checkoutSession.amount_total / 100) : 0
 
+    // payment_intent is EXPANDED here (an object), so it must be reduced to its id
+    // string for the idempotency lookup + storage — otherwise the dedup check never
+    // matches the string-keyed transactions and the wallet is credited twice.
+    const paymentIntentId = typeof checkoutSession.payment_intent === 'string'
+      ? checkoutSession.payment_intent
+      : (checkoutSession.payment_intent as any)?.id
+
     // If payment is successful OR if it's a pending SEPA payment and it's a wallet topup
     if ((isPaymentSuccessful || isSepaPaymentPending) && checkoutSession.metadata?.type === 'wallet_topup') {
       const customerId = checkoutSession.metadata.oSignEUCustomerId
@@ -69,7 +76,7 @@ export async function POST(request: NextRequest) {
       try {
         // Check if credits were already added by looking for existing transaction
         const existingTransaction = await VirtualWallet.findTransactionByPaymentIntent(
-          checkoutSession.payment_intent as string
+          paymentIntentId as string
         )
 
         if (!existingTransaction && customerId && amountInCents) {
@@ -78,10 +85,12 @@ export async function POST(request: NextRequest) {
             let chargeId: string | undefined
             try {
               const expandedPaymentIntent = await stripe.paymentIntents.retrieve(
-                checkoutSession.payment_intent as string,
-                { expand: ['charges.data'] }
+                paymentIntentId as string,
+                { expand: ['latest_charge'] }
               )
-              chargeId = expandedPaymentIntent.charges?.data?.[0]?.id
+              chargeId = typeof expandedPaymentIntent.latest_charge === 'string'
+                ? expandedPaymentIntent.latest_charge
+                : expandedPaymentIntent.latest_charge?.id
             } catch (error) {
               console.warn('Could not retrieve charge ID:', error)
             }
@@ -92,7 +101,7 @@ export async function POST(request: NextRequest) {
               amountInCents,
               'top_up',
               `Bono de uso adicional - ${VirtualWallet.formatAmount(amountInCents)}`,
-              checkoutSession.payment_intent as string,
+              paymentIntentId as string,
               chargeId
             )
             console.log(`Added immediate credits for customer ${customerId}: ${VirtualWallet.formatAmount(amountInCents)}`)
@@ -100,7 +109,7 @@ export async function POST(request: NextRequest) {
             // For SEPA, create pending payment and add credits immediately as pending
             await PendingPaymentManager.createPendingPayment({
               customerId,
-              stripePaymentIntentId: checkoutSession.payment_intent as string,
+              stripePaymentIntentId: paymentIntentId as string,
               amount: amountInCents,
               description: `Bono de uso adicional (SEPA) - ${VirtualWallet.formatAmount(amountInCents)}`,
               paymentMethod: 'sepa_debit',

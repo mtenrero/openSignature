@@ -192,7 +192,7 @@ curl -H "Authorization: Bearer osk_your_api_key_here" ${baseUrl()}/api/contracts
             name: { type: 'string' },
             description: { type: 'string' },
             content: { type: 'string' },
-            status: { type: 'string', enum: ['draft', 'signed', 'archived'] }
+            status: { type: 'string', enum: ['draft', 'active', 'signed', 'completed', 'archived'] }
           },
           required: ['id', 'name', 'status']
         },

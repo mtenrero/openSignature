@@ -8,7 +8,7 @@ import { auditTrailService } from '@/lib/auditTrail'
 import { extractClientIP } from '@/lib/deviceMetadata'
 import { UsageAuditService } from '@/lib/usage/usageAudit'
 import { UsageTracker } from '@/lib/subscription/usage'
-import { extractSignerInfo, extractDynamicFieldNames } from '@/lib/contractUtils'
+import { extractSignerInfo, extractDynamicFieldNames, extractVariableFieldNames, normalizeFieldName, getUnconfiguredAccountVariables } from '@/lib/contractUtils'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { isSMSEnabled } from '@/lib/utils/smsConfig'
 import { getCombinedAuditTrail } from '@/lib/audit/integration'
@@ -41,6 +41,28 @@ async function getCustomerMiNombre(customerId: string): Promise<string | null> {
     console.error('Error getting miNombre variable:', error)
     return null
   }
+}
+
+// Build the map of CONFIGURED account variable values (name → value). The
+// configured value lives in each variable's `placeholder`. Only non-empty ones
+// are returned, so getUnconfiguredAccountVariables can flag the empty ones.
+async function getAccountVariableValues(customerId: string): Promise<{ [key: string]: string }> {
+  const values: { [key: string]: string } = {}
+  try {
+    const db = await getDatabase()
+    const variableDoc = await db.collection('variables').findOne({ customerId, type: 'variables' })
+    if (variableDoc) {
+      const decrypted = CustomerEncryption.decryptSensitiveFields(variableDoc, customerId)
+      for (const variable of (decrypted.variables || [])) {
+        if (variable?.name && typeof variable.placeholder === 'string' && variable.placeholder.trim() !== '') {
+          values[variable.name] = variable.placeholder
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching account variable values:', error)
+  }
+  return values
 }
 
 // POST /api/signature-requests - Create new signature request
@@ -82,7 +104,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Merge: prefer inputDynamicFieldValues (legacy format), then parse inputFields (new format)
-    const { dynamicFields: fieldsFromNew, variableOverrides } = normalizeFields(inputFields)
+    let { dynamicFields: fieldsFromNew, variableOverrides } = normalizeFields(inputFields)
     const { dynamicFields: fieldsFromLegacy } = normalizeFields(inputDynamicFieldValues)
     const mergedInputDynamicFieldValues = { ...fieldsFromNew, ...fieldsFromLegacy, ...(inputDynamicFieldValues && !Object.keys(inputDynamicFieldValues).some(k => k.includes(':')) ? inputDynamicFieldValues : {}) }
 
@@ -156,38 +178,80 @@ export async function POST(request: NextRequest) {
       dynamicFieldValues.clientTaxId = clientTaxId
     }
 
-    // Normalize field names to match contract's userFields and content fields (case-insensitive)
-    // This ensures that fields sent as "clientname" match "clientName" in the contract
+    // Normalize field names to match the contract's REAL field names using
+    // tolerant matching (case + spaces/underscores/hyphens insensitive). This
+    // ensures that partner payloads like "clientname" or "nombre_del_animal"
+    // bind to "{{dynamic:clientName}}" / "{{dynamic:Nombre del animal}}" in the
+    // contract. It also reroutes values that actually name an account variable
+    // (legacy callers that flattened everything into dynamicFieldValues) into
+    // variableOverrides so {{variable:X}} placeholders render correctly.
     const contractUserFieldNames = (decryptedContract.userFields || []).map((f: any) => f.name).filter(Boolean)
-    const contentFieldNames = extractDynamicFieldNames(decryptedContract.content || '')
-    const knownFieldNames = Array.from(new Set([...contractUserFieldNames, ...contentFieldNames]))
+    const contentDynamicNames = extractDynamicFieldNames(decryptedContract.content || '')
+    const contentVariableNames = extractVariableFieldNames(decryptedContract.content || '')
 
-    if (knownFieldNames.length > 0) {
-      // Build a lowercase→correct case lookup
-      const caseMap = new Map<string, string>()
-      for (const name of knownFieldNames) {
-        caseMap.set(name.toLowerCase(), name)
-      }
+    const knownDynamicNames = Array.from(new Set([...contractUserFieldNames, ...contentDynamicNames]))
 
-      // Re-key dynamicFieldValues to match the contract's field names
-      const normalized: { [key: string]: string | boolean } = {}
+    const dynamicCanonical = new Map<string, string>()
+    for (const name of knownDynamicNames) dynamicCanonical.set(normalizeFieldName(name), name)
+    const variableCanonical = new Map<string, string>()
+    for (const name of contentVariableNames) variableCanonical.set(normalizeFieldName(name), name)
+
+    if (dynamicCanonical.size > 0 || variableCanonical.size > 0) {
+      const normalizedDynamic: { [key: string]: string | boolean } = {}
+
       for (const [key, value] of Object.entries(dynamicFieldValues)) {
-        const correctCase = caseMap.get(key.toLowerCase())
-        if (correctCase && correctCase !== key) {
-          // Map to the correct case (e.g., "clientname" → "clientName")
-          normalized[correctCase] = value
-          console.log(`[Signature Request] Normalized field key: "${key}" → "${correctCase}"`)
+        const norm = normalizeFieldName(key)
+        const asDynamic = dynamicCanonical.get(norm)
+        const asVariable = variableCanonical.get(norm)
+
+        if (asDynamic) {
+          // Matches a dynamic placeholder → use the contract's exact field name
+          if (asDynamic !== key) {
+            console.log(`[Signature Request] Normalized dynamic field key: "${key}" → "${asDynamic}"`)
+          }
+          normalizedDynamic[asDynamic] = value
+        } else if (asVariable && typeof value === 'string') {
+          // Key actually names an account variable → route to variable overrides
+          console.log(`[Signature Request] Rerouting "${key}" to variable override "${asVariable}"`)
+          variableOverrides[asVariable] = value
         } else {
-          normalized[key] = value
+          normalizedDynamic[key] = value
         }
       }
 
       // Replace dynamicFieldValues with normalized version
       Object.keys(dynamicFieldValues).forEach(k => delete dynamicFieldValues[k])
-      Object.assign(dynamicFieldValues, normalized)
+      Object.assign(dynamicFieldValues, normalizedDynamic)
+
+      // Normalize variable override keys to the contract's exact variable names
+      if (variableCanonical.size > 0 && Object.keys(variableOverrides).length > 0) {
+        const normalizedVars: Record<string, string> = {}
+        for (const [key, value] of Object.entries(variableOverrides)) {
+          const canonical = variableCanonical.get(normalizeFieldName(key)) || key
+          normalizedVars[canonical] = value as string
+        }
+        variableOverrides = normalizedVars
+      }
     }
 
     console.log('[Signature Request] Final dynamicFieldValues:', JSON.stringify(dynamicFieldValues, null, 2))
+
+    // 🚫 Block sending when the contract uses ACCOUNT VARIABLES ({{variable:X}})
+    // that have no configured value AND weren't supplied as overrides in this
+    // request. The signer can't fill issuer variables, so they must be set in
+    // account settings first. The sender UI surfaces a modal linking there.
+    const accountVariableValues = await getAccountVariableValues(customerId)
+    const effectiveVariableValues = { ...accountVariableValues, ...variableOverrides }
+    const missingVariables = getUnconfiguredAccountVariables(decryptedContract.content || '', effectiveVariableValues)
+    if (missingVariables.length > 0) {
+      console.warn(`[Signature Request] Blocked: unconfigured account variables: ${missingVariables.join(', ')}`)
+      return NextResponse.json({
+        success: false,
+        error: `Faltan valores para variables de tu cuenta: ${missingVariables.join(', ')}. Configúralas en Ajustes antes de enviar el contrato.`,
+        errorCode: 'MISSING_ACCOUNT_VARIABLES',
+        missingVariables,
+      }, { status: 400 })
+    }
 
     // Extract signer info from dynamic fields
     let signerInfoFromFields: any = null
@@ -353,13 +417,13 @@ export async function POST(request: NextRequest) {
       })
 
       // Reuse existing shortId and accessKey
-      const shortId = updatedRequest.shortId
-      const accessKey = Buffer.from(`${shortId}:${customerId}`).toString('base64').slice(0, 6)
+      const reusedShortId: string = updatedRequest.shortId
+      const accessKey = Buffer.from(`${reusedShortId}:${customerId}`).toString('base64').slice(0, 6)
 
       // Continue with email/SMS sending logic using updated request
-      var result = { insertedId: updatedRequest._id, acknowledged: true }
-      var shortId = updatedRequest.shortId
-      var signatureRequest = {
+      var result: { insertedId: any, acknowledged: boolean } = { insertedId: updatedRequest._id, acknowledged: true }
+      var shortId: string = reusedShortId
+      var signatureRequest: any = {
         ...updatedRequest,
         shortId,
         signatureUrl: `${process.env.NEXTAUTH_URL}/sign/${shortId}?a=${accessKey}`,
@@ -369,7 +433,11 @@ export async function POST(request: NextRequest) {
       console.log(`[Signature Request] Creating new signature request for contract ${contractId}`)
 
       // Generate unique short ID for the signature request (ensure it doesn't exist)
-      let shortId = nanoid(10)
+      // NOTE: `var` (function-scoped) on purpose — the final response `return`
+      // below reads `shortId`, and the reuse branch declares it as `var` too.
+      // A block-scoped `let` here left the top-level response `shortId` undefined
+      // for newly-created requests (consumers like mivet then stored undefined).
+      var shortId = nanoid(10)
       let attempts = 0
       const maxAttempts = 5
 
@@ -583,9 +651,13 @@ export async function POST(request: NextRequest) {
           // Only send actual email for email signature type
           console.log(`[Signature Request] Sending email to ${signerEmail} with link: ${signatureRequest.signatureUrl}`)
 
-          // Get customer's miNombre variable for sender name
+          // Get customer's miNombre variable for sender name.
+          // NOTE: this handler authenticates via getAuthContext (no NextAuth
+          // `session` object in scope), so fall back to the configured company
+          // name rather than a non-existent `session` (which threw ReferenceError
+          // and silently aborted the email send whenever miNombre was unset).
           const miNombre = await getCustomerMiNombre(customerId)
-          const senderName = miNombre || session.user.name || session.user.email
+          const senderName = miNombre || process.env.COMPANY_NAME || 'oSign.EU'
 
           console.log(`[Signature Request] Using sender name: ${senderName} (miNombre: ${miNombre})`)
 

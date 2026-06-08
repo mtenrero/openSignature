@@ -143,21 +143,27 @@ export async function GET(request: NextRequest) {
         paymentIntent = await stripe.paymentIntents.retrieve(
           stripePaymentIntentId,
           {
-            expand: ['charges', 'charges.data']
+            // PaymentIntent.charges was removed in API version 2022-11-15. Expand
+            // latest_charge to get the most recent Charge object instead.
+            expand: ['latest_charge']
           }
         )
+
+        // latest_charge is the Charge object when expanded (string id or null otherwise).
+        let chargeObj: any = (paymentIntent.latest_charge && typeof paymentIntent.latest_charge !== 'string')
+          ? paymentIntent.latest_charge
+          : null
 
         console.log('DEBUG: Payment intent retrieved:', {
           id: paymentIntent.id,
           status: paymentIntent.status,
           customer: paymentIntent.customer,
-          chargesCount: paymentIntent.charges?.data?.length || 0,
-          charges: paymentIntent.charges
+          hasLatestCharge: !!chargeObj
         });
 
-        // If no charges in the expanded data, try to get them separately
-        if (!paymentIntent.charges?.data?.length) {
-          console.log('DEBUG: No charges found in expanded data, fetching separately...');
+        // If the intent has no charge yet, try to fetch charges separately.
+        if (!chargeObj) {
+          console.log('DEBUG: No latest_charge on intent, fetching charges separately...');
 
           try {
             const charges = await stripe.charges.list({
@@ -171,8 +177,7 @@ export async function GET(request: NextRequest) {
             });
 
             if (charges.data.length > 0) {
-              // Manually attach the charges to the payment intent
-              paymentIntent.charges = { data: charges.data };
+              chargeObj = charges.data[0];
             }
           } catch (chargeError) {
             console.error('DEBUG: Error fetching charges separately:', chargeError);
@@ -191,11 +196,10 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        if (!paymentIntent.charges?.data?.[0]) {
+        if (!chargeObj) {
           console.error('DEBUG: No charges found after all attempts:', {
             paymentIntentId: stripePaymentIntentId,
-            status: paymentIntent.status,
-            expandedCharges: paymentIntent.charges
+            status: paymentIntent.status
           });
 
           return NextResponse.json(
@@ -204,7 +208,7 @@ export async function GET(request: NextRequest) {
           )
         }
 
-        charge = paymentIntent.charges.data[0]
+        charge = chargeObj
         receiptUrl = charge.receipt_url
 
         console.log('DEBUG: Charge details:', {

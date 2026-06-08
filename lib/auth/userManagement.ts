@@ -87,9 +87,61 @@ export class Auth0UserManager {
     return this.accessToken
   }
 
+  /**
+   * True when the Auth0 Management API must NOT be contacted: explicitly
+   * disabled (local dev / e2e isolation) or simply not configured. Callers
+   * treat a null user as "no subscription" → free plan, no limit enforcement,
+   * which is the desired behaviour for isolated local/test runs.
+   */
+  private isManagementDisabled(): boolean {
+    return (
+      process.env.AUTH0_DISABLE_MANAGEMENT === 'true' ||
+      !this.domain ||
+      !this.clientId ||
+      !this.clientSecret
+    )
+  }
+
+  // ── DEV-ONLY in-memory Auth0 stand-in ───────────────────────────────────────
+  // Enabled only by DEV_FAKE_AUTH0=true (set by scripts/stripe-real-verify.mjs so the
+  // REAL Stripe flow can run end-to-end without a live Auth0 tenant). getUser /
+  // updateUserMetadata / updateUserSubscription read/write this process-local map
+  // instead of the Auth0 Management API. Never active in production or automated tests.
+  private static devUsers = new Map<string, Auth0User>()
+  private get devStubEnabled(): boolean {
+    return process.env.DEV_FAKE_AUTH0 === 'true'
+  }
+  private getDevUser(userId: string): Auth0User {
+    let u = Auth0UserManager.devUsers.get(userId)
+    if (!u) {
+      const now = new Date().toISOString()
+      u = {
+        user_id: userId,
+        email: process.env.DEV_USER_EMAIL || 'dev@osign.local',
+        name: 'Dev User',
+        user_metadata: {
+          subscriptionPlan: process.env.DEV_USER_PLAN || 'pay_per_use',
+          registrationDate: now,
+          subscriptionStatus: 'active',
+        },
+        created_at: now,
+        updated_at: now,
+      }
+      Auth0UserManager.devUsers.set(userId, u)
+    }
+    return u
+  }
+
   async getUser(userId: string): Promise<Auth0User | null> {
+    if (this.devStubEnabled) {
+      return this.getDevUser(userId)
+    }
+    if (this.isManagementDisabled()) {
+      return null
+    }
+
     const token = await this.getManagementToken()
-    
+
     const response = await fetch(`https://${this.domain}/api/v2/users/${encodeURIComponent(userId)}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -206,6 +258,19 @@ export class Auth0UserManager {
       stripeCustomerId
     })
 
+    if (this.devStubEnabled) {
+      const u = this.getDevUser(userId)
+      u.user_metadata = {
+        ...(u.user_metadata as UserMetadata),
+        subscriptionPlan,
+        subscriptionStatus: 'active',
+        lastPaymentDate: new Date().toISOString(),
+        ...(stripeCustomerId ? { stripeCustomerId } : {}),
+      }
+      u.updated_at = new Date().toISOString()
+      return u
+    }
+
     const token = await this.getManagementToken()
 
     const userMetadata: Partial<UserMetadata> = {
@@ -251,6 +316,13 @@ export class Auth0UserManager {
   }
 
   async updateUserMetadata(userId: string, metadata: Partial<UserMetadata>): Promise<Auth0User> {
+    if (this.devStubEnabled) {
+      const u = this.getDevUser(userId)
+      u.user_metadata = { ...(u.user_metadata as UserMetadata), ...metadata }
+      u.updated_at = new Date().toISOString()
+      return u
+    }
+
     const token = await this.getManagementToken()
     
     const response = await fetch(`https://${this.domain}/api/v2/users/${encodeURIComponent(userId)}`, {

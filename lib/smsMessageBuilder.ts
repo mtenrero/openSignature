@@ -44,7 +44,7 @@ export function buildSignatureSMS(signatureUrl: string, contractName?: string): 
   // Format: Se solicita su firma en el contrato "NAME...": URL
   const prefix = 'Se solicita su firma en el contrato "'
   const suffix = `": ${signatureUrl}`
-  const ellipsis = '..' // ASCII ellipsis (not unicode …)
+  const ellipsis = '...' // ASCII ellipsis (three dots, not unicode …)
   const fixedLength = prefix.length + suffix.length + ellipsis.length
   const availableForName = MAX_LENGTH - fixedLength
 

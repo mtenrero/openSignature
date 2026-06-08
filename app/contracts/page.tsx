@@ -77,6 +77,10 @@ export default function DashboardPage() {
     contractName: "",
   });
   const [requestingSignature, setRequestingSignature] = useState(false);
+  const [missingVarsModal, setMissingVarsModal] = useState<{ open: boolean; variables: string[] }>({
+    open: false,
+    variables: [],
+  });
   const [emailModalOpened, setEmailModalOpened] = useState(false);
   const [requestMethod, setRequestMethod] = useState<
     "email" | "sms" | "local" | "tablet" | "qr"
@@ -361,19 +365,29 @@ export default function DashboardPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to create signature request");
+        const err = await response.json().catch(() => ({} as any));
+        // Account variable(s) used by the contract aren't configured: surface a
+        // modal that takes the user to settings instead of a generic error.
+        if (err?.errorCode === "MISSING_ACCOUNT_VARIABLES") {
+          setMissingVarsModal({ open: true, variables: err.missingVariables || [] });
+          throw new Error("MISSING_ACCOUNT_VARIABLES");
+        }
+        throw new Error(err?.error || "Failed to create signature request");
       }
 
       const result = await response.json();
 
       return result;
     } catch (error) {
-      console.error("Error creating signature request:", error);
-      notifications.show({
-        title: "Error",
-        message: "No se pudo crear la solicitud de firma.",
-        color: "red",
-      });
+      const isMissingVars = error instanceof Error && error.message === "MISSING_ACCOUNT_VARIABLES";
+      if (!isMissingVars) {
+        console.error("Error creating signature request:", error);
+        notifications.show({
+          title: "Error",
+          message: "No se pudo crear la solicitud de firma.",
+          color: "red",
+        });
+      }
       throw error;
     } finally {
       setRequestingSignature(false);
@@ -525,13 +539,16 @@ export default function DashboardPage() {
         });
       }
     } catch (error) {
-      console.error("Error creating signature request:", error);
-      notifications.show({
-        title: "Error",
-        message:
-          "No se pudo crear la solicitud de firma. Por favor, intente de nuevo.",
-        color: "red",
-      });
+      // The missing-account-variables case already shows its own modal.
+      if (!(error instanceof Error && error.message === "MISSING_ACCOUNT_VARIABLES")) {
+        console.error("Error creating signature request:", error);
+        notifications.show({
+          title: "Error",
+          message:
+            "No se pudo crear la solicitud de firma. Por favor, intente de nuevo.",
+          color: "red",
+        });
+      }
     } finally {
       setRequestingSignature(false);
     }
@@ -1604,6 +1621,34 @@ export default function DashboardPage() {
                 loading={requestingSignature}
               >
                 Entiendo, Crear QR
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
+
+        {/* Missing account variables — blocks sending until configured in settings */}
+        <Modal
+          opened={missingVarsModal.open}
+          onClose={() => setMissingVarsModal({ open: false, variables: [] })}
+          title="Faltan variables de tu cuenta"
+          centered
+        >
+          <Stack gap="md">
+            <Alert color="grape" variant="light" icon={<IconAlertTriangle size={18} />}>
+              Este contrato usa variables de tu cuenta que todavía no tienen valor.
+              No se puede enviar hasta que las configures en Ajustes.
+            </Alert>
+            <Stack gap={4}>
+              {missingVarsModal.variables.map((v) => (
+                <Text key={v} fw={600} c="grape">{`{{variable:${v}}}`}</Text>
+              ))}
+            </Stack>
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setMissingVarsModal({ open: false, variables: [] })}>
+                Cancelar
+              </Button>
+              <Button color="grape" onClick={() => router.push("/settings")}>
+                Configurar en Ajustes
               </Button>
             </Group>
           </Stack>

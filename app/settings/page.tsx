@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Container, Title, Button, Card, TextInput, Textarea, Stack, Group, Text, Checkbox, Select, ActionIcon, Modal, Box } from '@mantine/core'
+import { Container, Title, Button, Card, TextInput, Textarea, Stack, Group, Text, Checkbox, Select, ActionIcon, Modal, Box, Badge } from '@mantine/core'
 import { IconDeviceFloppy, IconPlus, IconTrash, IconArrowLeft, IconSettings } from '@tabler/icons-react'
 import { useRouter } from 'next/navigation'
 import { notifications } from '@mantine/notifications'
@@ -310,6 +310,11 @@ export default function SettingsPage() {
                       <Text size="sm" c="dimmed">
                         ({getFieldTypeLabel(field.type)})
                       </Text>
+                      {(field as any).autoDetected && (
+                        <Badge color="grape" variant="light" size="sm">
+                          Usada en contratos · sin valor
+                        </Badge>
+                      )}
                     </Group>
 
                     {field.name === 'fecha' ? (

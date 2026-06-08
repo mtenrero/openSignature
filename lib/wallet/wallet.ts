@@ -63,6 +63,10 @@ export class VirtualWallet {
     return collection
   }
 
+  // Attempt the unique idempotency index only once per process (it can fail on a DB
+  // with legacy duplicates — see note below — and we don't want to retry/log every call).
+  private static uniqueCreditIndexEnsured = false
+
   static async getTransactionsCollection() {
     const db = await getDatabase()
     const collection = db.collection('wallet_transactions')
@@ -70,6 +74,35 @@ export class VirtualWallet {
     // Ensure indexes
     await collection.createIndex({ customerId: 1, createdAt: -1 })
     await collection.createIndex({ stripePaymentIntentId: 1 })
+
+    // Atomic idempotency for Stripe-funded credits: a payment intent must produce AT
+    // MOST ONE credit, even under concurrent checkout.session.completed +
+    // payment_intent.succeeded + verify-payment races. Partial filter so it only
+    // constrains credits carrying a string payment intent (debits / manual no-pi
+    // credits are unaffected). Wrapped + once-gated: a DB with pre-existing duplicates
+    // (legacy data from before the app-level guard) would fail the build — that must
+    // NOT break wallet operations; the app-level check still blocks new dupes until
+    // `scripts/migrate-wallet-dedupe.mjs` is run to clean up and let the index build.
+    if (!VirtualWallet.uniqueCreditIndexEnsured) {
+      VirtualWallet.uniqueCreditIndexEnsured = true
+      try {
+        await collection.createIndex(
+          { stripePaymentIntentId: 1 },
+          {
+            unique: true,
+            partialFilterExpression: { type: 'credit', stripePaymentIntentId: { $type: 'string' } },
+            name: 'uniq_credit_stripe_payment_intent',
+          },
+        )
+      } catch (err) {
+        console.warn(
+          '[wallet] Could not create uniq_credit_stripe_payment_intent index ' +
+            '(likely legacy duplicate credits). Relying on the app-level idempotency ' +
+            'guard; run scripts/migrate-wallet-dedupe.mjs to clean up and enable it.',
+          err instanceof Error ? err.message : err,
+        )
+      }
+    }
 
     return collection
   }
@@ -127,6 +160,15 @@ export class VirtualWallet {
     const walletCollection = await this.getWalletCollection()
     const transactionsCollection = await this.getTransactionsCollection()
 
+    // Idempotency: a Stripe payment intent must credit the wallet AT MOST ONCE, even
+    // though a single card top-up fires three crediting paths (checkout.session.completed
+    // + payment_intent.succeeded webhooks AND the success page's verify-payment call).
+    // If this intent already produced a credit, return it without crediting again.
+    if (stripePaymentIntentId) {
+      const existing = await transactionsCollection.findOne({ stripePaymentIntentId, type: 'credit' })
+      if (existing) return existing as WalletTransaction
+    }
+
     // Get current balance
     const currentBalance = await this.getBalance(customerId)
 
@@ -143,10 +185,21 @@ export class VirtualWallet {
       createdAt: new Date()
     }
 
-    // Insert transaction
-    const transactionResult = await transactionsCollection.insertOne(transaction)
+    // Insert transaction. The unique partial index closes the check-then-insert race:
+    // if a concurrent call already inserted a credit for this payment intent, this
+    // insert fails with E11000 — return the winner WITHOUT crediting the balance again.
+    let transactionResult
+    try {
+      transactionResult = await transactionsCollection.insertOne(transaction)
+    } catch (err: any) {
+      if (err?.code === 11000 && stripePaymentIntentId) {
+        const existing = await transactionsCollection.findOne({ stripePaymentIntentId, type: 'credit' })
+        if (existing) return existing as WalletTransaction
+      }
+      throw err
+    }
 
-    // Update wallet balance
+    // Update wallet balance — only after we won the insert.
     await walletCollection.updateOne(
       { customerId },
       {

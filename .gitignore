@@ -2,6 +2,9 @@ node_modules/
 
 .next/
 
+# This project uses yarn only — never commit an npm lockfile
+package-lock.json
+
 # Environment files
 local.env
 .env.local
@@ -9,3 +12,10 @@ local.env
 .env*.local
 .env*
 .vercel
+
+# Playwright artifacts
+test-results/
+playwright-report/
+
+# Local scratch data (label-studio db, media, exports) — not source
+mydata/

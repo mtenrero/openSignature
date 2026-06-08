@@ -304,6 +304,45 @@ export function extractDynamicFieldNames(content: string): string[] {
 }
 
 /**
+ * Normalize a field key for tolerant matching: case-insensitive and
+ * insensitive to spaces, underscores and hyphens. This lets partner-supplied
+ * keys such as "nombre_del_animal" bind to a contract placeholder written as
+ * "{{dynamic:Nombre del animal}}" (different spacing/case but same field).
+ */
+export function normalizeFieldName(name: string): string {
+  return String(name || '').toLowerCase().replace(/[\s_\-]+/g, '')
+}
+
+/**
+ * Extract account-variable field names from contract content ({{variable:X}})
+ */
+export function extractVariableFieldNames(content: string): string[] {
+  if (!content) return []
+  const names = new Set<string>()
+  const variablePattern = /\{\{variable:([^}]+)\}\}/g
+  for (const match of content.matchAll(variablePattern)) {
+    names.add(match[1].trim())
+  }
+  return Array.from(names)
+}
+
+/**
+ * Collect the distinct account-variable names ({{variable:X}}) referenced across
+ * a set of contract contents, excluding internal vars (fecha/fechaHora). Used to
+ * surface variables that contracts rely on but the account hasn't configured yet.
+ */
+export function getReferencedVariableNames(contents: string[]): string[] {
+  const internal = new Set(['fecha', 'fechaHora'])
+  const names = new Set<string>()
+  for (const content of contents) {
+    for (const name of extractVariableFieldNames(content || '')) {
+      if (!internal.has(name)) names.add(name)
+    }
+  }
+  return Array.from(names)
+}
+
+/**
  * Validate that contract has mandatory fields for legal compliance
  */
 export function validateMandatoryFields(
@@ -465,17 +504,48 @@ export function getMissingContentFields(
     !internalVars.has(name)
   )
 
-  // Convert to UserField-compatible objects
+  // Convert to UserField-compatible objects.
+  // Only the legally mandatory fields default to required:true. Other
+  // placeholders found in content are optional unless declared in userFields.
+  const LEGAL_REQUIRED = new Set(['clientName', 'clientTaxId'])
   const baseOrder = (existingUserFields || []).length
   return missingFields.map((name, index) => ({
     id: `content-detected-${name}`,
     name,
     type: inferFieldType(name),
-    required: true,
+    required: LEGAL_REQUIRED.has(name),
     placeholder: `Ingrese ${formatFieldLabel(name)}`,
     label: formatFieldLabel(name),
     order: baseOrder + index + 1
   }))
+}
+
+/**
+ * Names of dynamic fields ({{dynamic:X}} and friends) used in the content that
+ * still have no value, so they would render as a [placeholder]. The signer must
+ * fill these before reviewing the contract. Account variables ({{variable:X}})
+ * and internal vars (fecha/fechaHora) are excluded: those are issuer data, not
+ * something the signer provides.
+ */
+export function getUnfilledContentDynamicFields(
+  content: string,
+  dynamicFieldValues: { [key: string]: string | boolean } = {},
+  accountVariableNames: string[] = []
+): string[] {
+  if (!content) return []
+  const accountVarSet = new Set(accountVariableNames)
+  const internalVars = new Set(['fecha', 'fechaHora'])
+  const variableNames = new Set(extractVariableFieldNames(content))
+  const unfilled = new Set<string>()
+
+  for (const name of extractDynamicFieldNames(content)) {
+    if (accountVarSet.has(name) || internalVars.has(name) || variableNames.has(name)) continue
+    const value = dynamicFieldValues[name]
+    const isEmpty = value === undefined || value === null || (typeof value === 'string' && value.trim() === '')
+    if (isEmpty) unfilled.add(name)
+  }
+
+  return Array.from(unfilled)
 }
 
 /** Infer field type from field name */
