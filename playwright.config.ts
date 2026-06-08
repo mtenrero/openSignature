@@ -1,13 +1,19 @@
 import { defineConfig, devices } from '@playwright/test'
 import path from 'path'
+import fs from 'fs'
 
 const PORT = Number(process.env.E2E_PORT ?? 3100)
 
+// The cross-repo specs import mivet's real client from ../mivet-appfront. That sibling
+// is present locally but NOT in CI, so skip those specs (at the file level, so they're
+// never even imported) when the sibling isn't checked out.
+const hasMivet = fs.existsSync(path.resolve(__dirname, '../mivet-appfront/lib/osign-client.ts'))
+
 export default defineConfig({
   testDir: './e2e',
-  // The real-Stripe checkout test has its own config (playwright.stripe.config.ts)
-  // with real test keys + stripe listen; never run it under the placeholder-key setup.
-  testIgnore: '**/stripe-real/**',
+  // Always skip the real-Stripe checkout suite (own config + real keys); also skip the
+  // cross-repo mivet specs when the sibling repo isn't available (e.g. CI).
+  testIgnore: hasMivet ? ['**/stripe-real/**'] : ['**/stripe-real/**', '**/mivet-*.spec.ts'],
   fullyParallel: false, // shared DB state across tests
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

@@ -22,6 +22,12 @@
     "init-db": "node scripts/init-couchdb.js",
     "setup": "node scripts/setup-env.js"
   },
+  "resolutions": {
+    "minimist": "^1.2.8",
+    "url-parse": "^1.5.10",
+    "querystringify": "^2.2.0",
+    "jws": "^3.2.3"
+  },
   "dependencies": {
     "@auth/core": "^0.40.0",
     "@mantine/core": "^8.2.8",
@@ -42,13 +48,13 @@
     "@types/signature_pad": "^4.0.0",
     "@types/stripe": "^8.0.416",
     "auth0": "^5.0.0",
-    "axios": "^1.11.0",
+    "axios": "^1.15.1",
     "axios-retry": "^4.5.0",
     "bcryptjs": "^3.0.2",
     "dayjs": "^1.11.18",
     "dotenv": "^17.2.2",
     "geoip-lite": "^1.4.10",
-    "handlebars": "^4.7.8",
+    "handlebars": "^4.7.9",
     "html-to-text": "^9.0.5",
     "html2canvas": "^1.4.1",
     "jsonwebtoken": "^9.0.2",

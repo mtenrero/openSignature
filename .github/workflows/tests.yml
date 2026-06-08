@@ -1,0 +1,98 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-integration:
+    name: unit + integration (jest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      # mongodb-memory-server downloads the Mongo 7.0.14 binary on first run.
+      - name: Cache mongodb-memory-server binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-bin-7.0.14
+      - name: Unit tests (node + jsdom)
+        run: yarn test
+      - name: Integration tests (route handlers vs in-memory Mongo)
+        run: yarn test:integration
+
+  e2e:
+    name: e2e (playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Cache mongodb-memory-server binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-bin-7.0.14
+      # Boots `next dev` on an in-memory Mongo with placeholder creds (see
+      # e2e/globalSetup.ts). The cross-repo mivet specs (need ../mivet-appfront) and the
+      # real-Stripe suite (own config + secrets) are auto-excluded by playwright.config.ts.
+      - name: Playwright e2e
+        run: yarn test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  build:
+    name: production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      # Placeholder env so env-dependent modules can import; no cloud is contacted (no
+      # page prerenders with data, so the bundle is env-independent here).
+      - name: Build
+        run: yarn build
+        env:
+          MONGODB_TEST_URI: mongodb://127.0.0.1:27777/buildcheck
+          MONGO_URL: mongodb://placeholder:27017
+          MONGO_DB: ci
+          MONGO_USER: ci
+          MONGO_PASSWORD: ci
+          NEXTAUTH_URL: http://localhost:3000
+          NEXTAUTH_SECRET: ci-build-secret
+          AUTH_SECRET: ci-build-secret
+          AUTH0_CLIENT_ID: ci
+          AUTH0_CLIENT_SECRET: ci
+          AUTH0_ISSUER: https://ci.example.auth0.com
+          AUTH0_DOMAIN: ci.example.auth0.com
+          AUTH0_DISABLE_MANAGEMENT: 'true'
+          STRIPE_SECRET_KEY: sk_test_ci_placeholder
+          STRIPE_WEBHOOK_SECRET: whsec_ci_placeholder
+          OPENAI_API_KEY: sk-ci-placeholder
+          EMAIL_ENABLED: 'false'
+          SMS_ENABLED: 'false'
