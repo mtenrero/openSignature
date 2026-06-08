@@ -9,7 +9,10 @@ const MONGO_PASSWORD = process.env.MONGO_PASSWORD
 
 // In test mode (MONGODB_TEST_URI set) we skip the strict env check — the test
 // URI brings its own host/port and no auth is needed for mongodb-memory-server.
-if (!process.env.MONGODB_TEST_URI && (!MONGO_URL || !MONGO_DB || !MONGO_USER || !MONGO_PASSWORD)) {
+// Also skip during `next build` (page-data collection imports this before any DB
+// access; the connection is lazy, so missing env is a runtime concern, not a build one).
+if (process.env.NEXT_PHASE !== 'phase-production-build' &&
+    !process.env.MONGODB_TEST_URI && (!MONGO_URL || !MONGO_DB || !MONGO_USER || !MONGO_PASSWORD)) {
   throw new Error('Missing required MongoDB environment variables')
 }
 

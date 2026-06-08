@@ -1,7 +1,9 @@
 import OpenAI from 'openai'
 
+// `next build` imports this module during page-data collection; the SDK constructor
+// throws on a missing key, so use a placeholder at build. Real key is used at runtime.
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY || 'sk-build-phase-placeholder',
 })
 
 export interface ContractGenerationRequest {

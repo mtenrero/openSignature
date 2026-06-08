@@ -1,8 +1,14 @@
 import NextAuth, { NextAuthConfig } from "next-auth"
 import Auth0 from "next-auth/providers/auth0"
 
-// Validate required environment variables
-const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET
+// Validate required environment variables.
+// `next build` ("Collecting page data") imports every route module, so a hard throw
+// for runtime-only secrets fails the build. During the build phase we fall back to
+// placeholders (auth never executes at build) and only enforce real env at dev/runtime.
+// Accept AUTH_SECRET too — that's NextAuth v5's own env var name.
+const IS_BUILD_PHASE = process.env.NEXT_PHASE === 'phase-production-build'
+const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET ||
+  (IS_BUILD_PHASE ? 'build-phase-placeholder-secret' : undefined)
 const NEXTAUTH_URL = process.env.NEXTAUTH_URL || 
   (typeof window !== 'undefined' ? window.location.origin : 
    process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : undefined)
@@ -21,15 +27,15 @@ if (NEXTAUTH_URL) {
 }
 
 if (!NEXTAUTH_SECRET) {
-  throw new Error('Missing required environment variable: NEXTAUTH_SECRET')
+  throw new Error('Missing required environment variable: NEXTAUTH_SECRET (or AUTH_SECRET)')
 }
 
 const providers = []
 
 // Auth0 is mandatory for authentication
-const AUTH0_CLIENT_ID = process.env.AUTH0_CLIENT_ID
-const AUTH0_CLIENT_SECRET = process.env.AUTH0_CLIENT_SECRET
-const AUTH0_ISSUER = process.env.AUTH0_ISSUER
+const AUTH0_CLIENT_ID = process.env.AUTH0_CLIENT_ID || (IS_BUILD_PHASE ? 'build-placeholder-id' : undefined)
+const AUTH0_CLIENT_SECRET = process.env.AUTH0_CLIENT_SECRET || (IS_BUILD_PHASE ? 'build-placeholder-secret' : undefined)
+const AUTH0_ISSUER = process.env.AUTH0_ISSUER || (IS_BUILD_PHASE ? 'https://build-placeholder.auth0.com' : undefined)
 
 if (!AUTH0_CLIENT_ID || !AUTH0_CLIENT_SECRET || !AUTH0_ISSUER) {
   throw new Error('Auth0 configuration is required. Please set AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET, and AUTH0_ISSUER environment variables.')

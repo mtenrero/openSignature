@@ -8,11 +8,15 @@ import { SUBSCRIPTION_PLANS, SubscriptionPlan } from '@/lib/subscription/plans'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { VirtualWallet } from '@/lib/wallet/wallet'
 
-if (!process.env.STRIPE_SECRET_KEY) {
+// Runtime-only requirement: `next build` imports this module during page-data
+// collection, so use a placeholder during the build phase (the SDK constructor throws
+// on an undefined key) and only enforce the real key at dev/runtime.
+const IS_BUILD_PHASE = process.env.NEXT_PHASE === 'phase-production-build'
+if (!process.env.STRIPE_SECRET_KEY && !IS_BUILD_PHASE) {
   throw new Error('Missing STRIPE_SECRET_KEY environment variable')
 }
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_build_phase_placeholder', {
   apiVersion: '2025-08-27.basil'
 })
 
