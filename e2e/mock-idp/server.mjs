@@ -23,6 +23,8 @@ export const MOCK_CLIENT_ID = 'e2e-client-id'
 export const MOCK_CLIENT_SECRET = 'e2e-client-secret'
 export const MOCK_MGMT_CLIENT_ID = 'e2e-mgmt-id'
 export const MOCK_MGMT_CLIENT_SECRET = 'e2e-mgmt-secret'
+export const MOCK_AK_CLIENT_ID = 'e2e-authentik-client'
+export const MOCK_AK_CLIENT_SECRET = 'e2e-authentik-secret'
 export const NAMESPACE = 'https://vetcontrol-pro.eu.auth0.com'
 
 export const DEFAULT_USER = {
@@ -34,12 +36,20 @@ export const DEFAULT_USER = {
   businessIdVia: 'app_metadata',
 }
 
+// "authentik" flavour: per-provider issuer under /authentik/ (trailing slash, like Authentik's
+// /application/o/<slug>/), confidential client, PKCE+nonce, vc_tenant_ref claim.
+export const DEFAULT_AK_USER = {
+  sub: 'ak-hashed-sub-0001', email: 'vet@example.com', name: 'Vet User',
+  vc_tenant_ref: null, role: 'admin',
+}
+
 export async function startMockIdp({ port = 0, host = '127.0.0.1' } = {}) {
   const { publicKey, privateKey } = await generateKeyPair('RS256')
   const jwk = { ...(await exportJWK(publicKey)), kid: 'mock-idp-key-1', use: 'sig', alg: 'RS256' }
 
   let user = { ...DEFAULT_USER }
-  let log = { authorize: [], token: [] }
+  let akUser = { ...DEFAULT_AK_USER }
+  let log = { authorize: [], token: [], endSession: [] }
   const codes = new Map()
   const accessTokens = new Map()
   let issuer = ''
@@ -62,6 +72,12 @@ export async function startMockIdp({ port = 0, host = '127.0.0.1' } = {}) {
     if (u.businessID && (u.businessIdVia === 'namespaced' || u.businessIdVia === 'both')) {
       c[`${NAMESPACE}/businessID`] = u.businessID
     }
+    return c
+  }
+
+  const akClaims = (u) => {
+    const c = { sub: u.sub, email: u.email, email_verified: true, name: u.name, role: u.role }
+    if (u.vc_tenant_ref) c.vc_tenant_ref = u.vc_tenant_ref
     return c
   }
 
@@ -95,6 +111,73 @@ export async function startMockIdp({ port = 0, host = '127.0.0.1' } = {}) {
           scopes_supported: ['openid', 'profile', 'email'],
         })
       }
+      // ---- Authentik flavour ----
+      if (url.pathname === '/authentik/.well-known/openid-configuration') {
+        const base = `${issuer}/authentik`
+        return json(res, 200, {
+          issuer: `${base}/`,
+          authorization_endpoint: `${base}/authorize/`,
+          token_endpoint: `${base}/token/`,
+          userinfo_endpoint: `${base}/userinfo/`,
+          jwks_uri: `${base}/jwks/`,
+          end_session_endpoint: `${base}/end-session/`,
+          response_types_supported: ['code'],
+          subject_types_supported: ['public'],
+          id_token_signing_alg_values_supported: ['RS256'],
+          token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic'],
+          code_challenge_methods_supported: ['S256'],
+          scopes_supported: ['openid', 'profile', 'email', 'osign_tenant_ref'],
+        })
+      }
+      if (url.pathname === '/authentik/jwks/') return json(res, 200, { keys: [jwk] })
+      if (url.pathname === '/authentik/authorize/') {
+        const q = Object.fromEntries(url.searchParams)
+        log.authorize.push({ flavour: 'authentik', ...q })
+        if (q.client_id !== MOCK_AK_CLIENT_ID) return oauthError(res, 400, 'unauthorized_client', 'unknown client_id')
+        if (q.response_type !== 'code' || !q.redirect_uri || !q.state) return oauthError(res, 400, 'invalid_request', 'bad request')
+        if (!q.code_challenge || !q.nonce) return oauthError(res, 400, 'invalid_request', 'PKCE and nonce are required')
+        const redirect = new URL(q.redirect_uri)
+        if (redirect.pathname !== '/api/auth/callback/authentik') return oauthError(res, 400, 'invalid_request', 'redirect_uri not registered')
+        const code = crypto.randomBytes(24).toString('hex')
+        codes.set(code, {
+          flavour: 'authentik', user: { ...akUser }, redirect_uri: q.redirect_uri,
+          code_challenge: q.code_challenge, nonce: q.nonce,
+        })
+        redirect.searchParams.set('code', code)
+        redirect.searchParams.set('state', q.state)
+        res.writeHead(302, { location: redirect.toString(), 'cache-control': 'no-store' })
+        return res.end()
+      }
+      if (url.pathname === '/authentik/token/' && req.method === 'POST') {
+        const form = Object.fromEntries(new URLSearchParams(await readBody(req)))
+        log.token.push({ flavour: 'authentik', grant_type: form.grant_type, has_verifier: !!form.code_verifier })
+        if (form.client_id !== MOCK_AK_CLIENT_ID || form.client_secret !== MOCK_AK_CLIENT_SECRET) {
+          return oauthError(res, 401, 'invalid_client', 'bad client credentials')
+        }
+        const entry = codes.get(form.code)
+        codes.delete(form.code)
+        if (!entry || entry.flavour !== 'authentik') return oauthError(res, 400, 'invalid_grant', 'unknown or used code')
+        if (entry.redirect_uri !== form.redirect_uri) return oauthError(res, 400, 'invalid_grant', 'redirect_uri mismatch')
+        const expected = crypto.createHash('sha256').update(String(form.code_verifier || '')).digest('base64url')
+        if (expected !== entry.code_challenge) return oauthError(res, 400, 'invalid_grant', 'PKCE verification failed')
+        const idToken = await new SignJWT({ ...akClaims(entry.user), nonce: entry.nonce })
+          .setProtectedHeader({ alg: 'RS256', kid: jwk.kid })
+          .setIssuer(`${issuer}/authentik/`).setAudience(MOCK_AK_CLIENT_ID).setSubject(entry.user.sub)
+          .setIssuedAt().setExpirationTime('1h').sign(privateKey)
+        return json(res, 200, { access_token: crypto.randomBytes(24).toString('hex'), id_token: idToken, token_type: 'Bearer', expires_in: 3600, scope: 'openid profile email osign_tenant_ref' })
+      }
+      if (url.pathname === '/authentik/end-session/') {
+        const q = Object.fromEntries(url.searchParams)
+        log.endSession.push(q)
+        res.writeHead(302, { location: q.post_logout_redirect_uri || '/' })
+        return res.end()
+      }
+      if (url.pathname === '/__test/authentik-user' && req.method === 'POST') {
+        const body = JSON.parse((await readBody(req)) || 'null')
+        akUser = { ...DEFAULT_AK_USER, ...(body || {}) }
+        return json(res, 200, { ok: true })
+      }
+
       if (url.pathname === '/.well-known/jwks.json') return json(res, 200, { keys: [jwk] })
 
       if (url.pathname === '/authorize') {
@@ -213,7 +296,8 @@ export async function startMockIdp({ port = 0, host = '127.0.0.1' } = {}) {
       if (url.pathname === '/__test/log') return json(res, 200, log)
       if (url.pathname === '/__test/reset') {
         user = { ...DEFAULT_USER }
-        log = { authorize: [], token: [] }
+        akUser = { ...DEFAULT_AK_USER }
+        log = { authorize: [], token: [], endSession: [] }
         created.clear()
         return json(res, 200, { ok: true })
       }

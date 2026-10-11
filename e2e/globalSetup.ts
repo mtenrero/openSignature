@@ -110,6 +110,10 @@ export default async function globalSetup() {
     AUTH0_ISSUER: idp.issuer,
     AUTH0_CLIENT_ID: 'e2e-client-id',
     AUTH0_CLIENT_SECRET: 'e2e-client-secret',
+    // Authentik flavour of the local mock IdP (never the real auth.vetcontrol.app).
+    AUTHENTIK_ISSUER: `${idp.issuer}/authentik/`,
+    AUTHENTIK_CLIENT_ID: 'e2e-authentik-client',
+    AUTHENTIK_CLIENT_SECRET: 'e2e-authentik-secret',
     NODE_ENV: 'development',
     // AISLAMIENTO: Next carga .env.local (credenciales de PRODUCCION) y no
     // pisa variables ya definidas, asi que se definen vacias.

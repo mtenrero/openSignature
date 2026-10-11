@@ -26,6 +26,11 @@ export interface PartnerAccount {
   status: 'active' | 'revoked'
   /** Bumped on every revoke and every re-activation; sessions/SSO tokens bind to it so old ones stay dead. */
   generation?: number
+  /**
+   * Pseudonymous IdP tenant refs (sha256 hex) that resolve to this account at Authentik login.
+   * Never stored empty (an empty array would collide in the unique multikey index).
+   */
+  idpTenantRefs?: string[]
 }
 
 const indexed = new WeakSet<object>()
@@ -40,6 +45,11 @@ export async function getPartnerDb(): Promise<Db> {
       await db.collection('partner_accounts').createIndex(
         { partnerId: 1, customerId: 1 },
         { unique: true, partialFilterExpression: { status: 'active' } }
+      )
+      // A ref identifies ONE active account. `$exists` keeps accounts without refs out of the index.
+      await db.collection('partner_accounts').createIndex(
+        { idpTenantRefs: 1 },
+        { unique: true, partialFilterExpression: { status: 'active', idpTenantRefs: { $exists: true } } }
       )
       await db.collection('partner_sso_tokens').createIndex({ tokenHash: 1 }, { unique: true })
       await db.collection('partner_sso_tokens').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
@@ -127,6 +137,28 @@ export function isAllowedReturnTo(returnTo: unknown, allowed: string[]): returnT
   if (decoded.includes('\\') || decoded.startsWith('//') || decoded.split(/[?#]/)[0].split('/').includes('..')) return false
   const path = returnTo.split(/[?#]/)[0]
   return allowed.some((prefix) => path === prefix || path.startsWith(prefix.replace(/\/$/, '') + '/'))
+}
+
+/** True when another ACTIVE account (any partner) already holds this ref. */
+export async function idpRefTakenByOther(db: Db, ref: string, partnerId: string, externalId: string): Promise<boolean> {
+  const other = await db.collection('partner_accounts').findOne({
+    idpTenantRefs: ref, status: 'active', $nor: [{ partnerId, externalId }],
+  })
+  return !!other
+}
+
+/** Add (default) or replace the account's ref. Returns false on a uniqueness conflict. */
+export async function setIdpTenantRef(db: Db, partnerId: string, externalId: string, ref: string, replace = false): Promise<boolean> {
+  try {
+    await db.collection('partner_accounts').updateOne(
+      { partnerId, externalId },
+      replace ? { $set: { idpTenantRefs: [ref] } } : { $addToSet: { idpTenantRefs: ref } }
+    )
+    return true
+  } catch (error: any) {
+    if (error?.code === 11000) return false
+    throw error
+  }
 }
 
 export function hashToken(token: string): string {

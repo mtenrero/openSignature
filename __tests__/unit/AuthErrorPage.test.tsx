@@ -24,6 +24,11 @@ describe('/auth/error', () => {
     renderPage()
     expect(screen.getByText(/Verifica tu email/i)).toBeTruthy()
   })
+  it('clinic_not_enabled explains how to activate oSign from VetControl', () => {
+    query = 'error=clinic_not_enabled'
+    renderPage()
+    expect(screen.getByText(/Ajustes → Firma digital/)).toBeTruthy()
+  })
   it('other errors keep the generic message', () => {
     query = 'error=Other'
     renderPage()

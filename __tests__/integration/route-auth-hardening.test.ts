@@ -40,6 +40,7 @@ describe('route inventory: every API route authenticates itself or is public by 
   const PUBLIC_BY_DESIGN: Record<string, string> = {
     'auth/[...nextauth]': 'NextAuth handlers',
     'auth/register-auth0': 'public sign-up form',
+    'auth/idp-logout': 'ends the callers own session only (same-site GET, no data access)',
     'dev-login': 'hard-gated by DEV_AUTH_BYPASS=true (404 otherwise)',
     'email/unsubscribe': 'static unsubscribe page linked from mail',
     'oauth/token': 'OAuth token proxy (validates client credentials via Auth0)',

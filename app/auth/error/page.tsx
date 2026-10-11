@@ -22,6 +22,8 @@ function AuthErrorPageContent() {
         return 'No tienes permisos para acceder a esta aplicación.'
       case 'EmailNotVerified':
         return 'Verifica tu email: te hemos enviado un correo con un enlace de confirmación. Ábrelo y vuelve a iniciar sesión.'
+      case 'clinic_not_enabled':
+        return 'Tu clínica aún no ha activado oSign. Actívalo desde VetControl (Ajustes → Firma digital) y vuelve a entrar con tu cuenta de VetControl.'
       case 'Verification':
         return 'El enlace de verificación ha expirado o ya ha sido utilizado.'
       default:

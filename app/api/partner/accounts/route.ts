@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePartner, partnerError, readJsonBody } from '@/lib/partner/auth'
 import {
-  getPartnerDb, findAccount, issuePartnerKey, validExternalId, validEmail,
+  getPartnerDb, findAccount, issuePartnerKey, validExternalId, validEmail, idpRefTakenByOther, setIdpTenantRef,
 } from '@/lib/partner/accounts'
+
+import { validIdpTenantRef } from '@/lib/auth/authentik'
 
 export const runtime = 'nodejs'
 
@@ -20,13 +22,26 @@ export async function POST(request: NextRequest) {
     return partnerError('Invalid businessName', 'INVALID_BUSINESS_NAME', 400)
   }
 
+  const ref = body.idpTenantRef
+  if (ref !== undefined && !validIdpTenantRef(ref)) return partnerError('Invalid idpTenantRef', 'INVALID_IDP_TENANT_REF', 400)
+
   const db = await getPartnerDb()
+  if (ref && (await idpRefTakenByOther(db, ref, partner.id, externalId))) {
+    return partnerError('idpTenantRef belongs to another account', 'IDP_TENANT_REF_CONFLICT', 409)
+  }
+  // Registers the (optional) Authentik ref once the account exists, then answers.
+  const finish = async (res: NextResponse) => {
+    if (ref && !(await setIdpTenantRef(db, partner.id, externalId, ref))) {
+      return partnerError('idpTenantRef belongs to another account', 'IDP_TENANT_REF_CONFLICT', 409)
+    }
+    return res
+  }
   const accounts = db.collection('partner_accounts')
   const customerId = `partner_${partner.id}_${externalId}`
 
   const existing = await findAccount(db, partner.id, externalId)
   if (existing && existing.status === 'active') {
-    return NextResponse.json({ customerId: existing.customerId, created: false }, { status: 200 })
+    return finish(NextResponse.json({ customerId: existing.customerId, created: false }, { status: 200 }))
   }
 
   if (existing) {
@@ -46,7 +61,7 @@ export async function POST(request: NextRequest) {
       }
     )
     const apiKey = await issuePartnerKey(db, partner, customerId, customerId, externalId)
-    return NextResponse.json({ customerId, apiKey, created: true }, { status: 201 })
+    return finish(NextResponse.json({ customerId, apiKey, created: true }, { status: 201 }))
   }
 
   try {
@@ -67,11 +82,11 @@ export async function POST(request: NextRequest) {
     if (error?.code === 11000) {
       // Lost a creation race: behave as the idempotent "existing" case.
       const again = await findAccount(db, partner.id, externalId)
-      if (again) return NextResponse.json({ customerId: again.customerId, created: false }, { status: 200 })
+      if (again) return finish(NextResponse.json({ customerId: again.customerId, created: false }, { status: 200 }))
     }
     throw error
   }
 
   const apiKey = await issuePartnerKey(db, partner, customerId, customerId, externalId)
-  return NextResponse.json({ customerId, apiKey, created: true }, { status: 201 })
+  return finish(NextResponse.json({ customerId, apiKey, created: true }, { status: 201 }))
 }

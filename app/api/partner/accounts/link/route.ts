@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePartner, partnerError, readJsonBody } from '@/lib/partner/auth'
-import { getPartnerDb, findAccount, validExternalId } from '@/lib/partner/accounts'
+import { getPartnerDb, findAccount, validExternalId, idpRefTakenByOther, setIdpTenantRef } from '@/lib/partner/accounts'
+
+import { validIdpTenantRef } from '@/lib/auth/authentik'
 
 export const runtime = 'nodejs'
 
@@ -17,7 +19,19 @@ export async function POST(request: NextRequest) {
     return partnerError('Invalid API key', 'INVALID_API_KEY', 400)
   }
 
+  const ref = body.idpTenantRef
+  if (ref !== undefined && !validIdpTenantRef(ref)) return partnerError('Invalid idpTenantRef', 'INVALID_IDP_TENANT_REF', 400)
+
   const db = await getPartnerDb()
+  if (ref && (await idpRefTakenByOther(db, ref, partner.id, externalId))) {
+    return partnerError('idpTenantRef belongs to another account', 'IDP_TENANT_REF_CONFLICT', 409)
+  }
+  const finish = async (res: NextResponse) => {
+    if (ref && !(await setIdpTenantRef(db, partner.id, externalId, ref))) {
+      return partnerError('idpTenantRef belongs to another account', 'IDP_TENANT_REF_CONFLICT', 409)
+    }
+    return res
+  }
   const key = await db.collection('esign_apikeys').findOne({ _id: apiKey as any, active: true })
   if (!key || !key.customerId) return partnerError('Invalid API key', 'INVALID_API_KEY', 400)
 
@@ -33,7 +47,7 @@ export async function POST(request: NextRequest) {
     if (existing.customerId !== key.customerId) {
       return partnerError('externalId already linked to another customer', 'ALREADY_LINKED_OTHER', 409)
     }
-    return NextResponse.json({ customerId: existing.customerId, linked: true }, { status: 200 })
+    return finish(NextResponse.json({ customerId: existing.customerId, linked: true }, { status: 200 }))
   }
 
   // (b) one customer maps to ONE externalId per partner
@@ -72,5 +86,5 @@ export async function POST(request: NextRequest) {
     if (error?.code === 11000) return partnerError('externalId already linked to another customer', 'ALREADY_LINKED_OTHER', 409)
     throw error
   }
-  return NextResponse.json({ customerId: key.customerId, linked: true }, { status: 200 })
+  return finish(NextResponse.json({ customerId: key.customerId, linked: true }, { status: 200 }))
 }

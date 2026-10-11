@@ -2,6 +2,7 @@ import NextAuth, { NextAuthConfig } from "next-auth"
 import Auth0 from "next-auth/providers/auth0"
 import { isEmailVerificationBlocked, isPlatformAllowed } from "@/lib/auth/registration"
 import { AUTH0_BUSINESS_ID_CLAIM, deriveCustomerId } from "./customerId"
+import { AUTHENTIK_PROVIDER_ID, CLINIC_NOT_ENABLED_URL, authentikEnv, resolveAuthentikAccount } from "./authentik"
 
 // Validate required environment variables.
 // `next build` ("Collecting page data") imports every route module, so a hard throw
@@ -87,6 +88,29 @@ providers.push(Auth0({
   }
 }))
 
+// Authentik (VetControl account) is an optional second IdP, enabled only when all of
+// AUTHENTIK_ISSUER / AUTHENTIK_CLIENT_ID / AUTHENTIK_CLIENT_SECRET are set. Generic OIDC:
+// discovery from the per-provider issuer, PKCE + state + nonce.
+const authentik = authentikEnv()
+const authentikPartnerId = authentik?.partnerId
+if (authentik) {
+  providers.push({
+    id: AUTHENTIK_PROVIDER_ID,
+    name: "VetControl",
+    type: "oidc",
+    issuer: authentik.issuer,
+    clientId: authentik.clientId,
+    clientSecret: authentik.clientSecret,
+    authorization: { params: { scope: authentik.scope } },
+    checks: ["pkce", "state", "nonce"],
+    client: { token_endpoint_auth_method: "client_secret_post" },
+    // Per-user identity is audit-only; the account is resolved from vc_tenant_ref.
+    profile(profile: any) {
+      return { id: profile.sub, name: profile.name, email: profile.email }
+    },
+  } as any)
+}
+
 // Auth0 handles all authentication - no local credentials needed
 
 export const config: NextAuthConfig = {
@@ -122,6 +146,11 @@ export const config: NextAuthConfig = {
       // Self-registered accounts must confirm their email first (existing users are exempt).
       if (account?.provider === 'auth0' && isEmailVerificationBlocked(profile)) {
         return '/auth/error?error=EmailNotVerified'
+      }
+      // Authentik: the clinic must have activated oSign (an ACTIVE partner account holding
+      // the user's vc_tenant_ref). Never matched by email; `sub` is not an identity key.
+      if (account?.provider === AUTHENTIK_PROVIDER_ID) {
+        if (!(await resolveAuthentikAccount(profile, authentikPartnerId))) return CLINIC_NOT_ENABLED_URL
       }
       return true
     },
@@ -170,6 +199,28 @@ export const config: NextAuthConfig = {
       //   console.log('========================')
       // }
 
+      // Authentik login: becomes a partner-SSO-shaped session (same restrictions: no API
+      // keys / admin / billing, 8h cap, dies with the partner account via the generation
+      // check below). The per-user identity (email, name, sub) is kept for audit only.
+      if (account?.provider === AUTHENTIK_PROVIDER_ID) {
+        const match = await resolveAuthentikAccount(profile, authentikPartnerId)
+        if (!match) return null
+        token.id = match.userId
+        token.sub = match.userId
+        token.email = (profile as any)?.email ?? token.email
+        token.name = (profile as any)?.name ?? token.name
+        token.idp = AUTHENTIK_PROVIDER_ID
+        token.idpSub = (profile as any)?.sub
+        token.idToken = account.id_token
+        delete token.accessToken
+        token.customerId = match.customerId
+        token.partnerSso = match.partnerId
+        token.partnerSsoAt = Date.now()
+        token.partnerSsoGen = match.generation
+        delete token.app_metadata
+        delete token.user_metadata
+      }
+
       // Partner SSO sessions (app/auth/partner-sso) carry a server-minted,
       // encrypted customerId: never re-derive it from `sub` below.
       if (token.partnerSso && token.customerId) {
@@ -200,6 +251,10 @@ export const config: NextAuthConfig = {
         // @ts-ignore - customerId is a custom property
         session.customerId = token.customerId as string
         // @ts-ignore - partnerId is a custom property (partner SSO sessions only)
+        if (token.idp) {
+          // @ts-ignore - which IdP minted the session (drives logout)
+          session.idp = token.idp as string
+        }
         if (token.partnerSso) {
           session.partnerId = token.partnerSso as string
           // @ts-ignore - generation the session was minted for (account liveness binding)

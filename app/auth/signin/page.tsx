@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { Container, Title, Text, Stack, Center, Loader, Alert, Button, Group, Divider, TextInput, PasswordInput } from '@mantine/core'
 import { IconLogin, IconAlertTriangle, IconKey, IconArrowLeft, IconBrandGoogle, IconBrandWindows, IconMail, IconLock } from '@tabler/icons-react'
 import Link from 'next/link'
-import { signIn, useSession } from 'next-auth/react'
+import { signIn, useSession, getProviders } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { isSwitchAccount, safeCallbackUrl } from '@/lib/auth/customerId'
 
@@ -22,6 +22,42 @@ function SignInPageContent() {
   const isSignup = searchParams.get('signup') === 'true'
   const provider = searchParams.get('provider')
   const { data: session, status } = useSession()
+  // 'Entrar con VetControl' only exists when the server enabled the authentik provider.
+  const [authentikEnabled, setAuthentikEnabled] = useState(false)
+  const [providersLoaded, setProvidersLoaded] = useState(false)
+  const autoStarted = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    getProviders()
+      .then((p) => { if (!cancelled) setAuthentikEnabled(!!p?.authentik) })
+      .catch(() => undefined)
+      .finally(() => { if (!cancelled) setProvidersLoaded(true) })
+    return () => { cancelled = true }
+  }, [])
+
+  const handleAuthentikSignIn = async () => {
+    try {
+      setLoading(true)
+      // ?switch=1 forces the login prompt at the IdP (use another VetControl account).
+      await signIn('authentik', { callbackUrl, redirect: true }, switchAccount ? { prompt: 'login' } : undefined)
+    } catch (error) {
+      console.error('[SIGNIN] Authentik sign in error:', error)
+      setError('Error al iniciar sesión')
+      setLoading(false)
+    }
+  }
+
+  // /auth/signin?provider=authentik&callbackUrl=... ("Abrir en oSign" from VetControl)
+  // starts the VetControl login by itself; callbackUrl went through safeCallbackUrl above.
+  useEffect(() => {
+    if (provider !== 'authentik' || !providersLoaded || !authentikEnabled) return
+    if (status !== 'unauthenticated' && !(status === 'authenticated' && switchAccount)) return
+    if (autoStarted.current) return
+    autoStarted.current = true
+    void handleAuthentikSignIn()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, providersLoaded, authentikEnabled, status, switchAccount])
 
   useEffect(() => {
     // If user is already authenticated, redirect immediately
@@ -231,6 +267,19 @@ function SignInPageContent() {
                 >
                   Iniciar Sesión con Barvet Empresas
                 </Button>
+
+                {authentikEnabled && (
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={handleAuthentikSignIn}
+                    loading={loading}
+                    leftSection={<IconLogin size={20} />}
+                    fullWidth
+                  >
+                    Entrar con VetControl
+                  </Button>
+                )}
 
                 <Text size="xs" c="dimmed" ta="center">
                   OAuth 2.0 proporciona autenticación segura adicional.

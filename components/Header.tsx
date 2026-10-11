@@ -275,6 +275,11 @@ export function Header() {
   }
 
   const handleSignOut = async () => {
+    // Authentik sessions also end the VetControl IdP session (server-side end-session redirect).
+    if ((session as { idp?: string } | null)?.idp === 'authentik') {
+      window.location.href = '/api/auth/idp-logout'
+      return
+    }
     await signOut({ callbackUrl: '/' })
   }
 
