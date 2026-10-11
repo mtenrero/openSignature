@@ -7,6 +7,14 @@ import os from 'os'
 
 process.env.NODE_ENV = process.env.NODE_ENV || 'test'
 
+// Hermeticity: the developer shell / local e2e stack exports switches that change
+// handler behaviour (SMS disabled, auth bypass, e2e mode). A run from such a shell
+// made 'isResend=false ... creates a brand-new independent request' see a 403
+// SMS_DISABLED on its second (sms) request. Tests that need a switch set it themselves.
+for (const k of ['E2E_TEST_MODE', 'DISABLE_SMS', 'NEXT_PUBLIC_DISABLE_SMS', 'DEV_AUTH_BYPASS', 'E2E_USER_ID', 'E2E_CUSTOMER_ID']) {
+  delete process.env[k]
+}
+
 // Real Mongo envs (placeholders, never used because we mock getDatabase)
 process.env.MONGO_URL = process.env.MONGO_URL || 'mongodb://placeholder:27017'
 process.env.MONGO_DB = process.env.MONGO_DB || 'osign_test'
