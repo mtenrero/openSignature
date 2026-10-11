@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyCronRequest } from '@/lib/auth/cron'
 import { PendingPaymentManager } from '@/lib/wallet/pendingPayments'
 
 export const runtime = 'nodejs'
@@ -6,29 +7,12 @@ export const runtime = 'nodejs'
 // GET /api/cron/check-pending-payments - Vercel Cron Job endpoint
 export async function GET(request: NextRequest) {
   try {
-    // Verify this is a legitimate cron request
-    const authHeader = request.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET
+    // Verify this is a legitimate cron request (Bearer CRON_SECRET; user-agent is not a credential)
+    const denied = verifyCronRequest(request)
+    if (denied) return denied
     const userAgent = request.headers.get('user-agent')
-
-    // Check if request is from Vercel Cron or if we're in development
     const isVercelCron = userAgent?.includes('vercel-cron')
     const isDevelopment = process.env.NODE_ENV === 'development'
-    const hasValidAuth = cronSecret && authHeader === `Bearer ${cronSecret}`
-
-    if (!isDevelopment && !isVercelCron && !hasValidAuth) {
-      console.warn('Unauthorized cron request:', {
-        userAgent,
-        hasAuth: !!authHeader,
-        hasSecret: !!cronSecret,
-        environment: process.env.NODE_ENV
-      })
-
-      return NextResponse.json(
-        { error: 'Unauthorized - Invalid cron request' },
-        { status: 401 }
-      )
-    }
 
     console.log('🔄 [VERCEL CRON] Starting periodic check of pending SEPA payments...')
     console.log('🔄 [VERCEL CRON] Request details:', {
@@ -99,6 +83,8 @@ export async function GET(request: NextRequest) {
 
 // POST /api/cron/check-pending-payments - Manual trigger (for testing)
 export async function POST(request: NextRequest) {
+  const denied = verifyCronRequest(request)
+  if (denied) return denied
   try {
     console.log('🧪 [VERCEL CRON] Manual test trigger of pending payments check...')
 

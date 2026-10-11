@@ -168,13 +168,14 @@ describe('GET/POST /api/cron/check-pending-payments', () => {
     expect(res.status).toBe(401)
   })
 
-  it('runs the batch when the caller is Vercel Cron (user-agent)', async () => {
+  it('runs the batch when the caller is Vercel Cron (CRON_SECRET bearer, which Vercel sends)', async () => {
+    process.env.CRON_SECRET = 'vercel-secret'
     await newPendingFor('cron-cust', 'pi_ok')
     const res = await CRON_GET(
       buildRequest({
         method: 'GET',
         url: 'http://localhost:3000/api/cron/check-pending-payments',
-        headers: { 'user-agent': 'vercel-cron/1.0' },
+        headers: { 'user-agent': 'vercel-cron/1.0', authorization: 'Bearer vercel-secret' },
       }) as any,
     )
     expect(res.status).toBe(200)
@@ -201,7 +202,8 @@ describe('GET/POST /api/cron/check-pending-payments', () => {
 
   it('runs via the manual POST trigger and reports the tally', async () => {
     await newPendingFor('cron-cust', 'pi_ok')
-    const res = await CRON_POST(buildRequest({ method: 'POST', url: 'http://localhost:3000/api/cron/check-pending-payments', body: {} }) as any)
+    process.env.CRON_SECRET = 'test-cron-secret'
+    const res = await CRON_POST(buildRequest({ method: 'POST', url: 'http://localhost:3000/api/cron/check-pending-payments', body: {}, headers: { authorization: 'Bearer test-cron-secret' } }) as any)
     expect(res.status).toBe(200)
     const body = (await readJson(res as any)) as any
     expect(body.trigger).toBe('manual-test')

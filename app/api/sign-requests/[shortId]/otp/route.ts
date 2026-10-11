@@ -176,12 +176,6 @@ export async function POST(
     // Insert new OTP
     await otpCollection.insertOne(otpRecord)
 
-    console.log('[OTP] Generated OTP for signature request:', {
-      shortId,
-      deliveryMethod,
-      recipient: deliveryMethod === 'email' ? recipient : `***${recipient.slice(-4)}`,
-      code: `***${otpRecord.code.slice(-2)}` // Log only last 2 digits
-    })
 
     // Add audit record for OTP request
     const isResend = existingOtp !== null

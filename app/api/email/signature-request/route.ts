@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { authorizeEmailRequest, requireEmailAuth } from '../../../../lib/email/guard'
 import { createScalewayEmailService } from '../../../../lib/email/scaleway-service'
 
 export interface SignatureRequestEmailData {
@@ -52,6 +53,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const denied = await authorizeEmailRequest(request, body.contractDetails.id, [body.signingUrl])
+    if (denied) return denied
+
     // Create email service
     const emailService = createScalewayEmailService()
     if (!emailService) {
@@ -66,8 +70,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Send email
-    console.log(`[Email API] Sending signature request email to: ${body.recipientEmail}`)
-    console.log(`[Email API] Contract: ${body.contractDetails.name} (${body.contractDetails.id})`)
+        console.log(`[Email API] Contract: ${body.contractDetails.name} (${body.contractDetails.id})`)
 
     const result = await emailService.sendSignatureRequest(
       body.recipientEmail,
@@ -111,7 +114,9 @@ export async function POST(request: NextRequest) {
  * GET /api/email/signature-request
  * Get email service status
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = await requireEmailAuth(request)
+  if (denied) return denied
   try {
     const emailService = createScalewayEmailService()
     

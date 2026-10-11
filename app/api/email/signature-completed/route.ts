@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { authorizeEmailRequest, requireEmailAuth } from '../../../../lib/email/guard'
 import { createScalewayEmailService } from '../../../../lib/email/scaleway-service'
 import { signedContractPDFGenerator } from '../../../../lib/pdf/signedContractGenerator'
 
@@ -70,6 +71,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const denied = await authorizeEmailRequest(request, body.contractDetails.id, [body.contractDetails.verificationUrl, body.baseUrl])
+    if (denied) return denied
+
     // Create email service
     const emailService = createScalewayEmailService()
     if (!emailService) {
@@ -83,8 +87,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log(`[Email API] Sending signature completion email to: ${body.recipientEmail}`)
-    console.log(`[Email API] Contract: ${body.contractDetails.name} (${body.contractDetails.id})`)
+        console.log(`[Email API] Contract: ${body.contractDetails.name} (${body.contractDetails.id})`)
     console.log(`[Email API] Include PDF attachment: ${body.includePdfAttachment}`)
 
     let pdfAttachment: { filename: string; content: Buffer } | undefined
@@ -160,7 +163,9 @@ export async function POST(request: NextRequest) {
  * GET /api/email/signature-completed
  * Get endpoint status and configuration
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = await requireEmailAuth(request)
+  if (denied) return denied
   try {
     const emailService = createScalewayEmailService()
     
