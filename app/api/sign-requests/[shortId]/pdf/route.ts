@@ -20,7 +20,6 @@ export async function GET(
     const url = new URL(request.url)
     const accessKey = url.searchParams.get('a')
     
-    console.log('[DEBUG] PDF Download request:', { shortId, accessKey })
 
     // Capture IP address for audit
     const clientIP = extractClientIP(request)
@@ -181,11 +180,6 @@ export async function GET(
       const auditVerification = auditTrailService.verifyAuditTrailIntegrity(signatureRequest.contractId)
       
       // Debug signer info and audit trail
-      console.log('[PDF DEBUG] Signer info from request:', {
-        signerInfo: signatureRequest.signerInfo,
-        signerName: signatureRequest.signerName,
-        signerEmail: signatureRequest.signerEmail
-      })
       console.log('[PDF DEBUG] Total audit trail records:', signatureRequest.auditTrail?.length || 0, 'events')
       console.log('[PDF DEBUG] Filtered audit trail for PDF:', auditTrailForPDF.length, 'events (excluded downloads)')
       

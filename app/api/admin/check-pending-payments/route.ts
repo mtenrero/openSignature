@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyCronRequest } from '@/lib/auth/cron'
 import { PendingPaymentManager } from '@/lib/wallet/pendingPayments'
 
 export const runtime = 'nodejs'
 
 // GET /api/admin/check-pending-payments - Check all pending SEPA payments
 export async function GET(request: NextRequest) {
+  const denied = verifyCronRequest(request)
+  if (denied) return denied
   const startTime = Date.now()
 
   try {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/auth/admin'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 
@@ -8,6 +9,8 @@ const execAsync = promisify(exec)
 
 // GET /api/admin/cron-status - Check if cron job is configured
 export async function GET(request: NextRequest) {
+  const denied = await requireAdmin()
+  if (denied) return denied
   try {
     console.log('🔍 Checking cron job status...')
 

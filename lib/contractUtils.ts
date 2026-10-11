@@ -171,10 +171,6 @@ export function processContractContent(
 ): string {
   if (!content) return '<p>El contrato no tiene contenido aún.</p>'
 
-  console.log('[PROCESS DEBUG] Input content:', content.substring(0, 200) + '...')
-  console.log('[PROCESS DEBUG] Account variable values:', accountVariableValues)
-  console.log('[PROCESS DEBUG] Dynamic field values:', dynamicFieldValues)
-  console.log('[PROCESS DEBUG] Dynamic field keys:', Object.keys(dynamicFieldValues))
   
   let processedContent = content
 
@@ -225,7 +221,6 @@ export function processContractContent(
     const regex = new RegExp(`\\[${field}\\]`, 'g')
     const matches = processedContent.match(regex)
     if (matches) {
-      console.log(`[PROCESS DEBUG] Found bracket pattern [${field}] - replacing with account var: ${value}`)
     }
     processedContent = processedContent.replace(regex, `<span style="background: #f3e5f5; padding: 2px 6px; border-radius: 4px; border: 1px solid #9c27b0; color: #7c3aed; font-weight: 600; margin: 0 4px;">${value}</span>`)
   })
@@ -237,13 +232,11 @@ export function processContractContent(
       const regex = new RegExp(`\\[${field}\\]`, 'g')
       const matches = processedContent.match(regex)
       if (matches) {
-        console.log(`[PROCESS DEBUG] Found bracket pattern [${field}] - replacing with dynamic field: ${displayValue}`)
       }
       processedContent = processedContent.replace(regex, `<span style="background: #e3f2fd; padding: 2px 6px; border-radius: 4px; border: 1px solid #2196f3; color: #1976d2; font-weight: 600; margin: 0 4px;">${displayValue}</span>`)
     }
   })
 
-  console.log('[PROCESS DEBUG] Final processed content:', processedContent.substring(0, 300) + '...')
   return processedContent
 }
 
@@ -372,7 +365,6 @@ export function validateMandatoryFields(
 
   // If contract content is provided, validate based on content usage
   if (contractContent) {
-    console.log('[VALIDATION DEBUG] Contract content:', contractContent)
     const fieldsInContent = extractDynamicFieldNames(contractContent)
     console.log('[VALIDATION DEBUG] Fields found in content:', fieldsInContent)
     
@@ -590,8 +582,6 @@ export function extractSignerInfo(
   let clientEmail: string | undefined
   let clientPhone: string | undefined
   
-  console.log('[EXTRACT DEBUG] All fields received:', JSON.stringify(allFields, null, 2))
-  console.log('[EXTRACT DEBUG] Field keys:', Object.keys(allFields))
   
   // First try exact field names from dynamic fields
   if (allFields['clientName'] && typeof allFields['clientName'] === 'string') {
@@ -669,12 +659,6 @@ export function extractSignerInfo(
     }
   }
   
-  console.log('[EXTRACT DEBUG] Final extracted values:', {
-    clientName,
-    clientTaxId,
-    clientEmail,
-    clientPhone
-  })
   
   return {
     clientName,

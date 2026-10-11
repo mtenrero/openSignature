@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
+import { requireAdmin } from '@/lib/auth/admin'
 
 export const runtime = 'nodejs'
 
 // GET /api/admin/auth0-diagnostics - Diagnose Auth0 configuration (admin only)
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized - Please sign in' },
-        { status: 401 }
-      )
-    }
+    const denied = await requireAdmin()
+    if (denied) return denied
+    const session: any = await auth()
 
     // Basic Auth0 configuration check
     const AUTH0_DOMAIN = process.env.AUTH0_DOMAIN || process.env.AUTH0_ISSUER?.replace('https://', '').replace('/', '')

@@ -5,6 +5,7 @@ import { extractBearerToken, validateJWT } from '@/lib/auth/jwt'
 export default auth(async (req) => {
   // Check for session-based auth
   let isAuth = !!req.auth
+  let apiKeyBearer = false
 
   // If no session, check for Bearer token (OAuth2 JWT or API Key)
   if (!isAuth) {
@@ -12,11 +13,11 @@ export default auth(async (req) => {
     const token = extractBearerToken(authHeader)
 
     if (token) {
-      // Check if it's an API key (starts with osk_)
+      // API keys (osk_) cannot be validated here (the edge runtime has no database
+      // access), so a syntactic osk_ prefix NEVER authenticates in middleware: it
+      // only lets API routes through to authenticate themselves via getAuthContext.
       if (token.startsWith('osk_')) {
-        // API keys are validated in the API routes
-        // Just allow it to pass through middleware
-        isAuth = true
+        apiKeyBearer = true
       } else {
         // Validate JWT token
         const payload = await validateJWT(token)
@@ -81,7 +82,7 @@ export default auth(async (req) => {
   }
 
   // If user is not authenticated and trying to access protected route
-  if (!isAuth && !isAuthPage && !isPublicApiRoute && !isPublicPage) {
+  if (!isAuth && !(apiKeyBearer && isApiRoute) && !isAuthPage && !isPublicApiRoute && !isPublicPage) {
     // For API routes, return 401 Unauthorized instead of redirect
     if (isApiRoute) {
       return NextResponse.json(

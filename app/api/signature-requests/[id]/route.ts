@@ -226,14 +226,12 @@ export async function PATCH(
                 type: 'resend'
               })
 
-              console.log(`[Resend] Email sent successfully to ${updateData.signerEmail} (${updateData.emailTracking.emailsSent}/5)`)
 
               // Add email success to audit details
               auditEntry.details.emailSent = true
               auditEntry.details.messageId = emailResult.messageId
               auditEntry.details.emailCount = updateData.emailTracking.emailsSent
             } else {
-              console.error(`[Resend] Failed to send email to ${updateData.signerEmail}: ${emailResult.error}`)
               auditEntry.details.emailSent = false
               auditEntry.details.emailError = emailResult.error
             }
@@ -244,7 +242,6 @@ export async function PATCH(
           }
         }
       } else if (updateData.signatureType === 'sms' && updateData.signerPhone) {
-        console.log(`[Resend] Preparing to send SMS to ${updateData.signerPhone} with link: ${updateData.signatureUrl}`)
 
         // Build optimized SMS message (max 160 chars for 1 SMS)
         const { buildSignatureSMS, calculateSMSSegments } = await import('@/lib/smsMessageBuilder')
@@ -259,7 +256,6 @@ export async function PATCH(
             const contractsCollection = await getContractsCollection()
             const contract = await contractsCollection.findOne({ _id: new ObjectId(currentRequest.contractId) })
             contractName = contract?.name
-            console.log('[Resend] Fetched contract name from DB:', contractName)
           } catch (e) {
             console.warn('[Resend] Could not fetch contract name:', e)
           }
@@ -270,18 +266,11 @@ export async function PATCH(
         const smsSender = process.env.SMS_SENDER_ID || 'oSign'
 
         console.log(`[Resend] SMS message built:`, {
-          message: smsMessage,
           length: smsMessage.length,
           segments: smsSegments,
           contractName: contractName || 'not found'
         })
 
-        console.log(`[Resend] Calling sendSMS function with:`, {
-          sender: smsSender,
-          recipient: updateData.signerPhone,
-          messageLength: smsMessage.length,
-          smsSegments
-        })
 
         try {
           const { sendSMS } = await import('@/libs/sendSMS')

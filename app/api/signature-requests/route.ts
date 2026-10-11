@@ -244,7 +244,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log('[Signature Request] Final dynamicFieldValues:', JSON.stringify(dynamicFieldValues, null, 2))
 
     // 🚫 Block sending when the contract uses ACCOUNT VARIABLES ({{variable:X}})
     // that have no configured value AND weren't supplied as overrides in this
@@ -311,7 +310,6 @@ export async function POST(request: NextRequest) {
           existingRequest = anyPendingRequest
           console.log(`[Signature Request] REUSE - Found matching request ${existingRequest.shortId}`)
         } else {
-          console.log(`[Signature Request] NEW - Different type/recipient, creating independent request`)
         }
       }
     } else {
@@ -344,16 +342,12 @@ export async function POST(request: NextRequest) {
       const existingDynamicFields = existingRequest.dynamicFieldValues || {}
 
       if (dynamicFieldValues?.clientName && dynamicFieldValues.clientName !== existingDynamicFields.clientName) {
-        console.warn(`[Signature Request] Attempt to modify locked clientName (predefined field) ignored: "${dynamicFieldValues.clientName}" -> kept original "${existingDynamicFields.clientName}"`)
       }
       if (dynamicFieldValues?.clientEmail && dynamicFieldValues.clientEmail !== existingDynamicFields.clientEmail) {
-        console.warn(`[Signature Request] Attempt to modify locked clientEmail (predefined field) ignored: "${dynamicFieldValues.clientEmail}" -> kept original "${existingDynamicFields.clientEmail}"`)
       }
       if (dynamicFieldValues?.clientPhone && dynamicFieldValues.clientPhone !== existingDynamicFields.clientPhone) {
-        console.warn(`[Signature Request] Attempt to modify locked clientPhone (predefined field) ignored: "${dynamicFieldValues.clientPhone}" -> kept original "${existingDynamicFields.clientPhone}"`)
       }
       if (dynamicFieldValues?.clientTaxId && dynamicFieldValues.clientTaxId !== existingDynamicFields.clientTaxId) {
-        console.warn(`[Signature Request] Attempt to modify locked clientTaxId (predefined field) ignored: "${dynamicFieldValues.clientTaxId}" -> kept original "${existingDynamicFields.clientTaxId}"`)
       }
 
       // Check other dynamic fields
@@ -622,7 +616,6 @@ export async function POST(request: NextRequest) {
 
         // For QR codes, record usage but don't send email
         if (signatureType === 'qr') {
-          console.log(`[Signature Request] QR signature request created - counting as email signature: ${signatureRequest.signatureUrl}`)
 
           // Record QR request as email usage in audit system
           try {
@@ -659,7 +652,6 @@ export async function POST(request: NextRequest) {
           }
         } else if (signatureType === 'email' && signerEmail) {
           // Only send actual email for email signature type
-          console.log(`[Signature Request] Sending email to ${signerEmail} with link: ${signatureRequest.signatureUrl}`)
 
           // Get customer's miNombre variable for sender name.
           // NOTE: this handler authenticates via getAuthContext (no NextAuth
@@ -690,7 +682,6 @@ export async function POST(request: NextRequest) {
           )
           
           if (emailResult.success) {
-            console.log(`[Signature Request] Email sent successfully to ${signerEmail} with message ID: ${emailResult.messageId}`)
 
             // Record email sent in audit system
             try {
@@ -742,13 +733,11 @@ export async function POST(request: NextRequest) {
                   }
                 }
               )
-              console.log(`[Signature Request] Email tracking updated for ${signerEmail} (1/5)`)
             } catch (trackingError) {
               console.error('Error updating email tracking:', trackingError)
               // Don't fail the request if tracking fails
             }
           } else {
-            console.error(`[Signature Request] Failed to send email to ${signerEmail}:`, emailResult.error)
             // Don't fail the request creation if email fails, just log it
           }
           } else {
@@ -757,7 +746,6 @@ export async function POST(request: NextRequest) {
         }
 
       } catch (emailError) {
-        console.error(`[Signature Request] Error sending email to ${signerEmail}:`, emailError)
         // Don't fail the request creation if email fails, just log it
       }
     } else if (signatureType === 'sms' && signerPhone) {
@@ -791,7 +779,6 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        console.log(`[Signature Request] Preparing to send SMS to ${signerPhone} with link: ${signatureRequest.signatureUrl}`)
 
         // Build optimized SMS message (max 160 chars for 1 SMS)
         const { buildSignatureSMS, calculateSMSSegments } = await import('@/lib/smsMessageBuilder')
@@ -800,18 +787,11 @@ export async function POST(request: NextRequest) {
         const smsSender = process.env.SMS_SENDER_ID || 'oSign'
 
         console.log(`[Signature Request] SMS message built:`, {
-          message: smsMessage,
           length: smsMessage.length,
           segments: smsSegments,
           contractName: contract?.name
         })
 
-        console.log(`[Signature Request] Calling sendSMS function with:`, {
-          sender: smsSender,
-          recipient: signerPhone,
-          messageLength: smsMessage.length,
-          smsSegments
-        })
 
         let smsWasSentSuccessfully = false
 
@@ -894,10 +874,8 @@ export async function POST(request: NextRequest) {
             }
           })
 
-          console.log(`[Signature Request] SMS audit recorded for ${signerPhone}`)
         }
       } catch (smsError) {
-        console.error(`[Signature Request] Error with SMS to ${signerPhone}:`, smsError)
       }
     } else if (signatureType === 'local' || signatureType === 'tablet') {
       try {
@@ -920,7 +898,6 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        console.log(`[Signature Request] Local/tablet signature request created: ${signatureRequest.signatureUrl}`)
       } catch (localError) {
         console.error(`[Signature Request] Error with local signature:`, localError)
       }
@@ -970,10 +947,8 @@ export async function GET(request: NextRequest) {
     // Filter by clientTaxId (DNI) - search in dynamicFieldValues
     if (clientTaxId) {
       query['dynamicFieldValues.clientTaxId'] = clientTaxId.trim()
-      console.log(`[Signature Requests GET] Filtering by clientTaxId: ${clientTaxId.trim()}`)
     }
 
-    console.log(`[Signature Requests GET] Query:`, JSON.stringify(query))
 
     const collection = await getSignatureRequestsCollection()
     const signatureRequests = await collection
