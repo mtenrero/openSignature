@@ -33,8 +33,11 @@ export interface PendingPayment {
     lastError?: string
   }
 
-  // Related wallet transaction (created immediately as pending)
-  walletTransactionId: ObjectId
+  // Wallet credit transaction. Only set once the money has actually arrived (confirmed),
+  // OR on legacy rows created when SEPA top-ups were credited up front (see
+  // `creditedUpfront`). A pending SEPA payment is NOT in the balance.
+  walletTransactionId?: ObjectId
+  creditedUpfront?: boolean // legacy: credited before clearing -> failure must reverse it
 
   updatedAt: Date
 }
@@ -56,7 +59,9 @@ export class PendingPaymentManager {
   }
 
   /**
-   * Create a pending payment and add credits immediately as "pending"
+   * Record a pending (not yet cleared) payment. The wallet is NOT credited: the amount is
+   * shown to the customer as "pendiente" (GET /api/wallet -> pendingPayments) and is
+   * credited, idempotently, only when the payment succeeds (settleSucceeded).
    */
   static async createPendingPayment(params: {
     customerId: string
@@ -74,15 +79,6 @@ export class PendingPaymentManager {
     const expectedDays = params.expectedDays || 5
     const expectedDate = this.addBusinessDays(new Date(), expectedDays)
 
-    // First, add credits to wallet immediately but marked as pending
-    const walletTransaction = await VirtualWallet.addCredits(
-      params.customerId,
-      params.amount,
-      'top_up',
-      `${params.description} (PENDIENTE)`,
-      params.stripePaymentIntentId
-    )
-
     // Create pending payment record
     const pendingPayment: PendingPayment = {
       customerId: params.customerId,
@@ -93,7 +89,6 @@ export class PendingPaymentManager {
       status: 'pending',
       createdAt: new Date(),
       expectedConfirmationDate: expectedDate,
-      walletTransactionId: walletTransaction._id!,
       metadata: {
         sessionId: params.sessionId,
         checkAttempts: 0
@@ -101,8 +96,17 @@ export class PendingPaymentManager {
       updatedAt: new Date()
     }
 
-    const result = await collection.insertOne(pendingPayment)
-    pendingPayment._id = result.insertedId
+    try {
+      const result = await collection.insertOne(pendingPayment)
+      pendingPayment._id = result.insertedId
+    } catch (err: any) {
+      // Same payment intent reported twice (success page + webhook): return the first row.
+      if (err?.code === 11000) {
+        const existing = await collection.findOne({ stripePaymentIntentId: params.stripePaymentIntentId })
+        if (existing) return existing as PendingPayment
+      }
+      throw err
+    }
 
     console.log(`Created pending payment: ${params.stripePaymentIntentId} for ${VirtualWallet.formatAmount(params.amount)}`)
 
@@ -156,20 +160,21 @@ export class PendingPaymentManager {
       }
 
       switch (paymentIntent.status) {
-        case 'succeeded':
+        case 'succeeded': {
+          const received = Number(paymentIntent.amount_received ?? paymentIntent.amount)
+          const creditAmount = Number.isFinite(received) && received > 0
+            ? Math.min(pendingPayment.amount, received)
+            : pendingPayment.amount
+          const settled = await this.settleSucceeded(pendingPayment, creditAmount, latestChargeId)
           newStatus = 'confirmed'
-          updateData.status = 'confirmed'
-          updateData.confirmedAt = new Date()
-
-          // Update wallet transaction to remove "PENDIENTE" from description
-          await VirtualWallet.updateTransactionDescription(
-            pendingPayment.walletTransactionId,
-            pendingPayment.description // Remove " (PENDIENTE)"
+          updated = settled
+          // settleSucceeded already wrote the terminal state.
+          await collection.updateOne(
+            { _id: pendingPayment._id },
+            { $set: { lastCheckedAt: updateData.lastCheckedAt, updatedAt: updateData.updatedAt } }
           )
-
-          updated = true
-          console.log(`✅ Payment confirmed: ${paymentIntentId}`)
-          break
+          return { updated, newStatus }
+        }
 
         case 'processing':
           if (pendingPayment.status === 'pending') {
@@ -181,23 +186,10 @@ export class PendingPaymentManager {
           break
 
         case 'requires_payment_method':
-        case 'canceled':
-          newStatus = 'failed'
-          updateData.status = 'failed'
-          updateData.failedAt = new Date()
-
-          // Remove credits from wallet since payment failed
-          await VirtualWallet.debitCredits(
-            pendingPayment.customerId,
-            pendingPayment.amount,
-            'refund',
-            `Reversión: ${pendingPayment.description} (PAGO FALLIDO)`,
-            paymentIntentId
-          )
-
-          updated = true
-          console.log(`❌ Payment failed: ${paymentIntentId}`)
-          break
+        case 'canceled': {
+          const failed = await this.settleFailed(pendingPayment, 'failed', 'PAGO FALLIDO')
+          return { updated: failed, newStatus: 'failed' }
+        }
 
         default:
           // Check if payment is expired (more than 14 days old for SEPA)
@@ -206,28 +198,16 @@ export class PendingPaymentManager {
           )
 
           if (daysSinceCreated > 14) {
-            newStatus = 'expired'
-            updateData.status = 'expired'
-            updateData.failedAt = new Date()
-
-            // Remove credits from wallet since payment expired
-            await VirtualWallet.debitCredits(
-              pendingPayment.customerId,
-              pendingPayment.amount,
-              'refund',
-              `Reversión: ${pendingPayment.description} (PAGO EXPIRADO)`,
-              paymentIntentId
-            )
-
-            updated = true
-            console.log(`⏰ Payment expired: ${paymentIntentId}`)
+            const expired = await this.settleFailed(pendingPayment, 'expired', 'PAGO EXPIRADO')
+            return { updated: expired, newStatus: 'expired' }
           }
           break
       }
 
       // Update the pending payment record
+      // Never regress a terminal row (a concurrent webhook may have settled it already).
       await collection.updateOne(
-        { _id: pendingPayment._id },
+        { _id: pendingPayment._id, status: { $in: ['pending', 'processing'] } },
         { $set: updateData }
       )
 
@@ -251,6 +231,84 @@ export class PendingPaymentManager {
 
       return { updated: false, newStatus: pendingPayment.status, error: error.message }
     }
+  }
+
+
+  /**
+   * The payment cleared: credit the wallet (idempotent per payment intent, so the
+   * webhook, check-payment and the cron can all race safely) and mark the row confirmed.
+   * Returns true when this call performed the transition.
+   */
+  static async settleSucceeded(
+    pendingPayment: PendingPayment,
+    creditAmount: number,
+    chargeId?: string
+  ): Promise<boolean> {
+    const collection = await this.getCollection()
+    const paymentIntentId = String(pendingPayment.stripePaymentIntentId)
+    const tx = await VirtualWallet.addCredits(
+      pendingPayment.customerId,
+      creditAmount,
+      'top_up',
+      pendingPayment.description,
+      paymentIntentId,
+      chargeId || pendingPayment.stripeChargeId
+    )
+    if (tx._id && pendingPayment.walletTransactionId) {
+      // legacy pre-credited row: drop the "(PENDIENTE)" tag of its original transaction
+      await VirtualWallet.updateTransactionDescription(pendingPayment.walletTransactionId, pendingPayment.description)
+    }
+    const res = await collection.updateOne(
+      { _id: pendingPayment._id, status: { $in: ['pending', 'processing', 'failed', 'expired'] } },
+      {
+        $set: {
+          status: 'confirmed',
+          confirmedAt: new Date(),
+          walletTransactionId: tx._id,
+          ...(chargeId ? { stripeChargeId: chargeId } : {}),
+          updatedAt: new Date()
+        }
+      }
+    )
+    return res.modifiedCount === 1
+  }
+
+  /**
+   * The payment failed / expired: mark it terminal WITHOUT crediting. Rows created by the
+   * old flow (credited up front: `walletTransactionId` set and not yet confirmed) must
+   * additionally have that credit reversed. DECISION: the reversal may drive the balance
+   * NEGATIVE (VirtualWallet.reverseCredit) instead of silently skipping when the money
+   * was already spent -- the customer owes it, and a negative balance blocks every debit
+   * until a top-up covers it. The status transition is claimed atomically first so the
+   * reversal can only happen once.
+   */
+  static async settleFailed(
+    pendingPayment: PendingPayment,
+    status: 'failed' | 'expired',
+    label: string
+  ): Promise<boolean> {
+    const collection = await this.getCollection()
+    const claim = await collection.updateOne(
+      { _id: pendingPayment._id, status: { $in: ['pending', 'processing'] } },
+      { $set: { status, failedAt: new Date(), lastCheckedAt: new Date(), updatedAt: new Date() } }
+    )
+    if (claim.modifiedCount !== 1) return false
+
+    if (pendingPayment.walletTransactionId) {
+      try {
+        await VirtualWallet.reverseCredit(
+          pendingPayment.customerId,
+          pendingPayment.amount,
+          `Reversión: ${pendingPayment.description} (${label})`,
+          String(pendingPayment.stripePaymentIntentId)
+        )
+      } catch (err) {
+        // release the claim so the next run retries the reversal
+        await collection.updateOne({ _id: pendingPayment._id }, { $set: { status: pendingPayment.status }, $unset: { failedAt: '' } })
+        throw err
+      }
+    }
+    return true
   }
 
   /**

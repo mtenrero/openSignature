@@ -50,6 +50,41 @@ export type RefundRequestResult =
   | { status: 'window_expired' }
   | { status: 'invalid' }
 
+
+const SIGNED_STATES = ['signed', 'completed']
+
+/**
+ * Has this contract / signature request EVER been signed or completed? The current
+ * status is not enough: a signed contract can be archived (signed -> archived,
+ * completed -> archived), and the refund must not become a way to get the money back
+ * for a document that was actually delivered. Looks at the document's own signing
+ * evidence, its status history and every signature request that belongs to a contract.
+ */
+async function wasEverSigned(kind: 'contract' | 'signature', doc: any): Promise<boolean> {
+  if (!doc) return false
+  if (SIGNED_STATES.includes(doc.status) || SIGNED_STATES.includes(doc.previousStatus)) return true
+  if (doc.signedAt || doc.completedAt || doc.signatureData || doc.signedBeforeArchive === true || doc.everSigned === true) return true
+  if (Array.isArray(doc.statusHistory)) {
+    const hit = doc.statusHistory.some((h: any) => SIGNED_STATES.includes(typeof h === 'string' ? h : h?.status ?? h?.to))
+    if (hit) return true
+  }
+  if (kind === 'contract') {
+    const sigs = await getSignatureRequestsCollection()
+    const id = doc._id
+    const ids: any[] = [id, String(id)]
+    const found = await sigs.findOne({
+      contractId: { $in: ids },
+      $or: [
+        { status: { $in: SIGNED_STATES } },
+        { signedAt: { $exists: true, $ne: null } },
+        { signatureData: { $exists: true, $ne: null } },
+      ],
+    } as any)
+    if (found) return true
+  }
+  return false
+}
+
 function toObjectId(id: unknown): ObjectId | null {
   if (typeof id !== 'string' || !ObjectId.isValid(id) || id.length !== 24) return null
   return new ObjectId(id)
@@ -172,6 +207,10 @@ export class RefundSystem {
         console.log(`Contract ${contractId} not eligible for refund (status: ${contract.status})`)
         return false
       }
+      if (await wasEverSigned('contract', contract)) {
+        console.log(`Contract ${contractId} not eligible for refund (it was signed)`)
+        return false
+      }
 
       const customerId = contract.customerId
       const currentMonth = new Date().toISOString().substring(0, 7)
@@ -240,6 +279,10 @@ export class RefundSystem {
       // Check if signature request was not completed
       if (signatureRequest.status === 'completed' || signatureRequest.status === 'signed') {
         console.log(`Signature request ${signatureRequestId} not eligible for refund (status: ${signatureRequest.status})`)
+        return false
+      }
+      if (await wasEverSigned('signature', signatureRequest)) {
+        console.log(`Signature request ${signatureRequestId} not eligible for refund (it was signed)`)
         return false
       }
 
@@ -320,6 +363,10 @@ export class RefundSystem {
     const allowed = hasContract ? REFUNDABLE_CONTRACT_STATUSES : REFUNDABLE_SIGNATURE_STATUSES
     if (!allowed.includes(doc.status)) {
       return { status: 'not_eligible', reason: `status ${doc.status}` }
+    }
+
+    if (await wasEverSigned(hasContract ? 'contract' : 'signature', doc)) {
+      return { status: 'not_eligible', reason: 'was signed' }
     }
 
     const createdAt = doc.createdAt ? new Date(doc.createdAt).getTime() : NaN

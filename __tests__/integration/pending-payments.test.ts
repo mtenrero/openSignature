@@ -1,11 +1,12 @@
 /**
  * Integration tests for the SEPA pending-payment lifecycle (PendingPaymentManager).
  *
- * SEPA debits don't settle instantly, so we credit the wallet immediately as
- * "(PENDIENTE)" and reconcile later against Stripe:
- *   createPendingPayment        → credits now, records a pending row
- *   checkPendingPayment(succeeded) → confirm, strip "(PENDIENTE)", balance unchanged
- *   checkPendingPayment(canceled)  → fail, REVERSE the credit (debit back to 0)
+ * SEPA debits don't settle instantly, so the wallet is NOT credited until Stripe says
+ * the payment succeeded (the pending row is shown to the user as "pendiente"):
+ *   createPendingPayment        → records a pending row, no credit
+ *   checkPendingPayment(succeeded) → credits once (idempotent per intent), confirms
+ *   checkPendingPayment(canceled)  → marks failed, never credited
+ * Legacy rows credited up front are reversed on failure and may go negative.
  *
  * The `stripe` wrapper is mocked (paymentIntents.retrieve is synthetic); the wallet
  * and pending-payment stores are REAL against in-memory Mongo.
@@ -46,25 +47,22 @@ const newPendingFor = (customerId: string, intentId: string) =>
     paymentMethod: 'sepa_debit',
   })
 
-describe('PendingPaymentManager — SEPA lifecycle', () => {
-  it('credits immediately as pending and records the pending row', async () => {
+describe('PendingPaymentManager — SEPA lifecycle (credit only when cleared)', () => {
+  it('does NOT credit while pending: records the pending row, balance stays 0', async () => {
     const pending = await newPending()
     expect(pending.status).toBe('pending')
 
-    // Credit lands right away (so the user can use it), tagged PENDIENTE.
-    expect((await VirtualWallet.getBalance(CUSTOMER_ID)).balance).toBe(5000)
-    const txns = await VirtualWallet.getTransactions(CUSTOMER_ID)
-    expect(txns[0].description).toContain('PENDIENTE')
+    expect((await VirtualWallet.getBalance(CUSTOMER_ID)).balance).toBe(0)
+    expect(await VirtualWallet.getTransactions(CUSTOMER_ID)).toHaveLength(0)
 
-    // Discoverable both as a customer pending payment and by intent id.
+    // Shown to the customer as "pendiente" (GET /api/wallet pendingPayments) and by intent id.
     expect(await PendingPaymentManager.getPendingPayments(CUSTOMER_ID)).toHaveLength(1)
     const found = await PendingPaymentManager.findByPaymentIntent('pi_sepa')
     expect(found?._id?.toString()).toBe(pending._id?.toString())
   })
 
-  it('confirms when Stripe reports the intent succeeded (balance unchanged, tag removed)', async () => {
+  it('credits exactly once when Stripe reports the intent succeeded', async () => {
     const pending = await newPending()
-    // Modern Stripe API: Charge is on `latest_charge`, not the removed `charges.data`.
     stripeMock.paymentIntents.retrieve.mockResolvedValue({ status: 'succeeded', latest_charge: { id: 'ch_sepa' } })
 
     const result = await PendingPaymentManager.checkPendingPayment(pending)
@@ -72,32 +70,75 @@ describe('PendingPaymentManager — SEPA lifecycle', () => {
 
     const stored = await PendingPaymentManager.findByPaymentIntent('pi_sepa')
     expect(stored?.status).toBe('confirmed')
-    // Charge id captured from latest_charge (proves the migration off charges.data).
     expect(stored?.stripeChargeId).toBe('ch_sepa')
-    // Already credited at creation → confirming must NOT credit again.
     expect((await VirtualWallet.getBalance(CUSTOMER_ID)).balance).toBe(5000)
     const txns = await VirtualWallet.getTransactions(CUSTOMER_ID)
     expect(txns[0].description).not.toContain('PENDIENTE')
+
+    // Re-checking / replayed webhooks never credit twice.
+    await PendingPaymentManager.checkPendingPayment(pending)
+    await PendingPaymentManager.checkPendingPayment(stored as any)
+    expect((await VirtualWallet.getBalance(CUSTOMER_ID)).balance).toBe(5000)
+    expect(await VirtualWallet.getTransactions(CUSTOMER_ID)).toHaveLength(1)
   })
 
-  it('fails and reverses the credit when Stripe reports the intent canceled', async () => {
+  it('SEPA-D: a failed SEPA payment never credits, so nothing can be spent first and kept', async () => {
     const pending = await newPending()
-    expect((await VirtualWallet.getBalance(CUSTOMER_ID)).balance).toBe(5000)
+    // The customer cannot spend credit that has not cleared.
+    const spend = await VirtualWallet.debitCredits(CUSTOMER_ID, 4500, 'extra_contract', 'uso')
+    expect(spend.success).toBe(false)
 
     stripeMock.paymentIntents.retrieve.mockResolvedValue({ status: 'canceled' })
-
     const result = await PendingPaymentManager.checkPendingPayment(pending)
     expect(result.newStatus).toBe('failed')
 
-    const stored = await PendingPaymentManager.findByPaymentIntent('pi_sepa')
-    expect(stored?.status).toBe('failed')
-    // Reversal debit brings the wallet back to zero.
+    expect((await PendingPaymentManager.findByPaymentIntent('pi_sepa'))?.status).toBe('failed')
     expect((await VirtualWallet.getBalance(CUSTOMER_ID)).balance).toBe(0)
-    const txns = await VirtualWallet.getTransactions(CUSTOMER_ID)
-    expect(txns.some(t => t.type === 'debit')).toBe(true)
+    expect(await VirtualWallet.getTransactions(CUSTOMER_ID)).toHaveLength(0)
   })
 
-  it('does not confirm while the intent is still processing', async () => {
+  it('SEPA-D legacy: a pre-credited pending that was spent and then fails drives the balance NEGATIVE and blocks usage', async () => {
+    // Row created by the OLD flow: credited up front, 45 EUR spent, then the debit fails.
+    const credit = await VirtualWallet.addCredits(CUSTOMER_ID, 5000, 'top_up', 'Bono (SEPA) (PENDIENTE)', 'pi_sepa')
+    const d = await (global as any).__getTestDb()
+    await d.collection('pending_payments').insertOne({
+      customerId: CUSTOMER_ID, stripePaymentIntentId: 'pi_sepa', amount: 5000, description: 'Bono (SEPA)',
+      paymentMethod: 'sepa_debit', status: 'pending', createdAt: new Date(), walletTransactionId: credit._id,
+      creditedUpfront: true, metadata: { checkAttempts: 0 }, updatedAt: new Date(),
+    })
+    expect((await VirtualWallet.debitCredits(CUSTOMER_ID, 4500, 'extra_contract', 'uso')).success).toBe(true)
+    expect((await VirtualWallet.getBalance(CUSTOMER_ID)).balance).toBe(500)
+
+    stripeMock.paymentIntents.retrieve.mockResolvedValue({ status: 'requires_payment_method' })
+    const pending = (await PendingPaymentManager.findByPaymentIntent('pi_sepa')) as any
+    await PendingPaymentManager.checkPendingPayment(pending)
+
+    // Owes 45 EUR: reversal of 5000 on a balance of 500 => -4500, not "skipped".
+    expect((await VirtualWallet.getBalance(CUSTOMER_ID)).balance).toBe(-4500)
+    expect((await VirtualWallet.debitCredits(CUSTOMER_ID, 1, 'sms', 'x')).success).toBe(false)
+    expect((await PendingPaymentManager.findByPaymentIntent('pi_sepa'))?.status).toBe('failed')
+
+    // Reversal happens once only, even if the failure webhook is replayed.
+    await PendingPaymentManager.checkPendingPayment(pending)
+    expect((await VirtualWallet.getBalance(CUSTOMER_ID)).balance).toBe(-4500)
+
+    // A later top-up pays the debt back first.
+    await VirtualWallet.addCredits(CUSTOMER_ID, 5000, 'top_up', 'recarga', 'pi_new')
+    expect((await VirtualWallet.getBalance(CUSTOMER_ID)).balance).toBe(500)
+  })
+
+  it('an expired pending payment is marked expired without any credit', async () => {
+    const pending = await newPending()
+    const d = await (global as any).__getTestDb()
+    await d.collection('pending_payments').updateOne({ _id: pending._id }, { $set: { createdAt: new Date(Date.now() - 20 * 24 * 3600 * 1000) } })
+    stripeMock.paymentIntents.retrieve.mockResolvedValue({ status: 'requires_action' })
+    const stored = (await PendingPaymentManager.findByPaymentIntent('pi_sepa')) as any
+    const result = await PendingPaymentManager.checkPendingPayment(stored)
+    expect(result.newStatus).toBe('expired')
+    expect((await VirtualWallet.getBalance(CUSTOMER_ID)).balance).toBe(0)
+  })
+
+  it('does not credit while the intent is still processing', async () => {
     const pending = await newPending()
     stripeMock.paymentIntents.retrieve.mockResolvedValue({ status: 'processing' })
 
@@ -106,7 +147,13 @@ describe('PendingPaymentManager — SEPA lifecycle', () => {
 
     const stored = await PendingPaymentManager.findByPaymentIntent('pi_sepa')
     expect(stored?.status).toBe('processing')
-    expect((await VirtualWallet.getBalance(CUSTOMER_ID)).balance).toBe(5000)
+    expect((await VirtualWallet.getBalance(CUSTOMER_ID)).balance).toBe(0)
+  })
+
+  it('creating the same pending payment twice returns the first row', async () => {
+    const a = await newPending()
+    const b = await newPending()
+    expect(String(b._id)).toBe(String(a._id))
   })
 })
 
@@ -134,17 +181,17 @@ describe('PendingPaymentManager.checkAllPendingPayments — batch reconciliation
     expect(results.failed).toBe(1)
     expect(results.errors).toEqual([])
 
-    // Confirmed: credit stays.
+    // Confirmed: credited now.
     expect((await PendingPaymentManager.findByPaymentIntent('pi_ok'))?.status).toBe('confirmed')
     expect((await VirtualWallet.getBalance('cust-ok')).balance).toBe(5000)
 
-    // Failed: credit reversed to zero.
+    // Failed: never credited.
     expect((await PendingPaymentManager.findByPaymentIntent('pi_bad'))?.status).toBe('failed')
     expect((await VirtualWallet.getBalance('cust-bad')).balance).toBe(0)
 
-    // Still processing: credit held, row not terminal.
+    // Still processing: nothing credited yet, row not terminal.
     expect((await PendingPaymentManager.findByPaymentIntent('pi_wait'))?.status).toBe('processing')
-    expect((await VirtualWallet.getBalance('cust-wait')).balance).toBe(5000)
+    expect((await VirtualWallet.getBalance('cust-wait')).balance).toBe(0)
   })
 
   it('skips rows checked within the last 6h (no rework)', async () => {

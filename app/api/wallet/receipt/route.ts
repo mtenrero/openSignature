@@ -70,6 +70,21 @@ export async function GET(request: NextRequest) {
 
     // @ts-ignore - customerId is a custom property
     const userCustomerId = session.customerId as string
+    // Fail closed: no customer in the session means we cannot prove ownership of anything.
+    if (!userCustomerId || typeof userCustomerId !== 'string') {
+      return NextResponse.json({ error: 'Customer ID not found in session' }, { status: 401 })
+    }
+
+    // The Stripe object's customer MUST exist and resolve to the caller. A charge /
+    // payment intent without a customer, or whose customer carries no (or a different)
+    // customerId metadata, is never shown (undefined must not match undefined).
+    const ownsStripeCustomer = async (customerRef: any): Promise<boolean> => {
+      const stripeCustomerRef = typeof customerRef === 'string' ? customerRef : customerRef?.id
+      if (!stripeCustomerRef || typeof stripeCustomerRef !== 'string') return false
+      const customer = await stripe.customers.retrieve(stripeCustomerRef) as any
+      const owner = customer?.metadata?.customerId
+      return typeof owner === 'string' && owner.length > 0 && owner === userCustomerId
+    }
 
     let stripePaymentIntentId: string | null = null
     let stripeChargeId: string | null = null
@@ -124,16 +139,12 @@ export async function GET(request: NextRequest) {
         charge = await stripe.charges.retrieve(stripeChargeId)
         receiptUrl = charge.receipt_url
 
-        // Verify charge belongs to customer
-        if (charge.customer) {
-          const customer = await stripe.customers.retrieve(charge.customer as string) as any
-          const stripeCustomerId = customer.metadata?.customerId
-          if (userCustomerId !== stripeCustomerId) {
-            return NextResponse.json(
-              { error: 'Unauthorized access to this receipt' },
-              { status: 403 }
-            )
-          }
+        // Verify charge belongs to customer (required, not conditional)
+        if (!(await ownsStripeCustomer(charge.customer))) {
+          return NextResponse.json(
+            { error: 'Unauthorized access to this receipt' },
+            { status: 403 }
+          )
         }
 
       } else if (stripePaymentIntentId && typeof stripePaymentIntentId === 'string' && stripePaymentIntentId !== '[object Object]') {
@@ -184,16 +195,12 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Verify payment intent belongs to customer
-        if (paymentIntent.customer) {
-          const customer = await stripe.customers.retrieve(paymentIntent.customer as string) as any
-          const stripeCustomerId = customer.metadata?.customerId
-          if (userCustomerId !== stripeCustomerId) {
-            return NextResponse.json(
-              { error: 'Unauthorized access to this receipt' },
-              { status: 403 }
-            )
-          }
+        // Verify payment intent belongs to customer (required, not conditional)
+        if (!(await ownsStripeCustomer(paymentIntent.customer))) {
+          return NextResponse.json(
+            { error: 'Unauthorized access to this receipt' },
+            { status: 403 }
+          )
         }
 
         if (!chargeObj) {

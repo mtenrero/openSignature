@@ -309,6 +309,49 @@ export class VirtualWallet {
   }
 
   /**
+   * Reverse a previously granted credit that turned out not to be backed by money
+   * (e.g. a SEPA debit that failed or expired after the credit was already spent).
+   *
+   * Unlike debitCredits this NEVER skips for lack of balance: the balance is allowed to
+   * go NEGATIVE. A negative balance means "the customer owes this amount": every normal
+   * debit (debitCredits requires balance >= amount) is refused until a new top-up
+   * brings it back to >= 0, so the wallet is effectively frozen for usage.
+   */
+  static async reverseCredit(
+    customerId: string,
+    amount: number,
+    description: string,
+    relatedEntityId?: string
+  ): Promise<WalletTransaction> {
+    if (!Number.isInteger(amount) || amount <= 0) {
+      throw new Error('Reversal amount must be a positive integer number of cents')
+    }
+    const walletCollection = await this.getWalletCollection()
+    const transactionsCollection = await this.getTransactionsCollection()
+    await this.getBalance(customerId)
+    const before = await walletCollection.findOneAndUpdate(
+      { customerId },
+      { $inc: { balance: -amount, totalDebits: amount }, $set: { lastUpdated: new Date() } },
+      { returnDocument: 'before' }
+    )
+    const balanceBefore = ((before as any)?.balance as number) ?? 0
+    const transaction: WalletTransaction = {
+      customerId,
+      type: 'debit',
+      amount,
+      reason: 'refund',
+      description,
+      ...(relatedEntityId ? { relatedEntityId } : {}),
+      balanceBefore,
+      balanceAfter: balanceBefore - amount,
+      createdAt: new Date(),
+      metadata: { reversal: true }
+    }
+    const result = await transactionsCollection.insertOne(transaction)
+    return { ...transaction, _id: result.insertedId }
+  }
+
+  /**
    * Check if customer can afford a charge
    */
   static async canAfford(customerId: string, amount: number): Promise<boolean> {
