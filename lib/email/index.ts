@@ -36,11 +36,7 @@ export interface SignatureCompletedEmailOptions {
 export async function sendSignatureRequestEmail(
   options: SignatureRequestEmailOptions
 ): Promise<EmailResponse> {
-  console.log('[Email Utils] Sending signature request email:', {
-    to: options.recipientEmail,
-    contract: options.contractName,
-    id: options.contractId
-  })
+  console.log('[Email Utils] Sending signature request email:', { id: options.contractId })
 
   try {
     const response = await fetch('/api/email/signature-request', {
@@ -83,12 +79,7 @@ export async function sendSignatureRequestEmail(
 export async function sendSignatureCompletedEmail(
   options: SignatureCompletedEmailOptions
 ): Promise<EmailResponse> {
-  console.log('[Email Utils] Sending signature completion email:', {
-    to: options.recipientEmail,
-    contract: options.contractName,
-    id: options.contractId,
-    attachPdf: options.attachPdf
-  })
+  console.log('[Email Utils] Sending signature completion email:', { id: options.contractId, attachPdf: options.attachPdf })
 
   try {
     const response = await fetch('/api/email/signature-completed', {

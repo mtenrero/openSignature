@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
     const userResult = await userResponse.json()
 
     if (!userResponse.ok) {
-      console.error('Auth0 user creation failed:', userResult)
+      console.error('Auth0 user creation failed:', { status: userResponse.status, error: userResult?.error, code: userResult?.code })
 
       if (userResult.code === 'user_exists') {
         return NextResponse.json(
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('[REGISTER] User created in Auth0:', userResult.email)
+    console.log('[REGISTER] User created in Auth0')
 
     return NextResponse.json({
       success: true,

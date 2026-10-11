@@ -9,6 +9,7 @@ import {
   handleDatabaseError 
 } from '../../../../../lib/db/mongodb'
 import { ObjectId } from 'mongodb'
+import { getAuthContext } from '@/lib/auth/unified'
 
 export async function GET(
   request: NextRequest,
@@ -18,7 +19,15 @@ export async function GET(
     const params = await context.params
     const { searchParams } = new URL(request.url)
     const simple = searchParams.get('simple')
-    const customerId = searchParams.get('customerId') || 'default'
+    // The tenant comes from the caller's credentials, never from the query string.
+    const authContext = await getAuthContext(request)
+    if (!authContext) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const customerId = authContext.customerId
+    if (!ObjectId.isValid(params.contract)) {
+      return NextResponse.json({ error: 'Contract not found' }, { status: 404 })
+    }
 
     moment.locale("es")
 

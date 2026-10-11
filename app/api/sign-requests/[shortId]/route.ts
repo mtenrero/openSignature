@@ -23,7 +23,6 @@ export async function GET(
     const url = new URL(request.url)
     const accessKey = url.searchParams.get('a')
     
-    console.log('[DEBUG] GET sign-requests:', { shortId, accessKey })
 
     // Capture IP address and comprehensive metadata for audit trail
     const clientIP = extractClientIP(request)
@@ -100,19 +99,14 @@ export async function GET(
     let isValidAccessKey = false
 
     console.log('[DEBUG] Access validation - shortId:', shortId)
-    console.log('[DEBUG] Access validation - provided accessKey:', accessKey)
     console.log('[DEBUG] Access validation - customerId:', signatureRequest.customerId)
-    console.log('[DEBUG] Access validation - stored accessKey:', signatureRequest.accessKey)
 
     if (signatureRequest.accessKey) {
       // New format: stored access key (from /api/sign-requests)
-      console.log('[DEBUG] GET - Using stored accessKey:', signatureRequest.accessKey)
       isValidAccessKey = accessKey === signatureRequest.accessKey
     } else {
       // Legacy format: generated from base64 (from /api/signature-requests)
       const expectedAccessKey = Buffer.from(`${shortId}:${signatureRequest.customerId}`).toString('base64').slice(0, 6)
-      console.log('[DEBUG] GET - Generated accessKey:', expectedAccessKey, 'provided:', accessKey)
-      console.log('[DEBUG] GET - Comparison string:', `${shortId}:${signatureRequest.customerId}`)
       isValidAccessKey = accessKey === expectedAccessKey
     }
 
@@ -194,7 +188,7 @@ export async function GET(
           accountVariableValues[key] = value
         }
       })
-      console.log('[DEBUG] Applied variable overrides:', signatureRequest.variableOverrides)
+      console.log('[DEBUG] Applied variable overrides:', Object.keys(signatureRequest.variableOverrides || {}).length, 'keys')
     }
 
     // Add structured document access audit entry
@@ -310,12 +304,7 @@ export async function GET(
         }
       })
 
-      console.log('[AUDIT] Document access event registered for:', {
-        shortId,
-        contractId: signatureRequest.contractId,
-        ip: clientIP,
-        hash: contractHash
-      })
+      console.log('[AUDIT] Document access event registered for:', { shortId, contractId: signatureRequest.contractId })
     } catch (auditError) {
       console.warn('[AUDIT] Failed to register document access event:', auditError)
       // Don't fail the request if audit logging fails
@@ -494,8 +483,6 @@ export async function PUT(
     }
 
     // Debug: Log dynamic field values
-    console.log('[SIGNER DEBUG] Dynamic field values received:', JSON.stringify(dynamicFieldValues, null, 2))
-    console.log('[SIGNER DEBUG] User fields from contract:', JSON.stringify(signatureRequest.contractSnapshot?.userFields, null, 2))
 
     // Register optional data provided event for audit trail
     try {
@@ -536,11 +523,6 @@ export async function PUT(
           }
         })
 
-        console.log('[AUDIT] Optional data provided events registered for:', {
-          shortId,
-          fieldsCount: Object.keys(dynamicFieldValues).length,
-          contractId: signatureRequest.contractId
-        })
       }
     } catch (auditError) {
       console.warn('[AUDIT] Failed to register optional data events:', auditError)
@@ -550,7 +532,6 @@ export async function PUT(
     // Extract signer information from dynamic fields
     const signerInfo = extractSignerInfo(dynamicFieldValues || [], signatureRequest.contractSnapshot?.userFields || [])
     
-    console.log('[SIGNER DEBUG] Extracted signer info:', JSON.stringify(signerInfo, null, 2))
     
     // Generate comprehensive document hash for integrity verification
     const crypto = require('crypto')
@@ -589,8 +570,6 @@ export async function PUT(
     }
 
     // Generate SHA-256 hash of the complete data using deterministic stringify
-    console.log('[HASH DEBUG] hashData before hashing:', JSON.stringify(hashData, null, 2))
-    console.log('[HASH DEBUG] deterministicStringify output:', deterministicStringify(hashData))
 
     const documentHash = crypto
       .createHash('sha256')
@@ -619,15 +598,7 @@ export async function PUT(
     // Ensure document hash is stored
     signatureMetadata.documentHash = documentHash
 
-    console.log('[DEBUG] Captured signature metadata:', {
-      ip: clientIP,
-      userAgent: signatureMetadata.userAgent,
-      browser: `${signatureMetadata.browserName} ${signatureMetadata.browserVersion}`,
-      os: `${signatureMetadata.operatingSystem} ${signatureMetadata.osVersion}`,
-      device: signatureMetadata.deviceType,
-      screen: signatureMetadata.screenResolution,
-      timezone: signatureMetadata.timezone
-    })
+    console.log('[DEBUG] Captured signature metadata for:', shortId)
 
     // Create audit trail for this signature
     const auditTrail = auditTrailService.createAuditTrail(
@@ -823,7 +794,6 @@ export async function PUT(
       const signerName = signerInfo.clientName || signatureRequest.signerName || 'Usuario'
       
       try {
-        console.log(`[Signature Complete] Sending completion email to ${recipientEmail}`)
         
         // Import and use the email service directly
         const { createScalewayEmailService } = await import('@/lib/email/scaleway-service')
@@ -919,9 +889,7 @@ export async function PUT(
           )
           
           if (emailResult.success) {
-            console.log(`[Signature Complete] Completion email sent successfully to ${recipientEmail} with message ID: ${emailResult.messageId}`)
           } else {
-            console.error(`[Signature Complete] Failed to send completion email to ${recipientEmail}:`, emailResult.error)
             // Don't fail the signature completion if email fails, just log it
           }
         } else {
@@ -929,7 +897,6 @@ export async function PUT(
         }
         
       } catch (emailError) {
-        console.error(`[Signature Complete] Error sending completion email to ${recipientEmail}:`, emailError)
         // Don't fail the signature completion if email fails, just log it
       }
     }

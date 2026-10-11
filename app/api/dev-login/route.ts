@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { encode } from 'next-auth/jwt'
+import { isProductionRuntime } from '@/lib/auth/productionGuard'
 
 export const runtime = 'nodejs'
 
@@ -14,7 +15,7 @@ export const runtime = 'nodejs'
  * never exists in production.
  */
 export async function GET(request: NextRequest) {
-  if (process.env.DEV_AUTH_BYPASS !== 'true') {
+  if (isProductionRuntime() || process.env.DEV_AUTH_BYPASS !== 'true') {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 

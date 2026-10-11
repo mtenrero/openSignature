@@ -64,7 +64,9 @@ export async function POST(
           status: 'archived',
           archivedAt: new Date(),
           archivedReason: reason,
-          archivedBy: session.user.id
+          archivedBy: session.user.id,
+          // Remember that it was signed: a signed document is never refundable.
+          ...((contract.status === 'signed' || contract.status === 'completed') && { signedBeforeArchive: true, previousStatus: contract.status })
         }
       }
     )

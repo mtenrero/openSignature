@@ -4,9 +4,10 @@
  */
 
 import Stripe from 'stripe'
-import { SUBSCRIPTION_PLANS, SubscriptionPlan } from '@/lib/subscription/plans'
+import { SUBSCRIPTION_PLANS, SubscriptionPlan, getPlanById } from '@/lib/subscription/plans'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { VirtualWallet } from '@/lib/wallet/wallet'
+import { claimWebhookEvent, completeWebhookEvent, releaseWebhookEvent } from '@/lib/payment/webhookEvents'
 
 // Runtime-only requirement: `next build` imports this module during page-data
 // collection, so use a placeholder during the build phase (the SDK constructor throws
@@ -58,8 +59,7 @@ export class StripeManager {
       disableSEPA,
       NODE_ENV: process.env.NODE_ENV,
       isProduction,
-      isLiveStripe,
-      stripeKeyPrefix: process.env.STRIPE_SECRET_KEY?.substring(0, 8)
+      isLiveStripe
     })
 
     // Force disable SEPA if using live Stripe keys (production Stripe account)
@@ -602,18 +602,40 @@ export class StripeManager {
     try {
       event = stripe.webhooks.constructEvent(body, signature, process.env.STRIPE_WEBHOOK_SECRET)
     } catch (err) {
-      console.error('🚫 Webhook signature verification failed:', {
-        error: err instanceof Error ? err.message : 'Unknown error',
-        signatureHeader: signature.substring(0, 20) + '...',
-        secretConfigured: !!process.env.STRIPE_WEBHOOK_SECRET,
-        secretPrefix: process.env.STRIPE_WEBHOOK_SECRET?.substring(0, 10) + '...',
-        bodyLength: body.length
-      })
+      // Never log the signature header, the secret (or a prefix of it) or the body.
+      console.error('🚫 Webhook signature verification failed:', err instanceof Error ? err.message : 'Unknown error')
       return { handled: false, message: 'Invalid signature' }
+    }
+
+    if (!event?.id || typeof event.id !== 'string') {
+      return { handled: false, message: 'Invalid event' }
     }
 
     console.log('Received Stripe webhook:', event.type)
 
+    // Idempotency by (signed) event id: Stripe redelivers, and replays of a captured
+    // payload must not repeat side effects.
+    const claim = await claimWebhookEvent(event.id, event.type)
+    if (claim === 'duplicate') {
+      console.log(`Duplicate webhook event ${event.id} ignored`)
+      return { handled: true, message: 'Duplicate event' }
+    }
+    if (claim === 'in_progress') {
+      return { handled: false, message: 'Event in progress' }
+    }
+
+    try {
+      const result = await this.dispatchEvent(event)
+      if (result.handled) await completeWebhookEvent(event.id)
+      else await releaseWebhookEvent(event.id)
+      return result
+    } catch (err) {
+      await releaseWebhookEvent(event.id).catch(() => undefined)
+      throw err
+    }
+  }
+
+  private static async dispatchEvent(event: Stripe.Event): Promise<{ handled: boolean, message?: string }> {
     switch (event.type) {
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
@@ -668,6 +690,17 @@ export class StripeManager {
         await this.handlePaymentIntentCanceled(event.data.object as Stripe.PaymentIntent)
         break
 
+      case 'charge.refunded': {
+        // A SEPA top-up that was credited and later refunded: take the refund back out.
+        const charge = event.data.object as Stripe.Charge
+        const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id
+        if (piId) {
+          const { PendingPaymentManager } = await import('@/lib/wallet/pendingPayments')
+          await PendingPaymentManager.handleChargeRefunded(piId, Number(charge.amount_refunded) || 0)
+        }
+        break
+      }
+
       // Additional events that we can safely ignore but acknowledge
       case 'charge.succeeded':
       case 'charge.updated':
@@ -694,28 +727,28 @@ export class StripeManager {
       subscriptionId: subscription.id,
       customerId: subscription.customer,
       status: subscription.status,
-      metadata: subscription.metadata,
       items: subscription.items.data.map(item => ({
         price_id: item.price.id,
         product_id: item.price.product
       }))
     })
 
+    // Only a PAID-UP subscription grants a plan. `incomplete` / `past_due` change nothing
+    // (no free upgrade for an unpaid first invoice); a dead subscription downgrades.
+    if (['canceled', 'incomplete_expired', 'unpaid'].includes(subscription.status)) {
+      await this.handleSubscriptionCancellation(subscription)
+      return
+    }
+    if (!['active', 'trialing'].includes(subscription.status)) {
+      console.log(`Subscription ${subscription.id} is ${subscription.status}: plan unchanged`)
+      return
+    }
+
     const customer = await stripe.customers.retrieve(subscription.customer as string) as Stripe.Customer
     const auth0UserId = customer.metadata?.auth0UserId
 
-    console.log('📋 Customer details:', {
-      customerId: customer.id,
-      email: customer.email,
-      name: customer.name,
-      auth0UserId,
-      customerMetadata: customer.metadata
-    })
-
     if (!auth0UserId) {
-      console.error('❌ No Auth0 user ID found in customer metadata. Available metadata:', customer.metadata)
-      console.error('❌ Customer email:', customer.email)
-      console.error('❌ This means the customer was not created through our system or metadata was not set correctly')
+      console.error('❌ No Auth0 user ID found in customer metadata (customer not created through our system)')
       return
     }
 
@@ -755,16 +788,20 @@ export class StripeManager {
       }
     }
 
-    // Final fallback
-    planId = planId || 'free'
+    // The plan must be one of OUR plans and a paid one: metadata can be edited in the Stripe
+    // dashboard, so an unknown value must never be written to the user.
+    const resolvedPlan = planId ? getPlanById(planId) : null
+    if (!resolvedPlan || resolvedPlan.id === 'free') {
+      console.error(`Subscription ${subscription.id} maps to no valid plan, leaving the user unchanged`)
+      return
+    }
+    planId = resolvedPlan.id
 
     console.log(`🔄 Updating user ${auth0UserId} subscription to plan: ${planId}`)
-    console.log(`🔍 Subscription metadata:`, subscription.metadata)
     console.log(`🔍 Subscription ID: ${subscription.id}`)
     console.log(`🔍 All subscription data:`, {
       id: subscription.id,
       status: subscription.status,
-      metadata: subscription.metadata,
       items: subscription.items.data.map(item => ({
         price_id: item.price.id,
         product_id: item.price.product
@@ -888,11 +925,21 @@ export class StripeManager {
   private static async handleCheckoutComplete(session: Stripe.Checkout.Session): Promise<void> {
     // Handle wallet top-up payments
     if (session.metadata?.type === 'wallet_topup') {
+      // Money only counts once Stripe says it is paid. Async methods (SEPA) are credited by
+      // checkout.session.async_payment_succeeded / the pending-payment flow instead.
+      if (session.payment_status !== 'paid') {
+        console.log(`Wallet top-up session ${session.id} not paid yet (${session.payment_status}), skipping credit`)
+        return
+      }
       const customerId = session.metadata.oSignEUCustomerId
-      const amountInCents = parseInt(session.metadata.amountInCents || '0')
+      const metaCents = parseInt(session.metadata.amountInCents || '0')
+      const chargedCents = Number(session.amount_subtotal ?? session.amount_total ?? metaCents)
+      const amountInCents = Number.isFinite(metaCents) && metaCents > 0 && Number.isFinite(chargedCents)
+        ? Math.min(metaCents, chargedCents)
+        : 0
 
-      if (!customerId || !amountInCents) {
-        console.error('Missing wallet top-up metadata:', session.metadata)
+      if (!customerId || !amountInCents || !session.payment_intent) {
+        console.error('Invalid wallet top-up checkout session:', session.id)
         return
       }
 
@@ -924,7 +971,8 @@ export class StripeManager {
 
         console.log(`Added ${VirtualWallet.formatAmount(amountInCents)} credits to wallet for customer ${customerId}`)
       } catch (error) {
-        console.error('Error adding credits to wallet:', error)
+        console.error('Error adding credits to wallet:', error instanceof Error ? error.message : 'error')
+        throw error // let Stripe retry: addCredits is idempotent per payment intent
       }
     }
   }
@@ -941,10 +989,16 @@ export class StripeManager {
     // Check if this is a wallet top-up payment
     if (paymentIntent.metadata?.type === 'wallet_topup') {
       const customerId = paymentIntent.metadata.oSignEUCustomerId
-      const amountInCents = parseInt(paymentIntent.metadata.amountInCents || '0')
+      const metaCents = parseInt(paymentIntent.metadata.amountInCents || '0')
+      // Never credit more than Stripe says was actually received (the event object itself
+      // is signature-verified; metadata alone is not proof of payment).
+      const receivedCents = Number(paymentIntent.amount_received ?? paymentIntent.amount ?? metaCents)
+      const amountInCents = Number.isFinite(metaCents) && metaCents > 0 && Number.isFinite(receivedCents)
+        ? Math.min(metaCents, receivedCents)
+        : 0
 
       if (!customerId || !amountInCents) {
-        console.error('Missing wallet top-up metadata in payment_intent:', paymentIntent.metadata)
+        console.error('Invalid wallet top-up payment_intent:', paymentIntent.id)
         return
       }
 
@@ -984,7 +1038,8 @@ export class StripeManager {
 
         console.log(`Added ${VirtualWallet.formatAmount(amountInCents)} credits to wallet for customer ${customerId} (immediate payment)`)
       } catch (error) {
-        console.error('Error adding credits to wallet from payment_intent.succeeded:', error)
+        console.error('Error adding credits to wallet from payment_intent.succeeded:', error instanceof Error ? error.message : 'error')
+        throw error // let Stripe retry: addCredits is idempotent per payment intent
       }
     }
   }
@@ -1127,9 +1182,20 @@ export class StripeManager {
           if (pendingPayment) {
             await PendingPaymentManager.checkPendingPayment(pendingPayment)
             console.log(`Updated pending payment status for async payment success: ${checkoutSession.payment_intent}`)
+          } else if (checkoutSession.payment_status === 'paid' && customerId && amountInCents) {
+            // No pending record (the success page never ran): the money is in, credit once.
+            const chargedCents = Number(checkoutSession.amount_subtotal ?? checkoutSession.amount_total ?? amountInCents)
+            await VirtualWallet.addCredits(
+              customerId,
+              Math.min(amountInCents, chargedCents),
+              'top_up',
+              `Bono de uso adicional - ${VirtualWallet.formatAmount(amountInCents)}`,
+              checkoutSession.payment_intent as string
+            )
           }
         } catch (error) {
-          console.error('Error updating pending payment on async success:', error)
+          console.error('Error updating pending payment on async success:', error instanceof Error ? error.message : 'error')
+          throw error
         }
       }
     }

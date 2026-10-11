@@ -294,7 +294,6 @@ export class SignedContractPDFGenerator {
        .lineTo(545, 80)
        .stroke('#bdc3c7')
 
-    console.log('[PDF CONTENT DEBUG] Input contract content:', contractContent.substring(0, 500) + '...')
 
     // Contract content (convert HTML to formatted plain text for PDF with better formatting)
     let plainTextContent = contractContent
@@ -345,7 +344,6 @@ export class SignedContractPDFGenerator {
       .replace(/^\s+|\s+$/g, '') // Trim whitespace
       .trim()
 
-    console.log('[PDF CONTENT DEBUG] After HTML processing:', plainTextContent.substring(0, 500) + '...')
 
     // If content is empty after processing, show default message
     if (!plainTextContent) {

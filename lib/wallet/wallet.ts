@@ -94,6 +94,26 @@ export class VirtualWallet {
             name: 'uniq_credit_stripe_payment_intent',
           },
         )
+        // A refund credit is tied to the entity (contract / signature request) it
+        // refunds: at most ONE refund credit per entity, enforced by the database.
+        await collection.createIndex(
+          { customerId: 1, relatedEntityId: 1 },
+          {
+            unique: true,
+            partialFilterExpression: { type: 'credit', reason: 'refund', relatedEntityId: { $type: 'string' } },
+            name: 'uniq_refund_credit_entity',
+          },
+        )
+        // A reversed legacy SEPA credit that later clears is restored AT MOST ONCE per
+        // payment intent (restoreReversedCredit).
+        await collection.createIndex(
+          { relatedEntityId: 1 },
+          {
+            unique: true,
+            partialFilterExpression: { type: 'credit', 'metadata.restoration': true, relatedEntityId: { $type: 'string' } },
+            name: 'uniq_restoration_credit_entity',
+          },
+        )
       } catch (err) {
         console.warn(
           '[wallet] Could not create uniq_credit_stripe_payment_intent index ' +
@@ -155,8 +175,12 @@ export class VirtualWallet {
     reason: 'top_up' | 'bonus' | 'refund',
     description: string,
     stripePaymentIntentId?: string,
-    stripeChargeId?: string
+    stripeChargeId?: string,
+    relatedEntityId?: string
   ): Promise<WalletTransaction> {
+    if (!Number.isInteger(amount) || amount <= 0) {
+      throw new Error('Credit amount must be a positive integer number of cents')
+    }
     const walletCollection = await this.getWalletCollection()
     const transactionsCollection = await this.getTransactionsCollection()
 
@@ -166,6 +190,11 @@ export class VirtualWallet {
     // If this intent already produced a credit, return it without crediting again.
     if (stripePaymentIntentId) {
       const existing = await transactionsCollection.findOne({ stripePaymentIntentId, type: 'credit' })
+      if (existing) return existing as WalletTransaction
+    }
+    // Same for refunds: one refund credit per refunded entity.
+    if (reason === 'refund' && relatedEntityId) {
+      const existing = await transactionsCollection.findOne({ customerId, relatedEntityId, type: 'credit', reason: 'refund' })
       if (existing) return existing as WalletTransaction
     }
 
@@ -180,6 +209,7 @@ export class VirtualWallet {
       description,
       stripePaymentIntentId,
       stripeChargeId,
+      ...(relatedEntityId ? { relatedEntityId } : {}),
       balanceBefore: currentBalance.balance,
       balanceAfter: currentBalance.balance + amount,
       createdAt: new Date()
@@ -194,6 +224,10 @@ export class VirtualWallet {
     } catch (err: any) {
       if (err?.code === 11000 && stripePaymentIntentId) {
         const existing = await transactionsCollection.findOne({ stripePaymentIntentId, type: 'credit' })
+        if (existing) return existing as WalletTransaction
+      }
+      if (err?.code === 11000 && reason === 'refund' && relatedEntityId) {
+        const existing = await transactionsCollection.findOne({ customerId, relatedEntityId, type: 'credit', reason: 'refund' })
         if (existing) return existing as WalletTransaction
       }
       throw err
@@ -229,17 +263,31 @@ export class VirtualWallet {
     const walletCollection = await this.getWalletCollection()
     const transactionsCollection = await this.getTransactionsCollection()
 
-    // Get current balance
-    const currentBalance = await this.getBalance(customerId)
+    if (!Number.isInteger(amount) || amount <= 0) {
+      return { success: false, error: 'Invalid debit amount' }
+    }
 
-    // Check if sufficient balance
-    if (currentBalance.balance < amount) {
+    // Ensure the wallet document exists, then debit ATOMICALLY: the balance check is part
+    // of the update filter, so two concurrent debits can never overdraw the wallet.
+    await this.getBalance(customerId)
+    const before = await walletCollection.findOneAndUpdate(
+      { customerId, balance: { $gte: amount } },
+      {
+        $inc: { balance: -amount, totalDebits: amount },
+        $set: { lastUpdated: new Date() }
+      },
+      { returnDocument: 'before' }
+    )
+
+    if (!before) {
+      const current = await this.getBalance(customerId)
       return {
         success: false,
-        error: `Saldo insuficiente. Saldo actual: ${(currentBalance.balance / 100).toFixed(2)}€, necesario: ${(amount / 100).toFixed(2)}€`
+        error: `Saldo insuficiente. Saldo actual: ${(current.balance / 100).toFixed(2)}€, necesario: ${(amount / 100).toFixed(2)}€`
       }
     }
 
+    const balanceBefore = (before as any).balance as number
     const transaction: WalletTransaction = {
       customerId,
       type: 'debit',
@@ -247,32 +295,139 @@ export class VirtualWallet {
       reason,
       description,
       relatedEntityId,
-      balanceBefore: currentBalance.balance,
-      balanceAfter: currentBalance.balance - amount,
+      balanceBefore,
+      balanceAfter: balanceBefore - amount,
       createdAt: new Date()
     }
 
-    // Insert transaction
-    const transactionResult = await transactionsCollection.insertOne(transaction)
-
-    // Update wallet balance
-    await walletCollection.updateOne(
-      { customerId },
-      {
-        $inc: {
-          balance: -amount,
-          totalDebits: amount
-        },
-        $set: {
-          lastUpdated: new Date()
-        }
-      }
-    )
+    let transactionResult
+    try {
+      transactionResult = await transactionsCollection.insertOne(transaction)
+    } catch (err) {
+      // Could not record the debit: give the money back instead of losing it silently.
+      await walletCollection.updateOne(
+        { customerId },
+        { $inc: { balance: amount, totalDebits: -amount } }
+      )
+      throw err
+    }
 
     return {
       success: true,
       transaction: { ...transaction, _id: transactionResult.insertedId }
     }
+  }
+
+  /**
+   * Reverse a previously granted credit that turned out not to be backed by money
+   * (e.g. a SEPA debit that failed or expired after the credit was already spent).
+   *
+   * Unlike debitCredits this NEVER skips for lack of balance: the balance is allowed to
+   * go NEGATIVE. A negative balance means "the customer owes this amount": every normal
+   * debit (debitCredits requires balance >= amount) is refused until a new top-up
+   * brings it back to >= 0, so the wallet is effectively frozen for usage.
+   */
+  static async reverseCredit(
+    customerId: string,
+    amount: number,
+    description: string,
+    relatedEntityId?: string
+  ): Promise<WalletTransaction> {
+    if (!Number.isInteger(amount) || amount <= 0) {
+      throw new Error('Reversal amount must be a positive integer number of cents')
+    }
+    const walletCollection = await this.getWalletCollection()
+    const transactionsCollection = await this.getTransactionsCollection()
+    await this.getBalance(customerId)
+    const before = await walletCollection.findOneAndUpdate(
+      { customerId },
+      { $inc: { balance: -amount, totalDebits: amount }, $set: { lastUpdated: new Date() } },
+      { returnDocument: 'before' }
+    )
+    const balanceBefore = ((before as any)?.balance as number) ?? 0
+    const transaction: WalletTransaction = {
+      customerId,
+      type: 'debit',
+      amount,
+      reason: 'refund',
+      description,
+      ...(relatedEntityId ? { relatedEntityId } : {}),
+      balanceBefore,
+      balanceAfter: balanceBefore - amount,
+      createdAt: new Date(),
+      metadata: { reversal: true }
+    }
+    const result = await transactionsCollection.insertOne(transaction)
+    return { ...transaction, _id: result.insertedId }
+  }
+
+  /**
+   * The reversal debit written by reverseCredit for a payment intent (legacy SEPA rows
+   * credited up front that then failed/expired), if any.
+   */
+  static async findReversalByPaymentIntent(paymentIntentId: string): Promise<WalletTransaction | null> {
+    const collection = await this.getTransactionsCollection()
+    return await collection.findOne({
+      type: 'debit',
+      relatedEntityId: paymentIntentId,
+      'metadata.reversal': true
+    }) as WalletTransaction | null
+  }
+
+  /**
+   * A SEPA debit that was marked failed/expired (and whose up-front credit was reversed)
+   * turned out to clear in Stripe: give the reversed amount back, exactly once per
+   * payment intent (check + unique partial index on the deterministic relatedEntityId).
+   * Returns the restoration transaction, or null if there was no reversal to undo.
+   */
+  static async restoreReversedCredit(
+    customerId: string,
+    paymentIntentId: string,
+    maxAmount: number,
+    description: string
+  ): Promise<WalletTransaction | null> {
+    const reversal = await this.findReversalByPaymentIntent(paymentIntentId)
+    if (!reversal) return null
+    const amount = Math.min(reversal.amount, maxAmount)
+    if (!Number.isInteger(amount) || amount <= 0) return null
+
+    const walletCollection = await this.getWalletCollection()
+    const transactionsCollection = await this.getTransactionsCollection()
+    const restorationKey = `restore:${paymentIntentId}`
+    const findExisting = () =>
+      transactionsCollection.findOne({ relatedEntityId: restorationKey, type: 'credit', 'metadata.restoration': true })
+
+    const already = await findExisting()
+    if (already) return already as WalletTransaction
+
+    const current = await this.getBalance(customerId)
+    const transaction: WalletTransaction = {
+      customerId,
+      type: 'credit',
+      amount,
+      reason: 'top_up',
+      description,
+      relatedEntityId: restorationKey,
+      balanceBefore: current.balance,
+      balanceAfter: current.balance + amount,
+      createdAt: new Date(),
+      metadata: { restoration: true, paymentIntentId }
+    }
+    let result
+    try {
+      result = await transactionsCollection.insertOne(transaction)
+    } catch (err: any) {
+      if (err?.code === 11000) {
+        const winner = await findExisting()
+        if (winner) return winner as WalletTransaction
+      }
+      throw err
+    }
+    await walletCollection.updateOne(
+      { customerId },
+      { $inc: { balance: amount, totalCredits: amount }, $set: { lastUpdated: new Date() } }
+    )
+    return { ...transaction, _id: result.insertedId }
   }
 
   /**

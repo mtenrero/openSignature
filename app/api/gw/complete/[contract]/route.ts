@@ -12,6 +12,7 @@ import {
   handleDatabaseError 
 } from '../../../../../lib/db/mongodb'
 import { ObjectId } from 'mongodb'
+import { getAuthContext } from '@/lib/auth/unified'
 
 export async function POST(
   request: NextRequest,
@@ -20,7 +21,15 @@ export async function POST(
   try {
     const params = await context.params
     const body = await request.json()
-    const customerId = body.customerId || 'default'
+    // The tenant comes from the caller's credentials, never from the body.
+    const authContext = await getAuthContext(request)
+    if (!authContext) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const customerId = authContext.customerId
+    if (!ObjectId.isValid(params.contract)) {
+      return NextResponse.json({ error: 'Contract not found' }, { status: 404 })
+    }
 
     moment.locale("es")
 

@@ -64,7 +64,6 @@ export default function ContractPreviewPage() {
         const accountValues = createAccountVariableValues(variables)
         setAccountVariableValues(accountValues)
         
-        console.log('Variables loaded:', { variables, accountValues })
 
         // Initialize user field values
         const userFields = contractData.userFields || []
@@ -240,26 +239,6 @@ export default function ContractPreviewPage() {
   const contentHasDynamic = contract?.content ? contractNeedsDynamicFields(contract.content) : false
   const userFieldsHaveEnabled = contract?.userFields?.some((field: any) => field.enabled) || false
   
-  console.log('Preview Debug:', {
-    contractContent: contract?.content,
-    contractContentLength: contract?.content?.length,
-    contractContentHasDynamicPattern: contentHasDynamic,
-    userFields: contract?.userFields,
-    userFieldsCount: contract?.userFields?.length,
-    userFieldsEnabled: userFieldsHaveEnabled,
-    needsDynamicFieldsCalculation: {
-      contentHasDynamic,
-      userFieldsHaveEnabled,
-      finalResult: contentHasDynamic || userFieldsHaveEnabled
-    },
-    needsDynamicFields,
-    steps: steps.map(s => s.id),
-    currentStep,
-    currentStepId: steps[currentStep]?.id,
-    originalStepsLength: defaultSigningSteps.length,
-    currentStepsLength: steps.length,
-    dynamicFieldValues: dynamicFieldValues
-  })
   
   // Additional debug for content patterns
   if (contract?.content) {
@@ -310,9 +289,6 @@ export default function ContractPreviewPage() {
       // Here would go the logic to send the signed contract
       console.log('Contract signed:', {
         contractId,
-        userFieldValues,
-        dynamicFieldValues,
-        signature: signatureDataUrl,
         timestamp: new Date().toISOString()
       })
 

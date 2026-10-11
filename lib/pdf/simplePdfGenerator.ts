@@ -686,13 +686,7 @@ export class SimplePDFGenerator {
    */
   private addAuditTrailPage(doc: jsPDF, auditTrail: any[]) {
     // Debug: Log first few events to see what structure they have
-    console.log('[PDF GENERATOR] Received audit trail events:', auditTrail.slice(0, 3).map((e: any) => ({
-      action: e.action,
-      ipAddress: e.ipAddress,
-      ip: e.ip,
-      hasMetadata: !!e.metadata,
-      metadataIP: e.metadata?.ipAddress
-    })))
+    console.log('[PDF GENERATOR] Received audit trail events:', auditTrail.length)
 
     // Header
     doc.setFillColor(41, 128, 185)
@@ -799,7 +793,7 @@ export class SimplePDFGenerator {
 
       // Debug: Log IP rendering for each event
       if (index < 5) {
-        console.log(`[PDF RENDER] Event ${index + 1}: action=${event.action}, ipAddress=${event.ipAddress}, ip=${event.ip}, final=${ipText}`)
+        console.log(`[PDF RENDER] Event ${index + 1}: action=${event.action}, hasIp=${!!ipText}`)
       }
 
       doc.text(ipText, 135, yPosition)

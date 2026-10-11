@@ -119,7 +119,12 @@ describe('GET /api/subscription — load current plan', () => {
 
 // ── Change via set-plan (free / pay_per_use only) ───────────────────────────
 describe('POST /api/subscription/set-plan — change plan directly', () => {
-  beforeEach(() => signedIn())
+  // A previous test leaves getUserSubscriptionInfo rejecting; plan changes now fail
+  // closed on that, so every change-plan test starts from a readable paid plan (so the change is a real write).
+  beforeEach(() => {
+    signedIn()
+    a0.getUserSubscriptionInfo.mockReset().mockResolvedValue({ user: { user_id: USER_ID, user_metadata: {} }, plan: { id: 'pyme' } })
+  })
 
   it('rejects unauthenticated callers with 401', async () => {
     signedOut()
@@ -164,7 +169,10 @@ describe('POST /api/subscription/set-plan — change plan directly', () => {
 
 // ── Change via POST /api/subscription (free direct, paid → checkout) ─────────
 describe('POST /api/subscription — change plan', () => {
-  beforeEach(() => signedIn())
+  beforeEach(() => {
+    signedIn()
+    a0.getUserSubscriptionInfo.mockReset().mockResolvedValue({ user: { user_id: USER_ID, user_metadata: {} }, plan: { id: 'pyme' } })
+  })
 
   it('downgrades to free directly', async () => {
     const res = await SUB_POST(buildRequest({ method: 'POST', body: { planId: 'free' } }) as any)

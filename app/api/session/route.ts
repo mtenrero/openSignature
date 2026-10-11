@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { 
+import {
   getDatabase,
   handleDatabaseError 
 } from '../../../lib/db/mongodb'
 
 export const runtime = 'nodejs'
 
+/**
+ * GET /api/session - validate an API key (Authorization: Bearer osk_...).
+ * Only ACTIVE keys validate, and only the minimal identity fields are returned
+ * (never partnerId/externalId/scopes/revoked internals).
+ */
 export async function GET(request: NextRequest) {
   try {
     const apikey = request.headers.get('authorization') || ""
@@ -19,14 +24,20 @@ export async function GET(request: NextRequest) {
     const db = await getDatabase()
     const collection = db.collection('esign_apikeys')
     
-    // Find API key details
-    const apiKeyDetails = await collection.findOne({ _id: token })
+    // Find ACTIVE API key details (revoked keys have active:false and a revokedAt)
+    const apiKeyDetails = await collection.findOne({ _id: token as any, active: true, revokedAt: { $exists: false } })
     
     if (!apiKeyDetails) {
       return NextResponse.json({ error: 'Invalid API key' }, { status: 401 })
     }
 
-    return NextResponse.json(apiKeyDetails)
+    return NextResponse.json({
+      userId: apiKeyDetails.userId,
+      customerId: apiKeyDetails.customerId,
+      name: apiKeyDetails.name,
+      active: true,
+      createdAt: apiKeyDetails.createdAt,
+    })
   } catch (error) {
     console.error('Error validating API key:', error)
     const errorResponse = handleDatabaseError(error)

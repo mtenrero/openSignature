@@ -4,63 +4,43 @@ import { StripeManager } from '@/lib/payment/stripe'
 export const runtime = 'nodejs'
 
 // POST /api/webhooks/stripe - Handle Stripe webhooks
+//
+// Fails closed: no STRIPE_WEBHOOK_SECRET -> 500 (nothing is processed), no/invalid
+// signature -> 400. Verified events are processed at most once (event-id store).
+// Never logs the body, the signature header or any secret.
 export async function POST(request: NextRequest) {
-  console.log('🔔 Webhook received - Start processing')
-
   try {
+    if (!process.env.STRIPE_WEBHOOK_SECRET) {
+      console.error('❌ STRIPE_WEBHOOK_SECRET is not configured: refusing all webhooks')
+      return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 })
+    }
+
     const body = await request.text()
     const signature = request.headers.get('stripe-signature')
 
-    console.log('📊 Webhook details:', {
-      bodyLength: body.length,
-      hasSignature: !!signature,
-      secretConfigured: !!process.env.STRIPE_WEBHOOK_SECRET
-    })
-
     if (!signature) {
-      console.error('❌ Missing stripe-signature header')
-      return NextResponse.json(
-        { error: 'Missing stripe-signature header' },
-        { status: 400 }
-      )
-    }
-
-    if (!process.env.STRIPE_WEBHOOK_SECRET) {
-      console.error('❌ Missing STRIPE_WEBHOOK_SECRET environment variable')
-      return NextResponse.json(
-        { error: 'Webhook secret not configured' },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: 'Missing stripe-signature header' }, { status: 400 })
     }
 
     const result = await StripeManager.handleWebhook(body, signature)
 
     if (result.handled) {
-      console.log('✅ Webhook processed successfully')
       return NextResponse.json({ received: true })
-    } else {
-      console.error('❌ Webhook not handled:', result.message)
-
-      // Return 401 for signature verification failures
-      if (result.message === 'Invalid signature') {
-        return NextResponse.json(
-          { error: 'Webhook signature verification failed' },
-          { status: 401 }
-        )
-      }
-
-      // Return 400 for other webhook handling errors
-      return NextResponse.json(
-        { error: result.message || 'Webhook not handled' },
-        { status: 400 }
-      )
     }
 
+    if (result.message === 'Invalid signature' || result.message === 'Invalid event') {
+      return NextResponse.json({ error: 'Webhook signature verification failed' }, { status: 400 })
+    }
+
+    // Another delivery of the same event is running: ask Stripe to retry later.
+    if (result.message === 'Event in progress') {
+      return NextResponse.json({ error: 'Event in progress' }, { status: 409 })
+    }
+
+    // Verified but unsupported event type
+    return NextResponse.json({ error: result.message || 'Webhook not handled' }, { status: 400 })
   } catch (error) {
-    console.error('❌ Webhook error:', error)
-    return NextResponse.json(
-      { error: 'Webhook handler failed' },
-      { status: 500 }
-    )
+    console.error('❌ Webhook error:', error instanceof Error ? error.message : 'error')
+    return NextResponse.json({ error: 'Webhook handler failed' }, { status: 500 })
   }
 }

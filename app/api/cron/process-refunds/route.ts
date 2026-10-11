@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { hasValidCronSecret } from '@/lib/auth/cron'
 import { RefundSystem } from '@/lib/subscription/refundSystem'
 
 export const runtime = 'nodejs'
@@ -7,10 +8,7 @@ export const runtime = 'nodejs'
 export async function POST(request: NextRequest) {
   try {
     // Verify cron secret for security
-    const authHeader = request.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET
-
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    if (!hasValidCronSecret(request)) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -42,8 +40,7 @@ export async function POST(request: NextRequest) {
     console.error('[CRON] Error processing expired refunds:', error)
     return NextResponse.json(
       {
-        error: 'Internal server error',
-        message: error instanceof Error ? error.message : 'Unknown error'
+        error: 'Internal server error'
       },
       { status: 500 }
     )

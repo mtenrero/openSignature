@@ -1,10 +1,12 @@
 import { auth } from '@/lib/auth/config'
 import { NextResponse } from 'next/server'
 import { extractBearerToken, validateJWT } from '@/lib/auth/jwt'
+import { isProductionRuntime } from '@/lib/auth/productionGuard'
 
 export default auth(async (req) => {
   // Check for session-based auth
   let isAuth = !!req.auth
+  let apiKeyBearer = false
 
   // If no session, check for Bearer token (OAuth2 JWT or API Key)
   if (!isAuth) {
@@ -12,11 +14,11 @@ export default auth(async (req) => {
     const token = extractBearerToken(authHeader)
 
     if (token) {
-      // Check if it's an API key (starts with osk_)
+      // API keys (osk_) cannot be validated here (the edge runtime has no database
+      // access), so a syntactic osk_ prefix NEVER authenticates in middleware: it
+      // only lets API routes through to authenticate themselves via getAuthContext.
       if (token.startsWith('osk_')) {
-        // API keys are validated in the API routes
-        // Just allow it to pass through middleware
-        isAuth = true
+        apiKeyBearer = true
       } else {
         // Validate JWT token
         const payload = await validateJWT(token)
@@ -30,6 +32,7 @@ export default auth(async (req) => {
   //  - E2E_TEST_MODE=true + e2e_session cookie: cookie-gated for Playwright.
   if (
     !isAuth &&
+    !isProductionRuntime() &&
     (process.env.DEV_AUTH_BYPASS === 'true' ||
       (process.env.E2E_TEST_MODE === 'true' && req.cookies.get('e2e_session')))
   ) {
@@ -43,8 +46,8 @@ export default auth(async (req) => {
   // Public API routes that don't require authentication
   const publicApiRoutes = [
     '/api/auth',
-    '/api/oauth', // Allow all OAuth endpoints
-    '/api/test', // Test endpoints (temporary)
+    '/api/oauth/token', // OAuth token proxy (validates client credentials via Auth0)
+    '/api/oauth/client-mapping', // Auth0 Action lookup (INTERNAL_API_KEY bearer)
     '/api/openapi', // OpenAPI specification
     '/api/status',
     '/api/sign-requests',
@@ -74,7 +77,7 @@ export default auth(async (req) => {
   }
 
   // If user is not authenticated and trying to access protected route
-  if (!isAuth && !isAuthPage && !isPublicApiRoute && !isPublicPage) {
+  if (!isAuth && !(apiKeyBearer && isApiRoute) && !isAuthPage && !isPublicApiRoute && !isPublicPage) {
     // For API routes, return 401 Unauthorized instead of redirect
     if (isApiRoute) {
       return NextResponse.json(
