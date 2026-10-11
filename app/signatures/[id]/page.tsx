@@ -209,7 +209,7 @@ export default function SignatureDetailsPage() {
             // Preserve shortId and accessKey for PDF download
             if (detailsData.status === 'signed' || detailsData.status === 'completed') {
               // These fields should already be in the response
-              console.log('[DEBUG] Found signed request with shortId:', detailsData.shortId, 'accessKey:', detailsData.accessKey)
+              console.log('[DEBUG] Found signed request with shortId:', detailsData.shortId)
             }
           }
         }

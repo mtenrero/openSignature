@@ -29,7 +29,7 @@ export class BulkGateProvider implements SmsProvider {
   }
 
   async send(sender: string, message: string, recipientPhone: string): Promise<SmsSendResult> {
-    console.log('[BulkGate] Starting SMS send process', { sender, recipientPhone })
+    console.log('[BulkGate] Starting SMS send process')
 
     const isSMSDisabled = process.env.DISABLE_SMS === 'true'
     console.log('[BulkGate] SMS disabled check:', { isSMSDisabled, envValue: process.env.DISABLE_SMS })
@@ -58,7 +58,6 @@ export class BulkGateProvider implements SmsProvider {
     }
 
     const to = normalizePhoneWithPrefix(recipientPhone)
-    console.log('[BulkGate] Phone normalized:', { original: recipientPhone, normalized: to })
 
     // Payload based on BulkGate advanced transactional API v2.0
     const payload: Record<string, unknown> = {
@@ -77,11 +76,7 @@ export class BulkGateProvider implements SmsProvider {
     }
 
     console.log('[BulkGate] Sending request to:', this.apiUrl)
-    console.log('[BulkGate] Payload:', {
-      ...payload,
-      application_token: '***',
-      text: `${message.substring(0, 50)}...` // Truncate message in logs
-    })
+    console.log('[BulkGate] Payload built', { textLength: message.length })
 
     try {
       const startTime = Date.now()
@@ -91,11 +86,7 @@ export class BulkGateProvider implements SmsProvider {
       })
       const duration = Date.now() - startTime
 
-      console.log('[BulkGate] Response received:', {
-        status: response.status,
-        duration: `${duration}ms`,
-        data: response.data
-      })
+      console.log('[BulkGate] Response received:', { status: response.status, duration: `${duration}ms` })
 
       const responseData = response.data
 
@@ -131,12 +122,7 @@ export class BulkGateProvider implements SmsProvider {
         // Format 1: Single message response
         if (data.status && data.message_id) {
           if (data.status === 'accepted' || data.status === 'sent') {
-            console.log('[BulkGate] ✅ SMS sent successfully (single message)', {
-              messageId: data.message_id,
-              number: data.number,
-              channel: data.channel,
-              status: data.status
-            })
+            console.log('[BulkGate] ✅ SMS sent successfully (single message)', { messageId: data.message_id, channel: data.channel, status: data.status })
             return {
               success: true,
               provider: this.name,
@@ -199,7 +185,7 @@ export class BulkGateProvider implements SmsProvider {
 
       // If we got HTTP 200-299 but unexpected response structure
       if (response.status >= 200 && response.status < 300) {
-        console.error('[BulkGate] Unexpected response structure:', responseData)
+        console.error('[BulkGate] Unexpected response structure')
         return {
           success: false,
           provider: this.name,

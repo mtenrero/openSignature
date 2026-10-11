@@ -118,14 +118,6 @@ export async function GET(
 
       console.log('[PDF DEBUG] Combined audit trail:', combinedTrail.length, 'total events')
       console.log('[PDF DEBUG] Filtered for PDF:', auditTrailForPDF.length, 'events (excluded PDF downloads)')
-      console.log('[PDF DEBUG] ALL events with IP status:', auditTrailForPDF.map((e: any, idx: number) => ({
-        index: idx + 1,
-        action: e.action,
-        timestamp: e.timestamp,
-        ipAddress: e.ipAddress || 'MISSING',
-        hasMetadata: !!e.metadata,
-        metadataIP: e.metadata?.ipAddress || 'MISSING'
-      })))
     } catch (auditError) {
       console.error('[PDF DEBUG] Error getting combined audit trail:', auditError)
       // Fallback to simple array if available

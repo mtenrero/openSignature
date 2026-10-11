@@ -254,9 +254,8 @@ export async function GET(
       console.warn('Could not fetch variables from database:', error)
     }
     
-    console.log('[PDF DEBUG] Raw variables from DB:', variables)
+    console.log('[PDF DEBUG] Account variables loaded:', Array.isArray(variables) ? variables.length : 0)
     const accountVariableValues = createAccountVariableValues(variables)
-    console.log('[PDF DEBUG] Account variable values after processing:', accountVariableValues)
     
     // Add default values for common variables if they're empty
     const defaultValues = {
@@ -273,7 +272,7 @@ export async function GET(
     // Use default values where account values are missing
     const finalAccountVariableValues = { ...defaultValues, ...accountVariableValues }
     
-    console.log('[PDF DEBUG] Final variable values:', finalAccountVariableValues)
+    console.log('[PDF DEBUG] Final variable values count:', Object.keys(finalAccountVariableValues).length)
 
     // Get dynamic field values from signature metadata
     // Check multiple sources: converted metadata, direct signerInfo, and direct dynamicFieldValues
@@ -282,13 +281,7 @@ export async function GET(
       || decryptedSignature.dynamicFieldValues
       || {}
 
-    console.log('[PDF DEBUG] Dynamic field values sources:', {
-      fromMetadataAllFields: !!decryptedSignature.metadata?.signerInfo?.allFields,
-      fromSignerInfoAllFields: !!decryptedSignature.signerInfo?.allFields,
-      fromDynamicFieldValues: !!decryptedSignature.dynamicFieldValues,
-      finalKeys: Object.keys(dynamicFieldValues),
-      finalValues: dynamicFieldValues
-    })
+    console.log('[PDF DEBUG] Dynamic field values count:', Object.keys(dynamicFieldValues).length)
 
     // Process contract content (use already decrypted contractContent)
     const processedContent = processContractContent(
@@ -297,7 +290,6 @@ export async function GET(
       dynamicFieldValues
     )
     
-    console.log('[PDF DEBUG] Processed content after variable replacement:', processedContent.substring(0, 300) + '...')
 
     // Generate PDF with SimplePDFGenerator (same as the working public endpoint)
     const simplePDFGenerator = new SimplePDFGenerator()

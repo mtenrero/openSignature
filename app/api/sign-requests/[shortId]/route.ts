@@ -188,7 +188,7 @@ export async function GET(
           accountVariableValues[key] = value
         }
       })
-      console.log('[DEBUG] Applied variable overrides:', signatureRequest.variableOverrides)
+      console.log('[DEBUG] Applied variable overrides:', Object.keys(signatureRequest.variableOverrides || {}).length, 'keys')
     }
 
     // Add structured document access audit entry
@@ -304,12 +304,7 @@ export async function GET(
         }
       })
 
-      console.log('[AUDIT] Document access event registered for:', {
-        shortId,
-        contractId: signatureRequest.contractId,
-        ip: clientIP,
-        hash: contractHash
-      })
+      console.log('[AUDIT] Document access event registered for:', { shortId, contractId: signatureRequest.contractId })
     } catch (auditError) {
       console.warn('[AUDIT] Failed to register document access event:', auditError)
       // Don't fail the request if audit logging fails
@@ -603,15 +598,7 @@ export async function PUT(
     // Ensure document hash is stored
     signatureMetadata.documentHash = documentHash
 
-    console.log('[DEBUG] Captured signature metadata:', {
-      ip: clientIP,
-      userAgent: signatureMetadata.userAgent,
-      browser: `${signatureMetadata.browserName} ${signatureMetadata.browserVersion}`,
-      os: `${signatureMetadata.operatingSystem} ${signatureMetadata.osVersion}`,
-      device: signatureMetadata.deviceType,
-      screen: signatureMetadata.screenResolution,
-      timezone: signatureMetadata.timezone
-    })
+    console.log('[DEBUG] Captured signature metadata for:', shortId)
 
     // Create audit trail for this signature
     const auditTrail = auditTrailService.createAuditTrail(

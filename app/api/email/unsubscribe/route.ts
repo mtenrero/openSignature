@@ -122,12 +122,7 @@ export async function POST(request: NextRequest) {
     const { email, reason } = body
     
     // Log the unsubscribe request
-    console.log('[Unsubscribe] Request received:', {
-      email,
-      reason,
-      timestamp: new Date().toISOString(),
-      ip: request.headers.get('x-forwarded-for') || 'unknown'
-    })
+    console.log('[Unsubscribe] Request received')
     
     // In a real implementation, you would:
     // 1. Add email to unsubscribe list

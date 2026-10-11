@@ -213,7 +213,7 @@ export async function GET(request: NextRequest) {
 
         console.log('DEBUG: Charge details:', {
           chargeId: charge.id,
-          receiptUrl: charge.receipt_url,
+          hasReceiptUrl: !!charge.receipt_url,
           status: charge.status,
           invoice: charge.invoice
         });
@@ -239,7 +239,7 @@ export async function GET(request: NextRequest) {
             const invoice = await stripe.invoices.retrieve(charge.invoice as string);
             if (invoice.hosted_invoice_url) {
               receiptUrl = invoice.hosted_invoice_url;
-              console.log('DEBUG: Using invoice URL as alternative:', receiptUrl);
+              console.log('DEBUG: Using invoice URL as alternative');
             }
           } catch (invoiceError) {
             console.error('DEBUG: Error fetching invoice:', invoiceError);
