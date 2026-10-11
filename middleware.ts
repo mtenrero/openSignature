@@ -50,7 +50,8 @@ export default auth(async (req) => {
     '/api/sign-requests',
     '/api/verify',
     '/api/webhooks', // Allow all webhook endpoints (Stripe, etc.)
-    '/api/cron' // Allow Vercel Cron Jobs
+    '/api/cron', // Allow Vercel Cron Jobs
+    '/api/partner' // Partner provisioning/SSO (authenticate themselves with Authorization: Partner)
   ]
 
   // Check if current API route is public
@@ -67,6 +68,12 @@ export default auth(async (req) => {
                       req.nextUrl.pathname === '/security' ||
                       req.nextUrl.pathname === '/how-it-works' ||
                       isSignPage
+
+  // Partner SSO redeems its own one-time token and replaces any existing session,
+  // so it must never be short-circuited by the "already signed in" redirect below.
+  if (req.nextUrl.pathname === '/auth/partner-sso') {
+    return NextResponse.next()
+  }
 
   // Allow auth callbacks to proceed without authentication check
   if (isAuthCallback) {

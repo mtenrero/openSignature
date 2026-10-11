@@ -58,7 +58,6 @@ providers.push(Auth0({
   authorization: {
     url: `${normalizedIssuer.replace(/\/$/, '')}/authorize`,
     params: {
-      prompt: "login",
       scope: "openid profile email",
       response_type: "code",
       response_mode: "query"
@@ -151,6 +150,12 @@ export const config: NextAuthConfig = {
       //   console.log('========================')
       // }
 
+      // Partner SSO sessions (app/auth/partner-sso) carry a server-minted,
+      // encrypted customerId: never re-derive it from `sub` below.
+      if (token.partnerSso && token.customerId) {
+        return token
+      }
+
       // Extract and store customer ID from Auth0 token
       try {
         // Priority 1: Use app_metadata.businessID if available
@@ -199,6 +204,8 @@ export const config: NextAuthConfig = {
         session.user.name = token.name as string
         // @ts-ignore - customerId is a custom property
         session.customerId = token.customerId as string
+        // @ts-ignore - partnerId is a custom property (partner SSO sessions only)
+        if (token.partnerSso) session.partnerId = token.partnerSso as string
       }
       // @ts-ignore - accessToken is a custom property
       session.accessToken = token.accessToken as string

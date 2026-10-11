@@ -32,10 +32,13 @@ function SignInPageContent() {
       console.log('[SIGNIN] Starting OAuth sign in process...')
 
       // Use redirect: true to let NextAuth handle the OAuth flow properly
+      // ?switch=1 forces the Auth0 login prompt (account switch); by default an
+      // existing Auth0 session gives one-click SSO.
+      const forceLogin = new URLSearchParams(window.location.search).get('switch') === '1'
       await signIn('auth0', {
         callbackUrl,
         redirect: true // Let NextAuth handle the OAuth flow
-      })
+      }, forceLogin ? { prompt: 'login' } : undefined)
 
       // This code won't execute because of the redirect
       // The user will be redirected to Auth0 for authentication

@@ -16,6 +16,7 @@ import { spawn, ChildProcess } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import crypto from 'crypto'
 
 const STATE_FILE = path.join(os.tmpdir(), 'osign-e2e-state.json')
 
@@ -25,6 +26,8 @@ export const TEST_API_KEY = 'osk_e2e_test_key_do_not_use_in_prod_xxxxxxxxxxxxxxx
 export const TEST_USER_ID = 'e2e-user'
 export const TEST_CUSTOMER_ID = 'e2e-customer'
 export const TEST_DB_NAME = 'osign_e2e'
+// Partner (VetControl) provisioning/SSO test secret. Only the sha256 reaches the server env.
+export const TEST_PARTNER_SECRET = 'e2e-partner-secret-do-not-use-in-prod'
 
 interface E2EState {
   mongoUri: string
@@ -118,6 +121,14 @@ export default async function globalSetup() {
     MONGODB_DB_NAME: TEST_DB_NAME,
     AUTH0_MANAGEMENT_CLIENT_ID: '',
     AUTH0_MANAGEMENT_CLIENT_SECRET: '',
+    OSIGN_PARTNERS: JSON.stringify([
+      {
+        id: 'vetcontrol',
+        secretSha256: crypto.createHash('sha256').update(TEST_PARTNER_SECRET).digest('hex'),
+        defaultPlan: 'pyme',
+        ssoAllowedReturn: ['/contracts', '/dashboard', '/settings'],
+      },
+    ]),
   }
 
   const child: ChildProcess = spawn('npx', ['next', 'dev', '-p', String(port)], {

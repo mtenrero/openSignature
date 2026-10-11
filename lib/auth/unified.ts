@@ -41,6 +41,14 @@ export async function getAuthContext(request?: NextRequest): Promise<AuthContext
       // @ts-ignore - customerId is a custom property
       const customerId = session.customerId as string
       if (customerId) {
+        // Partner SSO sessions die with the partner account (revoked => no access).
+        // @ts-ignore - partnerId is a custom property
+        const partnerId = session.partnerId as string | undefined
+        if (partnerId) {
+          const db = await getDatabase()
+          const account = await db.collection('partner_accounts').findOne({ partnerId, customerId, status: 'active' })
+          if (!account) return null
+        }
         return {
           userId: session.user.id,
           customerId,
