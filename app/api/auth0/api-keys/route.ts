@@ -64,6 +64,13 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    // @ts-ignore - partnerId is set on partner SSO sessions only
+    if (session.partnerId) {
+      return NextResponse.json(
+        { error: 'Partner sessions cannot manage API keys', errorCode: 'SESSION_NOT_ALLOWED' },
+        { status: 403 }
+      )
+    }
 
     const managementToken = await getManagementApiToken()
 
@@ -137,6 +144,13 @@ export async function POST(request: NextRequest) {
     const session = await auth()
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    // @ts-ignore - partnerId is set on partner SSO sessions only
+    if (session.partnerId) {
+      return NextResponse.json(
+        { error: 'Partner sessions cannot manage API keys', errorCode: 'SESSION_NOT_ALLOWED' },
+        { status: 403 }
+      )
     }
 
     const body = await request.json()

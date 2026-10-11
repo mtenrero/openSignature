@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
+import { rejectPartnerSso } from '@/lib/auth/partnerBilling'
 import { isAdminSession } from '@/lib/auth/admin'
 import { hasValidCronSecret } from '@/lib/auth/cron'
 import { rateLimitOr429 } from '@/lib/security/rateLimit'
@@ -63,6 +64,10 @@ export async function POST(request: NextRequest) {
     if (!isCron && !session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // Partner billing goes through the partner: partner SSO sessions cannot change plan/buy.
+    const partnerBlock = rejectPartnerSso(session)
+    if (partnerBlock) return partnerBlock
 
     const wantsTarget = body.contractId !== undefined || body.signatureRequestId !== undefined
 

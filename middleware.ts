@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth/config'
 import { NextResponse } from 'next/server'
 import { extractBearerToken, validateJWT } from '@/lib/auth/jwt'
 import { isProductionRuntime } from '@/lib/auth/productionGuard'
+import { isSwitchAccount } from '@/lib/auth/customerId'
 
 export default auth(async (req) => {
   // Check for session-based auth
@@ -53,7 +54,8 @@ export default auth(async (req) => {
     '/api/sign-requests',
     '/api/verify',
     '/api/webhooks', // Allow all webhook endpoints (Stripe, etc.)
-    '/api/cron' // Allow Vercel Cron Jobs
+    '/api/cron', // Allow Vercel Cron Jobs
+    '/api/partner' // Partner provisioning/SSO (authenticate themselves with Authorization: Partner)
   ]
 
   // Check if current API route is public
@@ -70,6 +72,12 @@ export default auth(async (req) => {
                       req.nextUrl.pathname === '/security' ||
                       req.nextUrl.pathname === '/how-it-works' ||
                       isSignPage
+
+  // Partner SSO redeems its own one-time token and replaces any existing session,
+  // so it must never be short-circuited by the "already signed in" redirect below.
+  if (req.nextUrl.pathname === '/auth/partner-sso') {
+    return NextResponse.next()
+  }
 
   // Allow auth callbacks to proceed without authentication check
   if (isAuthCallback) {
@@ -92,8 +100,13 @@ export default auth(async (req) => {
     return NextResponse.redirect(signInUrl)
   }
 
+  // ...except /auth/signin?switch=1: an explicit "use another account" request must reach
+  // the page (it forces prompt=login at the IdP), otherwise a signed-in user can never switch.
+  const isSwitchRequest =
+    req.nextUrl.pathname === '/auth/signin' && isSwitchAccount(req.nextUrl.searchParams.get('switch'))
+
   // If user is authenticated and trying to access auth pages, redirect to dashboard
-  if (isAuth && isAuthPage) {
+  if (isAuth && isAuthPage && !isSwitchRequest) {
     const response = NextResponse.redirect(new URL('/contracts', req.url))
     // Add header to trigger client-side refresh
     response.headers.set('x-middleware-refresh', 'true')

@@ -22,6 +22,12 @@ export default async function globalTeardown() {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const idp = (global as any).__E2E_IDP__
+  if (idp) {
+    try { await idp.close() } catch { /* ignore */ }
+  }
+
   if (mongo) {
     try { await mongo.stop() } catch { /* ignore */ }
   }

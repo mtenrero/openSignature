@@ -13,6 +13,13 @@ export async function GET(request: NextRequest) {
   try {
     const authContext = await getAuthContext(request)
 
+    if (authContext?.isPartnerSso) {
+      return NextResponse.json(
+        { error: 'Partner sessions cannot manage API keys', errorCode: 'SESSION_NOT_ALLOWED' },
+        { status: 403 }
+      )
+    }
+
     if (authContext?.isApiKey) {
       return NextResponse.json(
         { error: 'API keys cannot manage API keys; sign in interactively', errorCode: 'SESSION_REQUIRED' },
@@ -61,6 +68,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const authContext = await getAuthContext(request)
+
+    if (authContext?.isPartnerSso) {
+      return NextResponse.json(
+        { error: 'Partner sessions cannot manage API keys', errorCode: 'SESSION_NOT_ALLOWED' },
+        { status: 403 }
+      )
+    }
 
     if (authContext?.isApiKey) {
       return NextResponse.json(
@@ -129,6 +143,13 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const authContext = await getAuthContext(request)
+
+    if (authContext?.isPartnerSso) {
+      return NextResponse.json(
+        { error: 'Partner sessions cannot manage API keys', errorCode: 'SESSION_NOT_ALLOWED' },
+        { status: 403 }
+      )
+    }
 
     if (authContext?.isApiKey) {
       return NextResponse.json(

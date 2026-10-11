@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import { Group, Button, Text, ActionIcon, Box, Container, useMantineColorScheme, Menu, Avatar, Stack, Transition } from '@mantine/core'
 import { IconSunMoon, IconFileText, IconSignature, IconLogin, IconHome, IconSettings, IconLogout, IconUser, IconDeviceTablet, IconCreditCard, IconReceipt, IconWallet, IconKey, IconUserPlus } from '@tabler/icons-react'
 import Link from 'next/link'
-import { useSession, signOut } from 'next-auth/react'
+import { useSession, signOut, getCsrfToken } from 'next-auth/react'
 import { usePathname, useRouter } from 'next/navigation'
 
 function LogoIcon() {
@@ -275,6 +275,22 @@ export function Header() {
   }
 
   const handleSignOut = async () => {
+    // Authentik sessions also end the VetControl IdP session (server-side end-session redirect).
+    if ((session as { idp?: string } | null)?.idp === 'authentik') {
+      // POST + CSRF token (double-submit): a plain link/redirect can never log the user out.
+      const csrfToken = await getCsrfToken()
+      const form = document.createElement('form')
+      form.method = 'POST'
+      form.action = '/api/auth/idp-logout'
+      const input = document.createElement('input')
+      input.type = 'hidden'
+      input.name = 'csrfToken'
+      input.value = csrfToken ?? ''
+      form.appendChild(input)
+      document.body.appendChild(form)
+      form.submit()
+      return
+    }
     await signOut({ callbackUrl: '/' })
   }
 

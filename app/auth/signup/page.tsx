@@ -33,6 +33,7 @@ import {
 } from '@tabler/icons-react'
 import Link from 'next/link'
 import { signIn } from 'next-auth/react'
+import { validateRegistration, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/registration'
 
 export default function SignUpPage() {
   const [loading, setLoading] = useState(false)
@@ -45,6 +46,7 @@ export default function SignUpPage() {
     password: '',
     confirmPassword: '',
     company: '',
+    website: '', // honeypot: hidden from people, bots fill it
     acceptTerms: false
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -52,28 +54,12 @@ export default function SignUpPage() {
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
 
-    if (!formData.name.trim()) {
-      newErrors.name = 'El nombre es obligatorio'
-    }
-
-    if (!formData.username.trim()) {
-      newErrors.username = 'El nombre de usuario es obligatorio'
-    } else if (formData.username.length < 3) {
-      newErrors.username = 'El nombre de usuario debe tener al menos 3 caracteres'
-    } else if (!/^[a-zA-Z0-9_]+$/.test(formData.username)) {
-      newErrors.username = 'El nombre de usuario solo puede contener letras, números y guiones bajos'
-    }
-
-    if (!formData.email.trim()) {
-      newErrors.email = 'El email es obligatorio'
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'El email no es válido'
-    }
-
-    if (!formData.password) {
-      newErrors.password = 'La contraseña es obligatoria'
-    } else if (formData.password.length < 8) {
-      newErrors.password = 'La contraseña debe tener al menos 8 caracteres'
+    // Same rules as the server (lib/auth/registration), so the form never promises
+    // what the API will refuse.
+    const parsed = validateRegistration(formData)
+    if (!parsed.ok) {
+      const field = parsed.field === 'body' ? 'name' : parsed.field
+      newErrors[field] = parsed.error
     }
 
     if (formData.password !== formData.confirmPassword) {
@@ -110,21 +96,15 @@ export default function SignUpPage() {
           username: formData.username,
           email: formData.email,
           password: formData.password,
-          company: formData.company
+          company: formData.company,
+          website: formData.website
         }),
       })
 
       const result = await response.json()
 
       if (!response.ok) {
-        // Check if it's an existing account error
-        if (result.type === 'existing_account') {
-          setErrors({
-            general: result.message,
-            type: 'existing_account'
-          })
-          return
-        }
+        // Registration errors
         throw new Error(result.error || 'Error durante el registro')
       }
 
@@ -187,7 +167,7 @@ export default function SignUpPage() {
                 <Alert color="blue" icon={<IconMail size={16} />}>
                   <Text fw={500} mb="xs">Verifica tu email</Text>
                   <Text size="sm">
-                    Auth0 ha enviado un enlace de verificación a: <strong>{registeredEmail}</strong>
+                    Si <strong>{registeredEmail}</strong> puede usarse, te hemos enviado un enlace de verificación. Si ya tienes una cuenta, simplemente inicia sesión.
                   </Text>
                   <Text size="sm" mt="xs">
                     Revisa tu bandeja de entrada y haz clic en el enlace para activar tu cuenta.
@@ -266,6 +246,21 @@ export default function SignUpPage() {
                   required
                 />
 
+                {/* Honeypot: off-screen and not focusable; people never fill it */}
+                <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }}>
+                  <label>
+                    Website
+                    <input
+                      type="text"
+                      name="website"
+                      tabIndex={-1}
+                      autoComplete="off"
+                      value={formData.website}
+                      onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                    />
+                  </label>
+                </div>
+
                 <TextInput
                   label="Empresa"
                   placeholder="Nombre de tu empresa"
@@ -276,7 +271,8 @@ export default function SignUpPage() {
 
                 <PasswordInput
                   label="Contraseña"
-                  placeholder="Mínimo 8 caracteres"
+                  placeholder="Mínimo 8 caracteres, 3 de 4 tipos"
+                  description={PASSWORD_POLICY_MESSAGE}
                   leftSection={<IconLock size={16} />}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}

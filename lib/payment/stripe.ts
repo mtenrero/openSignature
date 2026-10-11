@@ -4,6 +4,7 @@
  */
 
 import Stripe from 'stripe'
+import { stripeApiOverride } from '@/lib/payment/stripeApiOverride'
 import { SUBSCRIPTION_PLANS, SubscriptionPlan, getPlanById } from '@/lib/subscription/plans'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { VirtualWallet } from '@/lib/wallet/wallet'
@@ -18,7 +19,8 @@ if (!process.env.STRIPE_SECRET_KEY && !IS_BUILD_PHASE) {
 }
 
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_build_phase_placeholder', {
-  apiVersion: '2025-08-27.basil'
+  apiVersion: '2025-08-27.basil',
+  ...stripeApiOverride(),
 })
 
 export interface StripeCustomer {

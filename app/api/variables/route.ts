@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
-import { auth } from '@/lib/auth/config'
+import { getAuthContext } from '@/lib/auth/unified'
 import {
   getDatabase,
   getContractsCollection,
@@ -12,80 +12,71 @@ import {
 import { ObjectId } from 'mongodb'
 import { getReferencedVariableNames } from '@/lib/contractUtils'
 
+const defaultVariablesTemplate = [
+  {
+    id: '2',
+    name: 'miNombre',
+    type: 'name',
+    required: true,
+    placeholder: '',
+    enabled: true
+  },
+  {
+    id: '3',
+    name: 'miDireccion',
+    type: 'address',
+    required: true,
+    placeholder: '',
+    enabled: true
+  },
+  {
+    id: '4',
+    name: 'miTelefono',
+    type: 'phone',
+    required: false,
+    placeholder: '',
+    enabled: true
+  },
+  {
+    id: '5',
+    name: 'miIdentificacionFiscal',
+    type: 'taxId',
+    required: true,
+    placeholder: '',
+    enabled: true
+  },
+  {
+    id: '6',
+    name: 'miEmail',
+    type: 'email',
+    required: false,
+    placeholder: '',
+    enabled: true
+  },
+  {
+    id: '7',
+    name: 'miCuentaBancaria',
+    type: 'text',
+    required: false,
+    placeholder: '',
+    enabled: false
+  }
+  // NOTE: clientName / clientTaxId are SIGNER fields ({{dynamic:...}}), not
+  // account variables, so they are intentionally NOT part of this template.
+]
+
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth()
-    
-    if (!session?.user?.id) {
+    const authContext = await getAuthContext(request)
+    if (!authContext?.customerId) {
       return NextResponse.json({ error: 'Unauthorized - Please sign in' }, { status: 401 })
     }
-
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json(
-        { error: 'Customer ID not found in session' },
-        { status: 401 }
-      )
-    }
+    const customerId = authContext.customerId
 
     // Get database and unified collection for variables
     const db = await getDatabase()
     const collection = db.collection('variables')
     
-    // Define default variables template (excluding internal ones like 'fecha')
-    const defaultVariablesTemplate = [
-      {
-        id: '2',
-        name: 'miNombre',
-        type: 'name',
-        required: true,
-        placeholder: '',
-        enabled: true
-      },
-      {
-        id: '3',
-        name: 'miDireccion',
-        type: 'address',
-        required: true,
-        placeholder: '',
-        enabled: true
-      },
-      {
-        id: '4',
-        name: 'miTelefono',
-        type: 'phone',
-        required: false,
-        placeholder: '',
-        enabled: true
-      },
-      {
-        id: '5',
-        name: 'miIdentificacionFiscal',
-        type: 'taxId',
-        required: true,
-        placeholder: '',
-        enabled: true
-      },
-      {
-        id: '6',
-        name: 'miEmail',
-        type: 'email',
-        required: false,
-        placeholder: '',
-        enabled: true
-      },
-      {
-        id: '7',
-        name: 'miCuentaBancaria',
-        type: 'text',
-        required: false,
-        placeholder: '',
-        enabled: false
-      }
-      // NOTE: clientName / clientTaxId are SIGNER fields ({{dynamic:...}}), not
-      // account variables, so they are intentionally NOT part of this template.
-    ]
 
     // Try to find existing variables for this customer
     let variableDoc = await collection.findOne({ customerId: customerId, type: 'variables' })
@@ -184,20 +175,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth()
-    
-    if (!session?.user?.id) {
+    const authContext = await getAuthContext(request)
+    if (!authContext?.customerId) {
       return NextResponse.json({ error: 'Unauthorized - Please sign in' }, { status: 401 })
     }
-
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json(
-        { error: 'Customer ID not found in session' },
-        { status: 401 }
-      )
-    }
+    const customerId = authContext.customerId
 
     const { variables } = await request.json()
     
@@ -251,5 +233,73 @@ export async function POST(request: NextRequest) {
       { error: errorResponse.error },
       { status: errorResponse.status }
     )
+  }
+}
+
+// PATCH /api/variables - merge the given variables into the stored list by
+// `name` (existing ones are updated field by field, new ones appended, the rest
+// untouched). POST keeps replace-everything semantics for the settings UI.
+export async function PATCH(request: NextRequest) {
+  try {
+    const authContext = await getAuthContext(request)
+    if (!authContext?.customerId) {
+      return NextResponse.json({ error: 'Unauthorized - Please sign in' }, { status: 401 })
+    }
+    const customerId = authContext.customerId
+
+    const body = await request.json().catch(() => null)
+    const incoming = body?.variables
+    if (
+      !Array.isArray(incoming) ||
+      incoming.some((v: any) => !v || typeof v.name !== 'string' || !v.name.trim())
+    ) {
+      return NextResponse.json(
+        { error: 'variables must be an array of objects with a non-empty name' },
+        { status: 400 }
+      )
+    }
+
+    const db = await getDatabase()
+    const collection = db.collection('variables')
+    const existingDoc = await collection.findOne({ customerId, type: 'variables' })
+    const existing: any[] = existingDoc
+      ? ((CustomerEncryption.decryptSensitiveFields(existingDoc, customerId) as any).variables || [])
+      : defaultVariablesTemplate.map(v => ({ ...v }))
+
+    const merged = existing.map(v => ({ ...v }))
+    for (const inc of incoming) {
+      const name = inc.name.trim()
+      const idx = merged.findIndex(v => v.name === name)
+      if (idx >= 0) {
+        merged[idx] = { ...merged[idx], ...inc, name, id: merged[idx].id }
+      } else {
+        merged.push({
+          type: 'text',
+          required: false,
+          placeholder: '',
+          enabled: true,
+          ...inc,
+          name,
+          id: inc.id ?? `var-${new ObjectId().toHexString()}`,
+        })
+      }
+    }
+
+    const encryptedData = CustomerEncryption.encryptSensitiveFields(
+      { customerId, type: 'variables', variables: merged, updatedAt: new Date() },
+      customerId
+    )
+    await collection.replaceOne({ customerId, type: 'variables' }, encryptedData, { upsert: true })
+
+    const updatedDoc = await collection.findOne({ customerId, type: 'variables' })
+    if (!updatedDoc) throw new Error('Failed to retrieve updated document')
+    const cleanDoc = mongoHelpers.cleanDocument(
+      CustomerEncryption.decryptSensitiveFields(updatedDoc, customerId)
+    )
+    return NextResponse.json({ success: true, message: 'Variables merged successfully', data: cleanDoc })
+  } catch (error) {
+    console.error('Error merging variables:', error)
+    const errorResponse = handleDatabaseError(error)
+    return NextResponse.json({ error: errorResponse.error }, { status: errorResponse.status })
   }
 }

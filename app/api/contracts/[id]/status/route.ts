@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 
-import { auth } from '@/lib/auth/config'
+import { getAuthContext } from '@/lib/auth/unified'
 import { 
   getContractsCollection, 
   mongoHelpers, 
@@ -20,23 +20,16 @@ export async function PUT(
 ) {
   try {
     const params = await context.params
-    const session = await auth()
+    const authContext = await getAuthContext(request)
 
-    if (!session?.user?.id) {
+    if (!authContext?.customerId) {
       return NextResponse.json(
         { error: 'Unauthorized - Please sign in' },
         { status: 401 }
       )
     }
 
-    // @ts-ignore - customerId is a custom property
-    const customerId = session.customerId as string
-    if (!customerId) {
-      return NextResponse.json(
-        { error: 'Customer ID not found in session' },
-        { status: 401 }
-      )
-    }
+    const customerId = authContext.customerId
 
     const body = await request.json()
     const { status } = body as { status: ContractStatus }

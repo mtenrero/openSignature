@@ -340,11 +340,45 @@ export class Auth0UserManager {
     return await response.json()
   }
 
+  private async getPartnerSubscriptionInfo(userId: string) {
+    const { getDatabase } = await import('@/lib/db/mongodb')
+    const db = await getDatabase()
+    const account: any = await db.collection('partner_accounts').findOne({
+      $or: [{ userId }, { customerId: userId }],
+      status: 'active',
+    })
+    if (!account) return null
+    const plan = SUBSCRIPTION_PLANS[String(account.plan || 'free').toUpperCase()]
+    if (!plan) throw new Error(`Invalid subscription plan: ${account.plan}`)
+    const now = new Date().toISOString()
+    const user: Auth0User = {
+      user_id: userId,
+      email: account.email || '',
+      name: account.businessName || undefined,
+      user_metadata: {
+        subscriptionPlan: plan.name,
+        registrationDate: (account.createdAt ? new Date(account.createdAt) : new Date()).toISOString(),
+        subscriptionStatus: 'active',
+      },
+      app_metadata: { customerId: account.customerId },
+      created_at: now,
+      updated_at: now,
+    }
+    return { user, plan, limits: plan.limits }
+  }
+
   async getUserSubscriptionInfo(userId: string): Promise<{
     user: Auth0User
     plan: any
     limits: any
   } | null> {
+    // Partner customers (VetControl etc.) have no Auth0 user: their plan lives in
+    // partner_accounts. Without this fallback null would disable limits entirely.
+    if (userId.startsWith('partner_')) {
+      const partnerInfo = await this.getPartnerSubscriptionInfo(userId)
+      if (partnerInfo) return partnerInfo
+    }
+
     const user = await this.getUser(userId)
     if (!user) return null
 

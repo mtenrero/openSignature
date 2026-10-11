@@ -10,12 +10,12 @@
  */
 import { test, expect, seedContract, dropTestDb, TEST_API_KEY } from './fixtures'
 import { loadE2EState } from './globalSetup'
-import OSignClient from '../../mivet-appfront/lib/osign-client'
+import { OSignClient } from './mivet-modules'
 import {
   buildFieldsPayload,
   filterContractsForView,
   ContractMapping,
-} from '../../mivet-appfront/lib/esign-fields'
+} from './mivet-modules'
 
 test.beforeEach(async ({ db }) => {
   await dropTestDb(db)

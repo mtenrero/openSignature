@@ -392,6 +392,32 @@ curl -H "Authorization: Bearer osk_your_api_key_here" ${baseUrl()}/api/contracts
           responses: { '201': { description: 'Created', content: { 'application/json': { schema: { $ref: '#/components/schemas/Contract' } } } }, '401': { description: 'Unauthorized' } }
         }
       },
+      '/api/contracts/{id}/status': {
+        put: {
+          summary: 'Change contract status',
+          description: 'Activating or signing runs the same mandatory-field validation as the web app.',
+          security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string', enum: ['draft', 'active', 'archived', 'signed', 'completed'] } }, required: ['status'] } } } },
+          responses: { '200': { description: 'Updated' }, '400': { description: 'Invalid status/transition or missing mandatory fields' }, '401': { description: 'Unauthorized' }, '404': { description: 'Contract not found' } }
+        }
+      },
+      '/api/contracts/{id}/placeholders': {
+        get: {
+          summary: 'List contract placeholders',
+          security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '200': { description: 'Placeholder names', content: { 'application/json': { schema: { type: 'object', properties: { variables: { type: 'array', items: { type: 'string' } }, dynamic: { type: 'array', items: { type: 'string' } }, legacy: { type: 'array', items: { type: 'string' } } } } } } },
+            '401': { description: 'Unauthorized' }, '404': { description: 'Contract not found' }
+          }
+        }
+      },
+      '/api/variables': {
+        get: { summary: 'Get account variables', security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }], responses: { '200': { description: 'Variables' }, '401': { description: 'Unauthorized' } } },
+        post: { summary: 'Replace account variables', security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { variables: { type: 'array', items: { type: 'object' } } }, required: ['variables'] } } } }, responses: { '200': { description: 'Saved' }, '400': { description: 'Invalid body' }, '401': { description: 'Unauthorized' } } },
+        patch: { summary: 'Merge account variables by name', description: 'Existing variables are updated, new ones appended, others untouched.', security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { variables: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } } }, required: ['variables'] } } } }, responses: { '200': { description: 'Merged' }, '400': { description: 'Invalid body' }, '401': { description: 'Unauthorized' } } }
+      },
       '/api/signature-requests': {
         get: {
           summary: 'List signature requests',

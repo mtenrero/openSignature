@@ -40,6 +40,13 @@ export async function DELETE(
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    // @ts-ignore - partnerId is set on partner SSO sessions only
+    if (session.partnerId) {
+      return NextResponse.json(
+        { error: 'Partner sessions cannot manage API keys', errorCode: 'SESSION_NOT_ALLOWED' },
+        { status: 403 }
+      )
+    }
 
     const { id: clientId } = await params
 
@@ -155,6 +162,13 @@ export async function PUT(
     const session = await auth()
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    // @ts-ignore - partnerId is set on partner SSO sessions only
+    if (session.partnerId) {
+      return NextResponse.json(
+        { error: 'Partner sessions cannot manage API keys', errorCode: 'SESSION_NOT_ALLOWED' },
+        { status: 403 }
+      )
     }
 
     const { id: clientId } = await params

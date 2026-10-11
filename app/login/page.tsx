@@ -5,13 +5,17 @@ import { Container, Title, Text, Stack, Center, Loader, Alert, Box, Button } fro
 import { IconLogin, IconAlertTriangle, IconKey } from '@tabler/icons-react'
 import { signIn, getSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { safeCallbackUrl } from '@/lib/auth/customerId'
 
 function LoginPageContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const router = useRouter()
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get('callbackUrl') || '/contracts'
+  const callbackUrl = safeCallbackUrl(
+    searchParams.get('callbackUrl'),
+    typeof window !== 'undefined' ? window.location.origin : ''
+  )
 
   useEffect(() => {
     const checkSession = async () => {

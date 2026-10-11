@@ -1,5 +1,8 @@
 import NextAuth, { NextAuthConfig } from "next-auth"
 import Auth0 from "next-auth/providers/auth0"
+import { isEmailVerificationBlocked, isPlatformAllowed } from "@/lib/auth/registration"
+import { AUTH0_BUSINESS_ID_CLAIM, deriveCustomerId } from "./customerId"
+import { AUTHENTIK_PROVIDER_ID, CLINIC_NOT_ENABLED_URL, authentikEnv, resolveAuthentikAccount, authentikSessionFields } from "./authentik"
 
 // Validate required environment variables.
 // `next build` ("Collecting page data") imports every route module, so a hard throw
@@ -58,7 +61,6 @@ providers.push(Auth0({
   authorization: {
     url: `${normalizedIssuer.replace(/\/$/, '')}/authorize`,
     params: {
-      prompt: "login",
       scope: "openid profile email",
       response_type: "code",
       response_mode: "query"
@@ -86,6 +88,29 @@ providers.push(Auth0({
   }
 }))
 
+// Authentik (VetControl account) is an optional second IdP, enabled only when all of
+// AUTHENTIK_ISSUER / AUTHENTIK_CLIENT_ID / AUTHENTIK_CLIENT_SECRET are set. Generic OIDC:
+// discovery from the per-provider issuer, PKCE + state + nonce.
+const authentik = authentikEnv()
+const authentikPartnerId = authentik?.partnerId
+if (authentik) {
+  providers.push({
+    id: AUTHENTIK_PROVIDER_ID,
+    name: "VetControl",
+    type: "oidc",
+    issuer: authentik.issuer,
+    clientId: authentik.clientId,
+    clientSecret: authentik.clientSecret,
+    authorization: { params: { scope: authentik.scope } },
+    checks: ["pkce", "state", "nonce"],
+    client: { token_endpoint_auth_method: "client_secret_post" },
+    // Per-user identity is audit-only; the account is resolved from vc_tenant_ref.
+    profile(profile: any) {
+      return { id: profile.sub, name: profile.name, email: profile.email }
+    },
+  } as any)
+}
+
 // Auth0 handles all authentication - no local credentials needed
 
 export const config: NextAuthConfig = {
@@ -111,6 +136,24 @@ export const config: NextAuthConfig = {
     // },
   },
   callbacks: {
+    async signIn({ account, profile }) {
+      // The Auth0 tenant is shared with other products: an account whose
+      // app_metadata.platforms_allowed excludes oSign must not get an oSign session.
+      // Accounts without that metadata (legacy) are allowed.
+      if (account?.provider === 'auth0' && !isPlatformAllowed((profile as any)?.app_metadata)) {
+        return false
+      }
+      // Self-registered accounts must confirm their email first (existing users are exempt).
+      if (account?.provider === 'auth0' && isEmailVerificationBlocked(profile)) {
+        return '/auth/error?error=EmailNotVerified'
+      }
+      // Authentik: the clinic must have activated oSign (an ACTIVE partner account holding
+      // the user's vc_tenant_ref). Never matched by email; `sub` is not an identity key.
+      if (account?.provider === AUTHENTIK_PROVIDER_ID) {
+        if (!(await resolveAuthentikAccount(profile, authentikPartnerId))) return CLINIC_NOT_ENABLED_URL
+      }
+      return true
+    },
     async jwt({ token, account, profile, user }) {
       // For credentials provider, set user info in token
       if (user) {
@@ -130,6 +173,11 @@ export const config: NextAuthConfig = {
         token.id = profile.sub   // Set id to Auth0 sub as well
         token.app_metadata = profile.app_metadata  // Copy app_metadata
         token.user_metadata = profile.user_metadata // Copy user_metadata
+        // The namespaced businessID claim only reaches the session if copied here: the
+        // JWT never carries arbitrary id_token claims on its own.
+        if ((profile as any)[AUTH0_BUSINESS_ID_CLAIM]) {
+          token[AUTH0_BUSINESS_ID_CLAIM] = (profile as any)[AUTH0_BUSINESS_ID_CLAIM]
+        }
         
         // console.log('🔥 FIRST LOGIN: Copying Auth0 profile data to token')
         // console.log('- Real Auth0 sub:', profile.sub)
@@ -151,43 +199,49 @@ export const config: NextAuthConfig = {
       //   console.log('========================')
       // }
 
-      // Extract and store customer ID from Auth0 token
-      try {
-        // Priority 1: Use app_metadata.businessID if available
-        const appMetadata = token.app_metadata as any
-        if (appMetadata?.businessID) {
-          token.customerId = appMetadata.businessID
-          // console.log('✅ Customer ID from app_metadata.businessID:', token.customerId)
-        } 
-        // Priority 2: Use custom Auth0 claim
-        else if (token['https://vetcontrol-pro.eu.auth0.com/businessID']) {
-          token.customerId = token['https://vetcontrol-pro.eu.auth0.com/businessID']
-          // console.log('✅ Customer ID from custom claim:', token.customerId)
-        } 
-        // Priority 3: Use Auth0 user ID (extract from sub)
-        else if (token.sub && token.sub.includes('auth0|')) {
-          // For Auth0, sub format is "auth0|68b614f56d55fe52931dbda9"
-          token.customerId = token.sub.split('|')[1] // Get the part after |
-          // console.log('✅ Customer ID from Auth0 sub (after |):', token.customerId)
-        } 
-        // Priority 4: Use full sub if it's already the Auth0 format
-        else if (token.sub) {
-          token.customerId = token.sub
-          // console.log('✅ Customer ID from full token.sub:', token.customerId)
-        } 
-        // Final fallback
-        else {
-          token.customerId = token.id || 'default'
-          // console.log('⚠️ Customer ID from fallback:', token.customerId)
-        }
-
-        // console.log('🎯 Final Auth0 Customer ID extracted:', token.customerId)
-      } catch (error) {
-        console.warn('❌ Could not extract customer ID from Auth0 token:', error)
-        // Fallback to user ID if no specific customer ID found
-        token.customerId = token.id || token.sub || 'default'
-        console.log('🔄 Fallback Customer ID:', token.customerId)
+      // Authentik login: becomes a partner-SSO-shaped session (same restrictions: no API
+      // keys / admin / billing, 8h cap, dies with the partner account via the generation
+      // check below). The per-user identity (email, name, sub) is kept for audit only.
+      if (account?.provider === AUTHENTIK_PROVIDER_ID) {
+        const match = await resolveAuthentikAccount(profile, authentikPartnerId)
+        if (!match) return null
+        token.id = match.userId
+        token.sub = match.userId
+        // Only vc_tenant_ref / email / name / sub are ever persisted from the profile.
+        const f = authentikSessionFields(profile, typeof account.id_token === 'string' ? account.id_token : undefined)
+        token.email = f.email ?? token.email
+        token.name = f.name ?? token.name
+        token.idp = AUTHENTIK_PROVIDER_ID
+        token.idpSub = f.sub
+        if (f.idToken) token.idToken = f.idToken
+        else delete token.idToken
+        delete token.accessToken
+        token.customerId = match.customerId
+        token.partnerSso = match.partnerId
+        token.partnerSsoAt = Date.now()
+        token.partnerSsoGen = match.generation
+        delete token.app_metadata
+        delete token.user_metadata
       }
+
+      // Partner SSO sessions (app/auth/partner-sso) carry a server-minted,
+      // encrypted customerId: never re-derive it from `sub` below.
+      if (token.partnerSso && token.customerId) {
+        // Hard 8h cap (the session cookie itself slides) and liveness: a disconnected /
+        // revoked partner account invalidates the session for EVERY auth() reader.
+        // The DB check is Node-only; NEXT_RUNTIME is inlined so the edge middleware
+        // bundle drops this branch (API routes re-check in getAuthContext too).
+        const { partnerSessionExpired } = await import('@/lib/partner/session')
+        if (partnerSessionExpired(token.partnerSsoAt)) return null
+        if (process.env.NEXT_RUNTIME !== 'edge') {
+          const { isPartnerSessionActive } = await import('@/lib/partner/session')
+          if (!(await isPartnerSessionActive(String(token.partnerSso), String(token.customerId), token.partnerSsoGen))) return null
+        }
+        return token
+      }
+
+      // Extract and store customer ID from the Auth0 token (see lib/auth/customerId.ts)
+      token.customerId = deriveCustomerId(token as any)
 
       return token
     },
@@ -199,6 +253,16 @@ export const config: NextAuthConfig = {
         session.user.name = token.name as string
         // @ts-ignore - customerId is a custom property
         session.customerId = token.customerId as string
+        // @ts-ignore - partnerId is a custom property (partner SSO sessions only)
+        if (token.idp) {
+          // @ts-ignore - which IdP minted the session (drives logout)
+          session.idp = token.idp as string
+        }
+        if (token.partnerSso) {
+          session.partnerId = token.partnerSso as string
+          // @ts-ignore - generation the session was minted for (account liveness binding)
+          session.partnerSsoGen = token.partnerSsoGen as number | undefined
+        }
       }
       // @ts-ignore - accessToken is a custom property
       session.accessToken = token.accessToken as string

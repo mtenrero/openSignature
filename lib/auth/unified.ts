@@ -10,7 +10,7 @@ export interface AuthContext {
   isOAuth: boolean
   /** True when authenticated with an osk_ API key (never an interactive session) */
   isApiKey?: boolean
-  /** Partner SSO sessions (partner integration branch); never set on this branch */
+  /** True for a one-time-SSO partner session (never allowed to manage API keys or admin) */
   isPartnerSso?: boolean
   jwtPayload?: JWTPayload
 }
@@ -45,10 +45,19 @@ export async function getAuthContext(request?: NextRequest): Promise<AuthContext
       // @ts-ignore - customerId is a custom property
       const customerId = session.customerId as string
       if (customerId) {
+        // Partner SSO sessions die with the partner account (revoked => no access).
+        // @ts-ignore - partnerId is a custom property
+        const partnerId = session.partnerId as string | undefined
+        if (partnerId) {
+          const { isPartnerSessionActive } = await import('@/lib/partner/session')
+          // @ts-ignore - partnerSsoGen is a custom property
+          if (!(await isPartnerSessionActive(partnerId, customerId, session.partnerSsoGen))) return null
+        }
         return {
           userId: session.user.id,
           customerId,
-          isOAuth: false
+          isOAuth: false,
+          ...(partnerId ? { isPartnerSso: true } : {})
         }
       }
     }

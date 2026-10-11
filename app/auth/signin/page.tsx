@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { Container, Title, Text, Stack, Center, Loader, Alert, Button, Group, Divider, TextInput, PasswordInput } from '@mantine/core'
 import { IconLogin, IconAlertTriangle, IconKey, IconArrowLeft, IconBrandGoogle, IconBrandWindows, IconMail, IconLock } from '@tabler/icons-react'
 import Link from 'next/link'
-import { signIn, useSession } from 'next-auth/react'
+import { signIn, useSession, getProviders } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { isSwitchAccount, safeCallbackUrl } from '@/lib/auth/customerId'
 
 function SignInPageContent() {
   const [loading, setLoading] = useState(false)
@@ -13,18 +14,63 @@ function SignInPageContent() {
   const [credentials, setCredentials] = useState({ email: '', password: '' })
   const router = useRouter()
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get('callbackUrl') || '/contracts'
+  const callbackUrl = safeCallbackUrl(
+    searchParams.get('callbackUrl'),
+    typeof window !== 'undefined' ? window.location.origin : ''
+  )
+  const switchAccount = isSwitchAccount(searchParams.get('switch'))
   const isSignup = searchParams.get('signup') === 'true'
   const provider = searchParams.get('provider')
   const { data: session, status } = useSession()
+  // 'Entrar con VetControl' only exists when the server enabled the authentik provider.
+  const [authentikEnabled, setAuthentikEnabled] = useState(false)
+  const [providersLoaded, setProvidersLoaded] = useState(false)
+  const autoStarted = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    getProviders()
+      .then((p) => { if (!cancelled) setAuthentikEnabled(!!p?.authentik) })
+      .catch(() => undefined)
+      .finally(() => { if (!cancelled) setProvidersLoaded(true) })
+    return () => { cancelled = true }
+  }, [])
+
+  const handleAuthentikSignIn = async () => {
+    try {
+      setLoading(true)
+      // ?switch=1 forces the login prompt at the IdP (use another VetControl account).
+      await signIn('authentik', { callbackUrl, redirect: true }, switchAccount ? { prompt: 'login' } : undefined)
+    } catch (error) {
+      console.error('[SIGNIN] Authentik sign in error:', error)
+      setError('Error al iniciar sesión')
+      setLoading(false)
+    }
+  }
+
+  // /auth/signin?provider=authentik&callbackUrl=... ("Abrir en oSign" from VetControl)
+  // starts the VetControl login by itself; callbackUrl went through safeCallbackUrl above.
+  useEffect(() => {
+    if (provider !== 'authentik' || !providersLoaded || !authentikEnabled) return
+    // Always start the IdP flow, even with an existing oSign session (Auth0, partner SSO or
+    // another clinic's Authentik): Authentik SSO makes it silent and the new session
+    // REPLACES the old one. Never skip into the existing session.
+    if (status === 'loading') return
+    if (autoStarted.current) return
+    autoStarted.current = true
+    void handleAuthentikSignIn()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, providersLoaded, authentikEnabled, status, switchAccount])
 
   useEffect(() => {
     // If user is already authenticated, redirect immediately
-    if (session && status === 'authenticated') {
+    // (not while ?provider=authentik is pending: that flow replaces the session instead)
+    if (provider === 'authentik' && (!providersLoaded || authentikEnabled)) return
+    if (session && status === 'authenticated' && !switchAccount) {
       console.log('[SIGNIN] User already authenticated, redirecting to:', callbackUrl)
       router.replace(callbackUrl)
     }
-  }, [session, status, router, callbackUrl])
+  }, [session, status, router, callbackUrl, switchAccount, provider, providersLoaded, authentikEnabled])
 
   const handleOAuthSignIn = async () => {
     try {
@@ -32,10 +78,13 @@ function SignInPageContent() {
       console.log('[SIGNIN] Starting OAuth sign in process...')
 
       // Use redirect: true to let NextAuth handle the OAuth flow properly
+      // ?switch=1 forces the Auth0 login prompt (account switch); by default an
+      // existing Auth0 session gives one-click SSO.
+      const forceLogin = new URLSearchParams(window.location.search).get('switch') === '1'
       await signIn('auth0', {
         callbackUrl,
         redirect: true // Let NextAuth handle the OAuth flow
-      })
+      }, forceLogin ? { prompt: 'login' } : undefined)
 
       // This code won't execute because of the redirect
       // The user will be redirected to Auth0 for authentication
@@ -223,6 +272,19 @@ function SignInPageContent() {
                 >
                   Iniciar Sesión con Barvet Empresas
                 </Button>
+
+                {authentikEnabled && (
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={handleAuthentikSignIn}
+                    loading={loading}
+                    leftSection={<IconLogin size={20} />}
+                    fullWidth
+                  >
+                    Entrar con VetControl
+                  </Button>
+                )}
 
                 <Text size="xs" c="dimmed" ta="center">
                   OAuth 2.0 proporciona autenticación segura adicional.

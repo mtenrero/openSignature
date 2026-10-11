@@ -16,6 +16,7 @@ import { spawn, ChildProcess } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import crypto from 'crypto'
 
 const STATE_FILE = path.join(os.tmpdir(), 'osign-e2e-state.json')
 
@@ -25,8 +26,11 @@ export const TEST_API_KEY = 'osk_e2e_test_key_do_not_use_in_prod_xxxxxxxxxxxxxxx
 export const TEST_USER_ID = 'e2e-user'
 export const TEST_CUSTOMER_ID = 'e2e-customer'
 export const TEST_DB_NAME = 'osign_e2e'
+// Partner (VetControl) provisioning/SSO test secret. Only the sha256 reaches the server env.
+export const TEST_PARTNER_SECRET = 'e2e-partner-secret-do-not-use-in-prod'
 
 interface E2EState {
+  idpUrl?: string
   mongoUri: string
   serverPort: number
   serverPid?: number
@@ -48,6 +52,13 @@ async function waitForUrl(url: string, timeoutMs = 60_000): Promise<void> {
 
 export default async function globalSetup() {
   const port = Number(process.env.E2E_PORT ?? 3100)
+
+  // Local mock OIDC provider standing in for Auth0 (login e2e). Never the real tenant.
+  // @ts-expect-error plain ESM module without types
+  const { startMockIdp } = await import('./mock-idp/server.mjs')
+  const idp = await startMockIdp()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(global as any).__E2E_IDP__ = idp
 
   const mongo = await MongoMemoryServer.create({ binary: { version: '7.0.14' } })
   const uri = mongo.getUri()
@@ -95,10 +106,14 @@ export default async function globalSetup() {
     // Management API (and the real tenant) is never contacted. e2e authenticates
     // via the seeded Bearer osk_ API key, so the OAuth provider is never used.
     AUTH0_DISABLE_MANAGEMENT: 'true',
-    AUTH0_DOMAIN: 'e2e.example.auth0.com',
-    AUTH0_ISSUER: 'https://e2e.example.auth0.com',
+    AUTH0_DOMAIN: new URL(idp.issuer).host,
+    AUTH0_ISSUER: idp.issuer,
     AUTH0_CLIENT_ID: 'e2e-client-id',
     AUTH0_CLIENT_SECRET: 'e2e-client-secret',
+    // Authentik flavour of the local mock IdP (never the real auth.vetcontrol.app).
+    AUTHENTIK_ISSUER: `${idp.issuer}/authentik/`,
+    AUTHENTIK_CLIENT_ID: 'e2e-authentik-client',
+    AUTHENTIK_CLIENT_SECRET: 'e2e-authentik-secret',
     NODE_ENV: 'development',
     // AISLAMIENTO: Next carga .env.local (credenciales de PRODUCCION) y no
     // pisa variables ya definidas, asi que se definen vacias.
@@ -118,6 +133,14 @@ export default async function globalSetup() {
     MONGODB_DB_NAME: TEST_DB_NAME,
     AUTH0_MANAGEMENT_CLIENT_ID: '',
     AUTH0_MANAGEMENT_CLIENT_SECRET: '',
+    OSIGN_PARTNERS: JSON.stringify([
+      {
+        id: 'vetcontrol',
+        secretSha256: crypto.createHash('sha256').update(TEST_PARTNER_SECRET).digest('hex'),
+        defaultPlan: 'pyme',
+        ssoAllowedReturn: ['/contracts', '/dashboard', '/settings'],
+      },
+    ]),
   }
 
   const child: ChildProcess = spawn('npx', ['next', 'dev', '-p', String(port)], {
@@ -137,7 +160,7 @@ export default async function globalSetup() {
 
   await waitForUrl(`http://localhost:${port}`, 120_000)
 
-  const state: E2EState = { mongoUri: uri, serverPort: port, serverPid: child.pid }
+  const state: E2EState = { idpUrl: idp.issuer, mongoUri: uri, serverPort: port, serverPid: child.pid }
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
   // eslint-disable-next-line no-console
   console.log(`[e2e] mongo=${uri} server=http://localhost:${port}`)

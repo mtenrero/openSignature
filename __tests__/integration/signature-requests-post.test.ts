@@ -235,7 +235,7 @@ describe('POST /api/signature-requests', () => {
         }) as any,
       )
       expect(res.status).toBe(403)
-      expect((await readJson(res)).errorCode).toBe('SMS_DISABLED')
+      expect(((await readJson(res)) as { errorCode?: string }).errorCode).toBe('SMS_DISABLED')
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = await (global as any).__getTestDb()
       expect(await db.collection('signatureRequests').countDocuments({ customerId: TEST_CUSTOMER_ID })).toBe(0)
