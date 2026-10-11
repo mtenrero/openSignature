@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
+import crypto from 'crypto'
 import { getDatabase } from '@/lib/db/mongodb'
 
 export const runtime = 'nodejs'
+
+function isValidBearer(header: string | null, key: string): boolean {
+  if (!header) return false
+  const a = crypto.createHash('sha256').update(header).digest()
+  const b = crypto.createHash('sha256').update(`Bearer ${key}`).digest()
+  return crypto.timingSafeEqual(a, b)
+}
 
 /**
  * GET /api/oauth/client-mapping/[clientId]
@@ -17,7 +25,8 @@ export async function GET(
     const authHeader = request.headers.get('authorization')
     const internalApiKey = process.env.INTERNAL_API_KEY
 
-    if (internalApiKey && authHeader !== `Bearer ${internalApiKey}`) {
+    // Fail closed: no configured key means nobody is authorized.
+    if (!internalApiKey || !isValidBearer(authHeader, internalApiKey)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
