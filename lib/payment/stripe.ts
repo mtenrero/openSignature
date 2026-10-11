@@ -690,6 +690,17 @@ export class StripeManager {
         await this.handlePaymentIntentCanceled(event.data.object as Stripe.PaymentIntent)
         break
 
+      case 'charge.refunded': {
+        // A SEPA top-up that was credited and later refunded: take the refund back out.
+        const charge = event.data.object as Stripe.Charge
+        const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id
+        if (piId) {
+          const { PendingPaymentManager } = await import('@/lib/wallet/pendingPayments')
+          await PendingPaymentManager.handleChargeRefunded(piId, Number(charge.amount_refunded) || 0)
+        }
+        break
+      }
+
       // Additional events that we can safely ignore but acknowledge
       case 'charge.succeeded':
       case 'charge.updated':
