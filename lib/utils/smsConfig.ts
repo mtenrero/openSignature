@@ -3,8 +3,11 @@
  * Centralizes SMS enable/disable logic based on environment variables
  */
 
+import { isTestMode } from './testModeGuard'
+
 // Server-side check for SMS availability
 export function isSMSEnabled(): boolean {
+  if (isTestMode()) return false
   return process.env.DISABLE_SMS !== 'true'
 }
 
@@ -20,7 +23,7 @@ export function checkSMSAvailability(): {
 } {
   // Check server-side variable if available
   if (typeof process !== 'undefined' && process.env) {
-    if (process.env.DISABLE_SMS === 'true') {
+    if (isTestMode() || process.env.DISABLE_SMS === 'true') {
       return {
         enabled: false,
         reason: 'SMS functionality disabled via server configuration'

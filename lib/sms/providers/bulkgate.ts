@@ -1,3 +1,4 @@
+import { isTestMode } from '@/lib/utils/testModeGuard'
 import axios from 'axios'
 import { SmsProvider, SmsSendResult } from '../types'
 import { normalizePhoneWithPrefix } from '../utils/phone'
@@ -31,7 +32,7 @@ export class BulkGateProvider implements SmsProvider {
   async send(sender: string, message: string, recipientPhone: string): Promise<SmsSendResult> {
     console.log('[BulkGate] Starting SMS send process', { sender, recipientPhone })
 
-    const isSMSDisabled = process.env.DISABLE_SMS === 'true'
+    const isSMSDisabled = isTestMode() || process.env.DISABLE_SMS === 'true'
     console.log('[BulkGate] SMS disabled check:', { isSMSDisabled, envValue: process.env.DISABLE_SMS })
 
     if (isSMSDisabled) {
