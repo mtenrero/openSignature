@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
+import { rejectPartnerSso } from '@/lib/auth/partnerBilling'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { UsageTracker } from '@/lib/subscription/usage'
 import { getVisiblePlans, getPlanById } from '@/lib/subscription/plans'
@@ -264,6 +265,10 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       )
     }
+
+    // Partner billing goes through the partner: partner SSO sessions cannot change plan/buy.
+    const partnerBlock = rejectPartnerSso(session)
+    if (partnerBlock) return partnerBlock
 
     const body = await request.json()
     const { planId } = body

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { encode } from 'next-auth/jwt'
-import { getPartnerDb, hashToken } from '@/lib/partner/accounts'
+import { getPartnerDb, hashToken, accountGeneration } from '@/lib/partner/accounts'
 import { loadPartners } from '@/lib/partner/auth'
 import { isAllowedReturnTo } from '@/lib/partner/accounts'
 import { PARTNER_SESSION_MAX_AGE_S } from '@/lib/partner/session'
@@ -42,6 +42,8 @@ export async function GET(request: NextRequest) {
     partnerId: doc.partnerId, externalId: doc.externalId, status: 'active',
   })
   if (!account) return expired(request)
+  // A token minted before a disconnect/re-provision must not log in to the new incarnation.
+  if (accountGeneration(doc as any) !== accountGeneration(account as any)) return expired(request)
 
   const partner = loadPartners().find((p) => p.id === doc.partnerId)
   if (!partner || !isAllowedReturnTo(doc.returnTo, partner.ssoAllowedReturn)) return expired(request)
@@ -63,6 +65,7 @@ export async function GET(request: NextRequest) {
       customerId: doc.customerId,
       partnerSso: doc.partnerId,
       partnerSsoAt: Date.now(),
+      partnerSsoGen: accountGeneration(account as any),
     },
   })
 

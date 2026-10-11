@@ -161,7 +161,7 @@ export const config: NextAuthConfig = {
         if (partnerSessionExpired(token.partnerSsoAt)) return null
         if (process.env.NEXT_RUNTIME !== 'edge') {
           const { isPartnerSessionActive } = await import('@/lib/partner/session')
-          if (!(await isPartnerSessionActive(String(token.partnerSso), String(token.customerId)))) return null
+          if (!(await isPartnerSessionActive(String(token.partnerSso), String(token.customerId), token.partnerSsoGen))) return null
         }
         return token
       }
@@ -215,7 +215,11 @@ export const config: NextAuthConfig = {
         // @ts-ignore - customerId is a custom property
         session.customerId = token.customerId as string
         // @ts-ignore - partnerId is a custom property (partner SSO sessions only)
-        if (token.partnerSso) session.partnerId = token.partnerSso as string
+        if (token.partnerSso) {
+          session.partnerId = token.partnerSso as string
+          // @ts-ignore - generation the session was minted for (account liveness binding)
+          session.partnerSsoGen = token.partnerSsoGen as number | undefined
+        }
       }
       // @ts-ignore - accessToken is a custom property
       session.accessToken = token.accessToken as string

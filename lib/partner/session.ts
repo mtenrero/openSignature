@@ -11,9 +11,13 @@ export function partnerSessionExpired(mintedAtMs: unknown, now = Date.now()): bo
 }
 
 /** Node-only (MongoDB): is there an ACTIVE partner account for this session? */
-export async function isPartnerSessionActive(partnerId: string, customerId: string): Promise<boolean> {
+export async function isPartnerSessionActive(partnerId: string, customerId: string, generation?: unknown): Promise<boolean> {
   const { getDatabase } = await import('@/lib/db/mongodb')
   const db = await getDatabase()
   const account = await db.collection('partner_accounts').findOne({ partnerId, customerId, status: 'active' })
-  return !!account
+  if (!account) return false
+  // Bound to the account generation: a session minted before DELETE + re-provision stays dead.
+  const accountGen = typeof account.generation === 'number' ? account.generation : 0
+  const sessionGen = typeof generation === 'number' ? generation : 0
+  return accountGen === sessionGen
 }

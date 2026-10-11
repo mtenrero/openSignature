@@ -41,6 +41,8 @@ export async function POST(request: NextRequest) {
           email, businessName: businessName.trim(), taxId: typeof taxId === 'string' ? taxId : undefined,
           plan: partner.defaultPlan, reactivatedAt: new Date(),
         },
+        // Sessions/SSO tokens minted before the disconnect carry the old generation.
+        $inc: { generation: 1 },
       }
     )
     const apiKey = await issuePartnerKey(db, partner, customerId, customerId, externalId)

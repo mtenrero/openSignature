@@ -49,9 +49,9 @@ export async function getAuthContext(request?: NextRequest): Promise<AuthContext
         // @ts-ignore - partnerId is a custom property
         const partnerId = session.partnerId as string | undefined
         if (partnerId) {
-          const db = await getDatabase()
-          const account = await db.collection('partner_accounts').findOne({ partnerId, customerId, status: 'active' })
-          if (!account) return null
+          const { isPartnerSessionActive } = await import('@/lib/partner/session')
+          // @ts-ignore - partnerSsoGen is a custom property
+          if (!(await isPartnerSessionActive(partnerId, customerId, session.partnerSsoGen))) return null
         }
         return {
           userId: session.user.id,

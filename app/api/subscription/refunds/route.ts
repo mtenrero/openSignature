@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
+import { rejectPartnerSso } from '@/lib/auth/partnerBilling'
 import { RefundSystem } from '@/lib/subscription/refundSystem'
 
 export const runtime = 'nodejs'
@@ -49,6 +50,10 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       )
     }
+
+    // Partner billing goes through the partner: partner SSO sessions cannot change plan/buy.
+    const partnerBlock = rejectPartnerSso(session)
+    if (partnerBlock) return partnerBlock
 
     // In a real application, you'd check for admin permissions here
     // For now, we'll allow any authenticated user to run this for testing

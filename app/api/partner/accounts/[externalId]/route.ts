@@ -17,7 +17,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
   await db.collection('partner_accounts').updateOne(
     { partnerId: partner.id, externalId },
-    { $set: { status: 'revoked', revokedAt: new Date() } }
+    { $set: { status: 'revoked', revokedAt: new Date() }, $inc: { generation: 1 } }
   )
   // A provisioned customer belongs to the partner: cut EVERY key (including any minted
   // through a partner SSO session). A linked customer is the clinic's own oSign

@@ -23,6 +23,8 @@ export interface PartnerAccount {
   createdAt: Date
   linkedVia: 'provisioned' | 'linked'
   status: 'active' | 'revoked'
+  /** Bumped on every revoke and every re-activation; sessions/SSO tokens bind to it so old ones stay dead. */
+  generation?: number
 }
 
 const indexed = new WeakSet<object>()
@@ -99,6 +101,10 @@ export async function revokeAllCustomerKeys(db: Db, customerId: string): Promise
   )
   return res.modifiedCount
 }
+
+/** Legacy accounts without a generation count as generation 0. */
+export const accountGeneration = (a: { generation?: number } | null | undefined): number =>
+  typeof a?.generation === 'number' ? a.generation : 0
 
 export async function findAccount(db: Db, partnerId: string, externalId: string): Promise<PartnerAccount | null> {
   return (await db.collection('partner_accounts').findOne({ partnerId, externalId })) as any

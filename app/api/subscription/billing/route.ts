@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
+import { rejectPartnerSso } from '@/lib/auth/partnerBilling'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { StripeManager } from '@/lib/payment/stripe'
 
@@ -15,6 +16,10 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       )
     }
+
+    // Partner billing goes through the partner: partner SSO sessions cannot change plan/buy.
+    const partnerBlock = rejectPartnerSso(session)
+    if (partnerBlock) return partnerBlock
 
     // Get user info from Auth0
     const user = await auth0UserManager.getUser(session.user.id)

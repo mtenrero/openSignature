@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
+import { rejectPartnerSso } from '@/lib/auth/partnerBilling'
 import { VirtualWallet } from '@/lib/wallet/wallet'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { StripeManager } from '@/lib/payment/stripe'
@@ -51,6 +52,10 @@ export async function PUT(request: NextRequest) {
         { status: 401 }
       )
     }
+
+    // Partner billing goes through the partner: partner SSO sessions cannot change plan/buy.
+    const partnerBlock = rejectPartnerSso(session)
+    if (partnerBlock) return partnerBlock
 
     // @ts-ignore - customerId is a custom property
     const customerId = session.customerId as string

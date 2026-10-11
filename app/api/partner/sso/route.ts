@@ -2,7 +2,7 @@ import crypto from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePartner, partnerError, readJsonBody } from '@/lib/partner/auth'
 import {
-  getPartnerDb, findAccount, validExternalId, validEmail, isAllowedReturnTo, hashToken, SSO_TOKEN_TTL_MS,
+  getPartnerDb, findAccount, accountGeneration, validExternalId, validEmail, isAllowedReturnTo, hashToken, SSO_TOKEN_TTL_MS,
 } from '@/lib/partner/accounts'
 
 export const runtime = 'nodejs'
@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
     partnerId: partner.id,
     externalId,
     customerId: account.customerId,
+    generation: accountGeneration(account),
     userId: account.userId || account.customerId,
     email,
     name: typeof name === 'string' ? name.slice(0, 200) : undefined,

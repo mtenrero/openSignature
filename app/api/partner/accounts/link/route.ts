@@ -51,7 +51,10 @@ export async function POST(request: NextRequest) {
   }
   try {
     if (existing) {
-      await db.collection('partner_accounts').updateOne({ partnerId: partner.id, externalId }, { $set: fields })
+      await db.collection('partner_accounts').updateOne(
+        { partnerId: partner.id, externalId },
+        { $set: { ...fields, reactivatedAt: new Date() }, $inc: { generation: 1 } }
+      )
     } else {
       await db.collection('partner_accounts').insertOne({
         partnerId: partner.id,
