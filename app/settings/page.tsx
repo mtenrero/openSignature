@@ -145,7 +145,7 @@ export default function SettingsPage() {
       }
 
       const result = await response.json()
-      console.log('Variables guardadas:', result)
+      console.log('Variables guardadas')
 
       // Also save to localStorage for immediate availability
       const config: UserDynamicFieldsConfig = {

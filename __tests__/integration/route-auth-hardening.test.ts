@@ -336,4 +336,82 @@ describe('no PII / credentials in logs', () => {
     expect(all).not.toContain('Ada Privacy')
     if (accessKey) expect(all).not.toContain(accessKey)
   })
+
+  it('O5 opening a sign request with variable overrides logs no override values, IP or user agent', async () => {
+    mockAuthAs()
+    const contract = await insertContract({})
+    const res = await createSigReq(buildRequest({
+      method: 'POST', url: `${U}/api/signature-requests`,
+      body: { contractId: contract._id.toString(), signatureType: 'email', signerName: 'Ada Privacy', signerEmail: EMAIL, clientTaxId: NIF,
+        dynamicFieldValues: { clientName: 'Ada Privacy', clientTaxId: NIF, clientEmail: EMAIL } },
+    }) as any)
+    expect(res.status).toBeLessThan(300)
+    const db = await (global as any).__getTestDb()
+    await db.collection('signatureRequests').updateOne({ customerId: TEST_CUSTOMER_ID }, { $set: { variableOverrides: { clinicName: 'SECRET-OVERRIDE-CLINIC' } } })
+    const stored = await db.collection('signatureRequests').findOne({ customerId: TEST_CUSTOMER_ID })
+    const cap = captured()
+    try {
+      await getSignRequest(buildRequest({
+        url: `${U}/api/sign-requests/${stored.shortId}`, searchParams: { a: Buffer.from(`${stored.shortId}:${stored.customerId}`).toString('base64').slice(0, 6) },
+        headers: { 'x-forwarded-for': '203.0.113.77', 'user-agent': 'PrivacyBrowser/9.9 (SecretOS 13)' },
+      }) as any, { params: Promise.resolve({ shortId: stored.shortId }) } as any)
+    } finally {
+      cap.restore()
+    }
+    const all = cap.lines.join('\n')
+    expect(all).toContain('Applied variable overrides')
+    expect(all).not.toContain('SECRET-OVERRIDE-CLINIC')
+    expect(all).not.toContain('203.0.113.77')
+    expect(all).not.toContain('PrivacyBrowser')
+    expect(all).not.toContain('SecretOS')
+  })
+})
+
+describe('no PII-bearing console calls in server/client source (static)', () => {
+  // Identifiers that carry signer / customer data. A console call may mention their
+  // presence or count (hasX, Object.keys(x).length) but never print the value.
+  const SENSITIVE = /\b(clientIP|ipAddress|metadataIP|signatureMetadata|userAgent|variableOverrides|finalAccountVariableValues|accountVariableValues|recipientPhone|recipientEmail|customer\.email|customer\.metadata|subscription\.metadata|formData|dynamicFieldValues|userFieldValues|signatureDataUrl|accessKey|processedContent|contractContent|plainTextContent|hashData|userMetadata|signerInfo|signerEmail|signerPhone|clientEmail|clientPhone)\b|\.email\b|\bstripeCustomer\?\.(name|email|address|phone|metadata)\b/
+  // Allowed shapes: only the COUNT of keys, or the error object of a failed parse.
+  const SAFE = /!!stripeCustomer\?\.|Object\.keys\([^)]*\)\.length|Failed to extract signer info from dynamicFieldValues|userAgent,\s*$|\[VERCEL CRON\]|Object\.keys\(customer\.metadata/
+
+  function files(dir: string): string[] {
+    if (!fs.existsSync(dir)) return []
+    return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) return e.name === 'node_modules' ? [] : files(p)
+      return /\.(ts|tsx)$/.test(e.name) && !/\.test\./.test(e.name) ? [p] : []
+    })
+  }
+  function consoleCalls(src: string): Array<{ line: number; text: string }> {
+    const out: Array<{ line: number; text: string }> = []
+    for (const m of src.matchAll(/console\.(log|error|warn|info|debug)\(/g)) {
+      const lineStart = src.lastIndexOf('\n', m.index!) + 1
+      if (src.slice(lineStart, m.index!).trim().startsWith('//')) continue
+      let depth = 0
+      let j = m.index! + m[0].length - 1
+      for (; j < src.length; j++) {
+        if (src[j] === '(') depth++
+        else if (src[j] === ')' && --depth === 0) break
+      }
+      out.push({ line: src.slice(0, m.index!).split('\n').length, text: src.slice(m.index!, j + 1) })
+    }
+    return out
+  }
+  const offenders = ['app', 'lib', 'libs'].flatMap((d) => files(path.join(root, d)).flatMap((f) => {
+    const src = fs.readFileSync(f, 'utf8')
+    return consoleCalls(src)
+      .filter((c) => SENSITIVE.test(c.text) && !SAFE.test(c.text))
+      .map((c) => `${path.relative(root, f)}:${c.line} ${c.text.replace(/\s+/g, ' ').slice(0, 100)}`)
+  }))
+
+  it('O5 no console call prints signer IP/UA/variables/emails/phones/tax ids/keys/content', () => {
+    expect(offenders).toEqual([])
+  })
+
+  it('O5 the partner SSO flow (when present) has no console output at all', () => {
+    const partnerFiles = [...files(path.join(root, 'lib/partner')), ...files(path.join(root, 'app/api/partner')), path.join(root, 'app/auth/partner-sso/route.ts')]
+    for (const f of partnerFiles.filter((x) => fs.existsSync(x))) {
+      expect(consoleCalls(fs.readFileSync(f, 'utf8')).filter((c) => !/index creation failed/.test(c.text))).toEqual([])
+    }
+  })
 })

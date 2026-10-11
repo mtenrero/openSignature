@@ -694,7 +694,6 @@ export class StripeManager {
       subscriptionId: subscription.id,
       customerId: subscription.customer,
       status: subscription.status,
-      metadata: subscription.metadata,
       items: subscription.items.data.map(item => ({
         price_id: item.price.id,
         product_id: item.price.product
@@ -704,17 +703,10 @@ export class StripeManager {
     const customer = await stripe.customers.retrieve(subscription.customer as string) as Stripe.Customer
     const auth0UserId = customer.metadata?.auth0UserId
 
-    console.log('📋 Customer details:', {
-      customerId: customer.id,
-      email: customer.email,
-      name: customer.name,
-      auth0UserId,
-      customerMetadata: customer.metadata
-    })
+    console.log('📋 Customer details:', { customerId: customer.id, auth0UserId })
 
     if (!auth0UserId) {
-      console.error('❌ No Auth0 user ID found in customer metadata. Available metadata:', customer.metadata)
-      console.error('❌ Customer email:', customer.email)
+      console.error('❌ No Auth0 user ID found in customer metadata. Metadata keys:', Object.keys(customer.metadata || {}))
       console.error('❌ This means the customer was not created through our system or metadata was not set correctly')
       return
     }
@@ -759,12 +751,10 @@ export class StripeManager {
     planId = planId || 'free'
 
     console.log(`🔄 Updating user ${auth0UserId} subscription to plan: ${planId}`)
-    console.log(`🔍 Subscription metadata:`, subscription.metadata)
     console.log(`🔍 Subscription ID: ${subscription.id}`)
     console.log(`🔍 All subscription data:`, {
       id: subscription.id,
       status: subscription.status,
-      metadata: subscription.metadata,
       items: subscription.items.data.map(item => ({
         price_id: item.price.id,
         product_id: item.price.product

@@ -59,7 +59,6 @@ function SignLayoutContent({ children }: SignLayoutProps) {
         }
 
         const data = await response.json()
-        console.log('[DEBUG] Frontend received data:', data)
         console.log('[DEBUG] data.authorized:', data.authorized)
         setSignData(data)
         console.log('[DEBUG] Setting loading to false')
@@ -94,7 +93,7 @@ function SignLayoutContent({ children }: SignLayoutProps) {
     )
   }
 
-  console.log('[DEBUG] Checking authorization:', { error, signData: signData, authorized: signData?.authorized })
+  console.log('[DEBUG] Checking authorization:', { error, authorized: signData?.authorized })
   
   if (error || !signData?.authorized) {
     return (

@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
             delete newMetadata.stripeCustomerId
 
             await auth0UserManager.updateUserMetadata(subscriptionInfo.user.user_id, newMetadata)
-            console.log(`✅ Cleared invalid Stripe customer ID for user ${subscriptionInfo.user.email}`)
+            console.log('✅ Cleared invalid Stripe customer ID for user', session.user.id)
 
             // Continue without subscription dates
             throw new Error('Customer not found - cleared from metadata')

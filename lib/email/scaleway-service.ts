@@ -92,7 +92,7 @@ class ScalewayEmailService {
         })) || []
       }
 
-      console.log('[Scaleway Email] Sending email to:', request.to.join(', '))
+      console.log('[Scaleway Email] Sending email to', request.to.length, 'recipient(s)')
       console.log('[Scaleway Email] Subject:', request.subject)
       console.log('[Scaleway Email] API URL:', `${this.baseUrl}/regions/${this.region}/emails`)
 
@@ -108,7 +108,7 @@ class ScalewayEmailService {
       const responseData = await response.json()
 
       if (!response.ok) {
-        console.error('[Scaleway Email] Error response:', responseData)
+        console.error('[Scaleway Email] Error response, status:', response.status)
         return {
           success: false,
           error: responseData.message || `HTTP ${response.status}: ${response.statusText}`,
@@ -116,7 +116,6 @@ class ScalewayEmailService {
         }
       }
 
-      console.log('[Scaleway Email] Full response:', responseData)
       console.log('[Scaleway Email] Message ID:', responseData.id || responseData.message_id || responseData.email_id)
       
       // Try different possible message ID fields from Scaleway response

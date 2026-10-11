@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { auth } from '@/lib/auth/config'
 import { extractBearerToken, validateJWT, JWTPayload } from './jwt'
 import { getDatabase } from '@/lib/db/mongodb'
+import { isProductionRuntime } from '@/lib/auth/productionGuard'
 
 export interface AuthContext {
   userId: string
@@ -26,8 +27,9 @@ export async function getAuthContext(request?: NextRequest): Promise<AuthContext
   //    "401 without credentials" tests stay unaffected.
   // The identity is env-configurable so it can match the seeded customer/data.
   const bypass =
-    process.env.DEV_AUTH_BYPASS === 'true' ||
-    (process.env.E2E_TEST_MODE === 'true' && !!request?.cookies?.get('e2e_session'))
+    !isProductionRuntime() &&
+    (process.env.DEV_AUTH_BYPASS === 'true' ||
+      (process.env.E2E_TEST_MODE === 'true' && !!request?.cookies?.get('e2e_session')))
   if (bypass) {
     return {
       userId: process.env.E2E_USER_ID || 'e2e-user',

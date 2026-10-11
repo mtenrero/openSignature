@@ -99,7 +99,6 @@ export default function SignUpPage() {
     setErrors({})
 
     try {
-      console.log('Enviando datos de registro:', formData)
 
       const response = await fetch('/api/auth/register-auth0', {
         method: 'POST',
@@ -132,7 +131,6 @@ export default function SignUpPage() {
       // Registro exitoso
       setSuccess(true)
       setRegisteredEmail(formData.email)
-      console.log('Registro exitoso:', result)
 
     } catch (error) {
       console.error('Error durante el registro:', error)

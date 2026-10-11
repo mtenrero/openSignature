@@ -63,8 +63,6 @@ export async function GET(
     try {
       if (signatureRequest.hashData) {
         // If we have the original hash data, use it to recalculate with deterministic stringify
-        console.log('[HASH VERIFY DEBUG] hashData from DB:', JSON.stringify(signatureRequest.hashData, null, 2))
-        console.log('[HASH VERIFY DEBUG] deterministicStringify output:', deterministicStringify(signatureRequest.hashData))
 
         recalculatedHash = crypto
           .createHash('sha256')

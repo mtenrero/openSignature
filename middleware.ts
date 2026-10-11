@@ -1,6 +1,7 @@
 import { auth } from '@/lib/auth/config'
 import { NextResponse } from 'next/server'
 import { extractBearerToken, validateJWT } from '@/lib/auth/jwt'
+import { isProductionRuntime } from '@/lib/auth/productionGuard'
 
 export default auth(async (req) => {
   // Check for session-based auth
@@ -31,6 +32,7 @@ export default auth(async (req) => {
   //  - E2E_TEST_MODE=true + e2e_session cookie: cookie-gated for Playwright.
   if (
     !isAuth &&
+    !isProductionRuntime() &&
     (process.env.DEV_AUTH_BYPASS === 'true' ||
       (process.env.E2E_TEST_MODE === 'true' && req.cookies.get('e2e_session')))
   ) {

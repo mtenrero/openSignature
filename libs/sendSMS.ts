@@ -9,7 +9,7 @@ import { getSmsProvider } from "@/lib/sms"
  * @throws Error if SMS sending fails
  */
 export async function sendSMS(sender: string, message: string, recipient: string) {
-    console.log('[sendSMS] Wrapper called', { sender, recipient, messageLength: message.length })
+    console.log('[sendSMS] Wrapper called', { messageLength: message.length })
 
     try {
         const provider = getSmsProvider()

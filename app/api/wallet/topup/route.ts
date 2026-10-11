@@ -122,11 +122,10 @@ export async function POST(request: NextRequest) {
       const stripeCustomer = await StripeManager.getCustomer(stripeCustomerId)
       console.log('Stripe customer data before checkout:', {
         id: stripeCustomer?.id,
-        name: stripeCustomer?.name,
-        email: stripeCustomer?.email,
-        address: stripeCustomer?.address,
-        phone: stripeCustomer?.phone,
-        metadata: stripeCustomer?.metadata
+        hasName: !!stripeCustomer?.name,
+        hasEmail: !!stripeCustomer?.email,
+        hasAddress: !!stripeCustomer?.address,
+        hasPhone: !!stripeCustomer?.phone
       })
 
       // Create checkout session for wallet top-up

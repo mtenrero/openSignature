@@ -383,7 +383,6 @@ export default function SignDocument() {
                     }
                 }
 
-                console.log('[DEBUG] Locked fields for form:', lockedFields)
 
                 // Skip template-level mandatory validation when the partner
                 // already supplied dynamicFieldValues via API — those values
@@ -464,7 +463,6 @@ export default function SignDocument() {
 
             case 'sign':
                 // Debug: Log dynamic field values at signing step
-                console.log('[SIGN DEBUG] Dynamic field values at signing:', dynamicFieldValues)
                 
                 return (
                     <Stack gap="lg">

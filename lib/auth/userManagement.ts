@@ -283,7 +283,7 @@ export class Auth0UserManager {
       userMetadata.stripeCustomerId = stripeCustomerId
     }
 
-    console.log('📤 Auth0UserManager: Sending update with metadata:', userMetadata)
+    console.log('📤 Auth0UserManager: Sending subscription metadata update')
 
     const response = await fetch(`https://${this.domain}/api/v2/users/${encodeURIComponent(userId)}`, {
       method: 'PATCH',
@@ -307,10 +307,7 @@ export class Auth0UserManager {
     }
 
     const result = await response.json()
-    console.log('✅ Auth0UserManager: Successfully updated user subscription:', {
-      userId: result.user_id,
-      updatedMetadata: result.user_metadata
-    })
+    console.log('✅ Auth0UserManager: Successfully updated user subscription:', { userId: result.user_id })
 
     return result
   }
