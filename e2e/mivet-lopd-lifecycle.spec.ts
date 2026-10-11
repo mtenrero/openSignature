@@ -13,8 +13,8 @@
 import { test, expect, seedContract, dropTestDb, TEST_API_KEY, TEST_DB_NAME } from './fixtures'
 import { loadE2EState } from './globalSetup'
 import { ObjectId } from 'mongodb'
-import OSignClient from '../../mivet-appfront/lib/osign-client'
-import { buildFieldsPayload, ContractMapping } from '../../mivet-appfront/lib/esign-fields'
+import { OSignClient } from './mivet-modules'
+import { buildFieldsPayload, ContractMapping } from './mivet-modules'
 
 const CONTENT =
   '<p>{{variable:clinicName}} — consentimiento LOPD de {{dynamic:clientName}} ' +

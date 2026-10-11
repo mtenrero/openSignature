@@ -7,13 +7,15 @@ const PORT = Number(process.env.E2E_PORT ?? 3100)
 // The cross-repo specs import mivet's real client from ../mivet-appfront. That sibling
 // is present locally but NOT in CI, so skip those specs (at the file level, so they're
 // never even imported) when the sibling isn't checked out.
-const hasMivet = fs.existsSync(path.resolve(__dirname, '../mivet-appfront/lib/osign-client.ts'))
+const MIVET_DIR = process.env.MIVET_DIR ? path.resolve(process.env.MIVET_DIR) : path.resolve(__dirname, '../mivet-appfront')
+const hasMivet = fs.existsSync(path.join(MIVET_DIR, 'lib/osign-client.ts'))
 
 export default defineConfig({
   testDir: './e2e',
   // Always skip the real-Stripe checkout suite (own config + real keys); also skip the
   // cross-repo mivet specs when the sibling repo isn't available (e.g. CI).
-  testIgnore: hasMivet ? ['**/stripe-real/**'] : ['**/stripe-real/**', '**/mivet-*.spec.ts'],
+  // e2e/stack/** needs the full local stack (mivet :3005 + oSign :3100): own config.
+  testIgnore: hasMivet ? ['**/stripe-real/**', '**/stack/**'] : ['**/stripe-real/**', '**/stack/**', '**/mivet-*.spec.ts'],
   fullyParallel: false, // shared DB state across tests
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

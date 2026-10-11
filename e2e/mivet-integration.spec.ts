@@ -17,8 +17,8 @@
 import { test, expect, seedContract, dropTestDb, TEST_API_KEY } from './fixtures'
 import { loadE2EState } from './globalSetup'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-import OSignClient from '../../mivet-appfront/lib/osign-client'
-import { buildFieldsPayload, ContractMapping } from '../../mivet-appfront/lib/esign-fields'
+import { OSignClient } from './mivet-modules'
+import { buildFieldsPayload, ContractMapping } from './mivet-modules'
 
 // A contract exercising: an account variable, the two mandatory dynamic fields,
 // and a MULTI-WORD dynamic field (the case that used to silently drop data).
