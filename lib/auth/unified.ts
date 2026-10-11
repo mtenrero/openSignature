@@ -9,6 +9,8 @@ export interface AuthContext {
   isOAuth: boolean
   /** True when authenticated with an osk_ API key (never an interactive session) */
   isApiKey?: boolean
+  /** True for a one-time-SSO partner session (never allowed to manage API keys or admin) */
+  isPartnerSso?: boolean
   jwtPayload?: JWTPayload
 }
 
@@ -52,7 +54,8 @@ export async function getAuthContext(request?: NextRequest): Promise<AuthContext
         return {
           userId: session.user.id,
           customerId,
-          isOAuth: false
+          isOAuth: false,
+          ...(partnerId ? { isPartnerSso: true } : {})
         }
       }
     }

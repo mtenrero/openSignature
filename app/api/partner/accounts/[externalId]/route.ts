@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePartner, partnerError } from '@/lib/partner/auth'
-import { getPartnerDb, findAccount, revokePartnerKeys, validExternalId } from '@/lib/partner/accounts'
+import { getPartnerDb, findAccount, revokePartnerKeys, revokeAllCustomerKeys, validExternalId } from '@/lib/partner/accounts'
 
 export const runtime = 'nodejs'
 
@@ -19,6 +19,11 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     { partnerId: partner.id, externalId },
     { $set: { status: 'revoked', revokedAt: new Date() } }
   )
-  const keysRevoked = await revokePartnerKeys(db, partner.id, account.customerId)
+  // A provisioned customer belongs to the partner: cut EVERY key (including any minted
+  // through a partner SSO session). A linked customer is the clinic's own oSign
+  // account: only the keys this partner issued for this externalId are revoked.
+  const keysRevoked = account.linkedVia === 'provisioned'
+    ? await revokeAllCustomerKeys(db, account.customerId)
+    : await revokePartnerKeys(db, partner.id, account.customerId, externalId)
   return NextResponse.json({ revoked: true, keysRevoked }, { status: 200 })
 }

@@ -21,6 +21,13 @@ export async function POST(request: NextRequest) {
   const key = await db.collection('esign_apikeys').findOne({ _id: apiKey as any, active: true })
   if (!key || !key.customerId) return partnerError('Invalid API key', 'INVALID_API_KEY', 400)
 
+  // (a) Only a customer's OWN key can be linked: not a partner-issued key (it would let
+  // a partner bind itself to another partner's/own provisioned customer) and not the
+  // key of a partner-provisioned customer (active or revoked).
+  if (key.partnerId) return partnerError('Invalid API key', 'INVALID_API_KEY', 400)
+  const provisioned = await db.collection('partner_accounts').findOne({ customerId: key.customerId, linkedVia: 'provisioned' })
+  if (provisioned) return partnerError('Invalid API key', 'INVALID_API_KEY', 400)
+
   const existing = await findAccount(db, partner.id, externalId)
   if (existing && existing.status === 'active') {
     if (existing.customerId !== key.customerId) {
@@ -28,6 +35,12 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ customerId: existing.customerId, linked: true }, { status: 200 })
   }
+
+  // (b) one customer maps to ONE externalId per partner
+  const other = await db.collection('partner_accounts').findOne({
+    partnerId: partner.id, customerId: key.customerId, status: 'active', externalId: { $ne: externalId },
+  })
+  if (other) return partnerError('Customer already linked to another externalId', 'CUSTOMER_ALREADY_LINKED', 409)
 
   const fields = {
     customerId: key.customerId,
@@ -50,6 +63,9 @@ export async function POST(request: NextRequest) {
       } as any)
     }
   } catch (error: any) {
+    if (error?.code === 11000 && error?.keyPattern?.customerId) {
+      return partnerError('Customer already linked to another externalId', 'CUSTOMER_ALREADY_LINKED', 409)
+    }
     if (error?.code === 11000) return partnerError('externalId already linked to another customer', 'ALREADY_LINKED_OTHER', 409)
     throw error
   }

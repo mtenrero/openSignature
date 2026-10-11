@@ -15,7 +15,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const account = await findAccount(db, partner.id, externalId)
   if (!account || account.status !== 'active') return partnerError('Account not found', 'ACCOUNT_NOT_FOUND', 404)
 
-  await revokePartnerKeys(db, partner.id, account.customerId)
-  const apiKey = await issuePartnerKey(db, partner, account.customerId, account.userId || account.customerId)
+  await revokePartnerKeys(db, partner.id, account.customerId, externalId)
+  const apiKey = await issuePartnerKey(db, partner, account.customerId, account.userId || account.customerId, externalId)
   return NextResponse.json({ apiKey }, { status: 200 })
 }

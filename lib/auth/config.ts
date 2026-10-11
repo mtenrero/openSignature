@@ -153,6 +153,16 @@ export const config: NextAuthConfig = {
       // Partner SSO sessions (app/auth/partner-sso) carry a server-minted,
       // encrypted customerId: never re-derive it from `sub` below.
       if (token.partnerSso && token.customerId) {
+        // Hard 8h cap (the session cookie itself slides) and liveness: a disconnected /
+        // revoked partner account invalidates the session for EVERY auth() reader.
+        // The DB check is Node-only; NEXT_RUNTIME is inlined so the edge middleware
+        // bundle drops this branch (API routes re-check in getAuthContext too).
+        const { partnerSessionExpired } = await import('@/lib/partner/session')
+        if (partnerSessionExpired(token.partnerSsoAt)) return null
+        if (process.env.NEXT_RUNTIME !== 'edge') {
+          const { isPartnerSessionActive } = await import('@/lib/partner/session')
+          if (!(await isPartnerSessionActive(String(token.partnerSso), String(token.customerId)))) return null
+        }
         return token
       }
 

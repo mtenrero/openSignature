@@ -34,6 +34,10 @@ export async function getPartnerDb(): Promise<Db> {
     try {
       await db.collection('partner_accounts').createIndex({ partnerId: 1, externalId: 1 }, { unique: true })
       await db.collection('partner_accounts').createIndex({ customerId: 1 })
+      await db.collection('partner_accounts').createIndex(
+        { partnerId: 1, customerId: 1 },
+        { unique: true, partialFilterExpression: { status: 'active' } }
+      )
       await db.collection('partner_sso_tokens').createIndex({ tokenHash: 1 }, { unique: true })
       await db.collection('partner_sso_tokens').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
     } catch (error) {
@@ -57,7 +61,7 @@ export function generateApiKey(): string {
 }
 
 /** Issue a partner-bound osk_ key for a customer. */
-export async function issuePartnerKey(db: Db, partner: PartnerConfig, customerId: string, userId: string): Promise<string> {
+export async function issuePartnerKey(db: Db, partner: PartnerConfig, customerId: string, userId: string, externalId: string): Promise<string> {
   const apiKey = generateApiKey()
   await db.collection('esign_apikeys').insertOne({
     _id: apiKey as any,
@@ -65,6 +69,7 @@ export async function issuePartnerKey(db: Db, partner: PartnerConfig, customerId
     customerId,
     name: `Partner ${partner.id}`,
     partnerId: partner.id,
+    externalId,
     scopes: PARTNER_SCOPES,
     createdAt: new Date(),
     lastUsedAt: null,
@@ -73,9 +78,23 @@ export async function issuePartnerKey(db: Db, partner: PartnerConfig, customerId
   return apiKey
 }
 
-export async function revokePartnerKeys(db: Db, partnerId: string, customerId: string): Promise<number> {
+/**
+ * Revoke the keys a partner issued for ONE externalId (keys carry partnerId + externalId;
+ * legacy keys without externalId count as the customer's single partner link). Never
+ * touches the customer's own, non-partner keys.
+ */
+export async function revokePartnerKeys(db: Db, partnerId: string, customerId: string, externalId: string): Promise<number> {
   const res = await db.collection('esign_apikeys').updateMany(
-    { partnerId, customerId, active: true },
+    { partnerId, customerId, active: true, $or: [{ externalId }, { externalId: { $exists: false } }] },
+    { $set: { active: false, revokedAt: new Date() } }
+  )
+  return res.modifiedCount
+}
+
+/** Revoke EVERY active key of a customer (only for partner-provisioned customers, which the partner owns). */
+export async function revokeAllCustomerKeys(db: Db, customerId: string): Promise<number> {
+  const res = await db.collection('esign_apikeys').updateMany(
+    { customerId, active: true },
     { $set: { active: false, revokedAt: new Date() } }
   )
   return res.modifiedCount

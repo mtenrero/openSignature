@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
         },
       }
     )
-    const apiKey = await issuePartnerKey(db, partner, customerId, customerId)
+    const apiKey = await issuePartnerKey(db, partner, customerId, customerId, externalId)
     return NextResponse.json({ customerId, apiKey, created: true }, { status: 201 })
   }
 
@@ -70,6 +70,6 @@ export async function POST(request: NextRequest) {
     throw error
   }
 
-  const apiKey = await issuePartnerKey(db, partner, customerId, customerId)
+  const apiKey = await issuePartnerKey(db, partner, customerId, customerId, externalId)
   return NextResponse.json({ customerId, apiKey, created: true }, { status: 201 })
 }

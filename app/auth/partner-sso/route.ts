@@ -3,10 +3,11 @@ import { encode } from 'next-auth/jwt'
 import { getPartnerDb, hashToken } from '@/lib/partner/accounts'
 import { loadPartners } from '@/lib/partner/auth'
 import { isAllowedReturnTo } from '@/lib/partner/accounts'
+import { PARTNER_SESSION_MAX_AGE_S } from '@/lib/partner/session'
 
 export const runtime = 'nodejs'
 
-const SESSION_MAX_AGE = 30 * 24 * 60 * 60
+const SESSION_MAX_AGE = PARTNER_SESSION_MAX_AGE_S
 
 function expired(request: NextRequest) {
   const url = new URL('/auth/signin', publicOrigin(request))
@@ -61,6 +62,7 @@ export async function GET(request: NextRequest) {
       email: doc.email,
       customerId: doc.customerId,
       partnerSso: doc.partnerId,
+      partnerSsoAt: Date.now(),
     },
   })
 
