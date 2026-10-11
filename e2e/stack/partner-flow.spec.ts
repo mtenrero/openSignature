@@ -215,7 +215,7 @@ test.describe('d) Solicitud de firma con el contrato tipo', () => {
     const values = got.signRequest.dynamicFieldValues as Record<string, string>
     expect(values.clientTaxId).toBe('12345678A')
     expect(values.clientName).toBe('Ada Lovelace')
-    expect(values.clientAddress).toBe('Calle Luna 7, 2B 41001 Sevilla')
+    expect(values.clientAddress).toBe('Calle Luna 7, 2B, 41001 Sevilla')
     expect(values.petName).toBe('Rex')
 
     const sign = await osign.put(`/api/sign-requests/${shortId}?a=${accessKey}`, {
@@ -226,7 +226,7 @@ test.describe('d) Solicitud de firma con el contrato tipo', () => {
     expect(pdf.status()).toBe(200)
     const text = pdfText(await pdf.body())
 
-    expect(text).toContain('Calle Luna 7, 2B 41001 Sevilla')
+    expect(text).toContain('Calle Luna 7, 2B, 41001 Sevilla')
     expect(text).toContain('B76543210')
     expect(text).toContain('Marta Veterinaria Local')
     expect(text).toContain('COL-99887')
