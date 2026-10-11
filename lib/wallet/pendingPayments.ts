@@ -161,11 +161,8 @@ export class PendingPaymentManager {
 
       switch (paymentIntent.status) {
         case 'succeeded': {
-          const received = Number(paymentIntent.amount_received ?? paymentIntent.amount)
-          const creditAmount = Number.isFinite(received) && received > 0
-            ? Math.min(pendingPayment.amount, received)
-            : pendingPayment.amount
-          const settled = await this.settleSucceeded(pendingPayment, creditAmount, latestChargeId)
+          const amounts = this.settlementAmounts(paymentIntent, pendingPayment.amount)
+          const settled = await this.settleSucceeded(pendingPayment, amounts.net, latestChargeId, amounts.refunded)
           newStatus = 'confirmed'
           updated = settled
           // settleSucceeded already wrote the terminal state.
@@ -235,59 +232,145 @@ export class PendingPaymentManager {
 
 
   /**
+   * What a succeeded PaymentIntent is worth to the wallet: amount_received minus whatever
+   * was refunded on its charge (the charge must be expanded; an unexpanded charge reads as
+   * "no refund known"). `cap` is the most we ever credit (the pending row amount).
+   */
+  static settlementAmounts(
+    pi: { amount?: number | null; amount_received?: number | null; latest_charge?: any },
+    cap: number
+  ): { net: number; refunded: number } {
+    const rawReceived = Number(pi.amount_received ?? pi.amount)
+    const received = Number.isFinite(rawReceived) && rawReceived > 0 ? rawReceived : cap
+    const charge = pi.latest_charge && typeof pi.latest_charge === 'object' ? pi.latest_charge : null
+    const rawRefunded = Number(charge?.amount_refunded ?? (charge?.refunded ? received : 0))
+    const refunded = Number.isFinite(rawRefunded) && rawRefunded > 0 ? Math.min(rawRefunded, received) : 0
+    return { net: Math.min(cap, Math.max(0, received - refunded)), refunded }
+  }
+
+  /**
    * The payment cleared: credit the wallet (idempotent per payment intent, so the
    * webhook, check-payment and the cron can all race safely) and mark the row confirmed.
+   * `creditAmount` is already net of `refunded` (see settlementAmounts); 0 credits nothing.
    * Returns true when this call performed the transition.
+   *
+   * The state transition is claimed FIRST-CLASS with findOneAndUpdate(returnDocument
+   * 'before') and every decision that depends on the row's state (restore a reversed legacy
+   * credit, debit a refund) is taken from the state that claim actually replaced, never from
+   * an earlier read: a concurrent settleFailed that wins the claim is seen as failed here
+   * (-> restore), and one that loses finds the row confirmed. settleFailed re-checks after
+   * writing its reversal, and restoreReversedCredit is idempotent, so both interleavings end
+   * with the customer whole.
    */
   static async settleSucceeded(
     pendingPayment: PendingPayment,
     creditAmount: number,
-    chargeId?: string
+    chargeId?: string,
+    refunded = 0
   ): Promise<boolean> {
     const collection = await this.getCollection()
     const paymentIntentId = String(pendingPayment.stripePaymentIntentId)
-    // The caller's copy may be stale (a concurrent failure may have terminated the row
-    // after it was read): decide on the stored state.
     const stored = (await collection.findOne({ _id: pendingPayment._id })) as PendingPayment | null
     const current = stored ?? pendingPayment
     if (current.status === 'confirmed') return false
+    const legacy = !!(current.walletTransactionId || pendingPayment.walletTransactionId)
+    const amount = Math.max(0, creditAmount)
 
-    // Late success of a row that had been failed/expired: legacy rows were credited up
-    // front and reversed on failure -> give the reversed amount back (once). Rows that were
-    // never credited fall through to the normal credit below.
-    if ((current.status === 'failed' || current.status === 'expired') && current.walletTransactionId) {
-      await VirtualWallet.restoreReversedCredit(
-        current.customerId,
+    // Rows that were never credited up front get the (net) credit now; legacy rows already
+    // have theirs (addCredits returns it, idempotent per payment intent).
+    let txId = current.walletTransactionId
+    const existingCredit = legacy ? await VirtualWallet.findTransactionByPaymentIntent(paymentIntentId) : null
+    if (existingCredit?._id) {
+      txId = existingCredit._id
+    } else if (amount > 0) {
+      const tx = await VirtualWallet.addCredits(
+        pendingPayment.customerId,
+        amount,
+        'top_up',
+        pendingPayment.description,
         paymentIntentId,
-        creditAmount,
-        `Restitución: ${current.description} (pago confirmado tras fallo)`
+        chargeId || pendingPayment.stripeChargeId
       )
+      txId = tx._id
     }
-    const tx = await VirtualWallet.addCredits(
-      pendingPayment.customerId,
-      creditAmount,
-      'top_up',
-      pendingPayment.description,
-      paymentIntentId,
-      chargeId || pendingPayment.stripeChargeId
-    )
-    if (tx._id && current.walletTransactionId) {
-      // legacy pre-credited row: drop the "(PENDIENTE)" tag of its original transaction
-      await VirtualWallet.updateTransactionDescription(pendingPayment.walletTransactionId, pendingPayment.description)
-    }
-    const res = await collection.updateOne(
+
+    const claimed = (await collection.findOneAndUpdate(
       { _id: pendingPayment._id, status: { $in: ['pending', 'processing', 'failed', 'expired'] } },
-      {
-        $set: {
-          status: 'confirmed',
-          confirmedAt: new Date(),
-          walletTransactionId: tx._id,
-          ...(chargeId ? { stripeChargeId: chargeId } : {}),
-          updatedAt: new Date()
+      { $set: { status: 'confirmed', confirmedAt: new Date(), updatedAt: new Date(), ...(chargeId ? { stripeChargeId: chargeId } : {}), ...(txId ? { walletTransactionId: txId } : {}), refundedAmount: 0 } },
+      { returnDocument: 'before' }
+    )) as any
+    const before: PendingPayment | null = claimed && claimed.value !== undefined ? claimed.value : claimed
+    if (!before) return false
+
+    if (legacy) {
+      if (before.status === 'failed' || before.status === 'expired') {
+        // The up-front credit was reversed by a failure: give back what is really ours.
+        if (amount > 0) {
+          await VirtualWallet.restoreReversedCredit(
+            pendingPayment.customerId,
+            paymentIntentId,
+            amount,
+            `Restitución: ${pendingPayment.description} (pago confirmado tras fallo)`
+          )
         }
+      } else if (txId) {
+        // legacy pre-credited row: drop the "(PENDIENTE)" tag of its original transaction
+        await VirtualWallet.updateTransactionDescription(txId, pendingPayment.description)
       }
-    )
-    return res.modifiedCount === 1
+      if (before.status !== 'failed' && before.status !== 'expired' && refunded > 0) {
+        // credited in full up front but refunded since: take the refund back out
+        await this.recordRefund(pendingPayment._id as ObjectId, refunded)
+      } else if (refunded > 0) {
+        await collection.updateOne({ _id: pendingPayment._id }, { $set: { refundedAmount: refunded } })
+      }
+    } else if (refunded > 0) {
+      // credit was already net of the refund
+      await collection.updateOne({ _id: pendingPayment._id }, { $set: { refundedAmount: refunded } })
+    }
+    return true
+  }
+
+  /**
+   * A refund landed on an already-credited payment (charge.refunded): debit the newly
+   * refunded amount. DECISION: like reverseCredit the balance may go NEGATIVE. Idempotent
+   * and monotonic: `refundedAmount` on the row only ever grows, claimed atomically, so a
+   * replay or a stale (smaller) total debits nothing.
+   */
+  static async recordRefund(rowId: ObjectId, totalRefunded: number): Promise<number> {
+    if (!Number.isFinite(totalRefunded) || totalRefunded <= 0) return 0
+    const collection = await this.getCollection()
+    const claimed = (await collection.findOneAndUpdate(
+      {
+        _id: rowId,
+        status: 'confirmed',
+        $or: [{ refundedAmount: { $exists: false } }, { refundedAmount: { $lt: totalRefunded } }],
+      },
+      { $set: { refundedAmount: totalRefunded, updatedAt: new Date() } },
+      { returnDocument: 'before' }
+    )) as any
+    const row: PendingPayment & { refundedAmount?: number } = claimed && claimed.value !== undefined ? claimed.value : claimed
+    if (!row) return 0
+    const delta = totalRefunded - (row.refundedAmount ?? 0)
+    if (delta <= 0) return 0
+    try {
+      await VirtualWallet.reverseCredit(
+        row.customerId,
+        delta,
+        `Reembolso: ${row.description}`,
+        `refund:${String(row.stripePaymentIntentId)}`
+      )
+    } catch (err) {
+      await collection.updateOne({ _id: rowId }, { $set: { refundedAmount: row.refundedAmount ?? 0 } })
+      throw err
+    }
+    return delta
+  }
+
+  /** charge.refunded webhook: debit the refund from a SEPA row that was already credited. */
+  static async handleChargeRefunded(paymentIntentId: string, totalRefunded: number): Promise<number> {
+    const row = await this.findByPaymentIntent(paymentIntentId)
+    if (!row || row.status !== 'confirmed' || !row._id) return 0
+    return this.recordRefund(row._id, totalRefunded)
   }
 
   /**
@@ -310,10 +393,9 @@ export class PendingPaymentManager {
       try {
         const pi = await stripe.paymentIntents.retrieve(String(row.stripePaymentIntentId), { expand: ['latest_charge'] })
         if (pi.status === 'succeeded') {
-          const received = Number(pi.amount_received ?? pi.amount)
-          const creditAmount = Number.isFinite(received) && received > 0 ? Math.min(row.amount, received) : row.amount
+          const { net, refunded } = this.settlementAmounts(pi, row.amount)
           const chargeId = typeof pi.latest_charge === 'string' ? pi.latest_charge : pi.latest_charge?.id
-          if (await this.settleSucceeded(row, creditAmount, chargeId)) out.recovered++
+          if (await this.settleSucceeded(row, net, chargeId, refunded)) out.recovered++
         } else {
           await collection.updateOne({ _id: row._id, status: { $in: ['failed', 'expired'] } }, { $set: { recheckedAt: new Date(), lastCheckedAt: new Date() } })
         }

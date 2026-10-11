@@ -80,11 +80,12 @@ export async function POST(request: NextRequest) {
           const chargeId = typeof paymentIntent.latest_charge === 'string'
             ? paymentIntent.latest_charge
             : paymentIntent.latest_charge?.id
-          await PendingPaymentManager.settleSucceeded(pending, Math.min(pending.amount, amountInCents), chargeId)
+          const { net, refunded } = PendingPaymentManager.settlementAmounts(paymentIntent, Math.min(pending.amount, amountInCents))
+          await PendingPaymentManager.settleSucceeded(pending, net, chargeId, refunded)
           return NextResponse.json({
             success: true,
             message: 'Credits added successfully',
-            amount: Math.min(pending.amount, amountInCents) / 100,
+            amount: net / 100,
             paymentIntentId: paymentIntent.id
           })
         }
