@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/config'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { UsageTracker } from '@/lib/subscription/usage'
 import { getVisiblePlans, getPlanById } from '@/lib/subscription/plans'
+import { changeToSelfServePlan } from '@/lib/subscription/planChange'
 
 export const runtime = 'nodejs'
 
@@ -265,10 +266,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const body = await request.json()
-    const { planId } = body
+    let body: any
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    }
+    const planId = body?.planId
 
-    if (!planId) {
+    if (!planId || typeof planId !== 'string') {
       return NextResponse.json(
         { error: 'Plan ID is required' },
         { status: 400 }
@@ -283,10 +289,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // For free plan, update directly
-    if (planId === 'free') {
-      await auth0UserManager.updateUserSubscription(session.user.id, planId)
-      
+    // For the free plan, update directly (owner session only, no live Stripe subscription)
+    if (plan.id === 'free') {
+      // @ts-ignore - customerId is a custom property
+      if (!(session as any).customerId) {
+        return NextResponse.json({ error: 'Customer ID not found in session' }, { status: 401 })
+      }
+      const outcome = await changeToSelfServePlan(session, 'free')
+      if (!outcome.ok) return outcome.response
+
       return NextResponse.json({
         success: true,
         message: 'Successfully downgraded to free plan',
@@ -299,7 +310,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: false,
       message: 'Please use the checkout endpoint for paid plans',
-      checkoutUrl: `/api/subscription/checkout?planId=${planId}`
+      checkoutUrl: `/api/subscription/checkout?planId=${encodeURIComponent(plan.id)}`
     })
 
   } catch (error) {

@@ -18,3 +18,17 @@ export function verifyCronRequest(request: NextRequest): NextResponse | null {
   }
   return NextResponse.json({ error: 'Unauthorized - Invalid cron request' }, { status: 401 })
 }
+
+/**
+ * Strict cron-secret check for handlers that run cross-customer jobs and are ALSO
+ * reachable by an admin session. Unlike verifyCronRequest it has no `next dev`
+ * bypass: global processing never runs unauthenticated.
+ */
+export function hasValidCronSecret(request: NextRequest): boolean {
+  const secret = process.env.CRON_SECRET
+  if (!secret) return false
+  const header = request.headers.get('authorization') || ''
+  const a = crypto.createHash('sha256').update(header).digest()
+  const b = crypto.createHash('sha256').update(`Bearer ${secret}`).digest()
+  return crypto.timingSafeEqual(a, b)
+}

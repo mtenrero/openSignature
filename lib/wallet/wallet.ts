@@ -94,6 +94,16 @@ export class VirtualWallet {
             name: 'uniq_credit_stripe_payment_intent',
           },
         )
+        // A refund credit is tied to the entity (contract / signature request) it
+        // refunds: at most ONE refund credit per entity, enforced by the database.
+        await collection.createIndex(
+          { customerId: 1, relatedEntityId: 1 },
+          {
+            unique: true,
+            partialFilterExpression: { type: 'credit', reason: 'refund', relatedEntityId: { $type: 'string' } },
+            name: 'uniq_refund_credit_entity',
+          },
+        )
       } catch (err) {
         console.warn(
           '[wallet] Could not create uniq_credit_stripe_payment_intent index ' +
@@ -155,8 +165,12 @@ export class VirtualWallet {
     reason: 'top_up' | 'bonus' | 'refund',
     description: string,
     stripePaymentIntentId?: string,
-    stripeChargeId?: string
+    stripeChargeId?: string,
+    relatedEntityId?: string
   ): Promise<WalletTransaction> {
+    if (!Number.isInteger(amount) || amount <= 0) {
+      throw new Error('Credit amount must be a positive integer number of cents')
+    }
     const walletCollection = await this.getWalletCollection()
     const transactionsCollection = await this.getTransactionsCollection()
 
@@ -166,6 +180,11 @@ export class VirtualWallet {
     // If this intent already produced a credit, return it without crediting again.
     if (stripePaymentIntentId) {
       const existing = await transactionsCollection.findOne({ stripePaymentIntentId, type: 'credit' })
+      if (existing) return existing as WalletTransaction
+    }
+    // Same for refunds: one refund credit per refunded entity.
+    if (reason === 'refund' && relatedEntityId) {
+      const existing = await transactionsCollection.findOne({ customerId, relatedEntityId, type: 'credit', reason: 'refund' })
       if (existing) return existing as WalletTransaction
     }
 
@@ -180,6 +199,7 @@ export class VirtualWallet {
       description,
       stripePaymentIntentId,
       stripeChargeId,
+      ...(relatedEntityId ? { relatedEntityId } : {}),
       balanceBefore: currentBalance.balance,
       balanceAfter: currentBalance.balance + amount,
       createdAt: new Date()
@@ -194,6 +214,10 @@ export class VirtualWallet {
     } catch (err: any) {
       if (err?.code === 11000 && stripePaymentIntentId) {
         const existing = await transactionsCollection.findOne({ stripePaymentIntentId, type: 'credit' })
+        if (existing) return existing as WalletTransaction
+      }
+      if (err?.code === 11000 && reason === 'refund' && relatedEntityId) {
+        const existing = await transactionsCollection.findOne({ customerId, relatedEntityId, type: 'credit', reason: 'refund' })
         if (existing) return existing as WalletTransaction
       }
       throw err
@@ -229,17 +253,31 @@ export class VirtualWallet {
     const walletCollection = await this.getWalletCollection()
     const transactionsCollection = await this.getTransactionsCollection()
 
-    // Get current balance
-    const currentBalance = await this.getBalance(customerId)
+    if (!Number.isInteger(amount) || amount <= 0) {
+      return { success: false, error: 'Invalid debit amount' }
+    }
 
-    // Check if sufficient balance
-    if (currentBalance.balance < amount) {
+    // Ensure the wallet document exists, then debit ATOMICALLY: the balance check is part
+    // of the update filter, so two concurrent debits can never overdraw the wallet.
+    await this.getBalance(customerId)
+    const before = await walletCollection.findOneAndUpdate(
+      { customerId, balance: { $gte: amount } },
+      {
+        $inc: { balance: -amount, totalDebits: amount },
+        $set: { lastUpdated: new Date() }
+      },
+      { returnDocument: 'before' }
+    )
+
+    if (!before) {
+      const current = await this.getBalance(customerId)
       return {
         success: false,
-        error: `Saldo insuficiente. Saldo actual: ${(currentBalance.balance / 100).toFixed(2)}€, necesario: ${(amount / 100).toFixed(2)}€`
+        error: `Saldo insuficiente. Saldo actual: ${(current.balance / 100).toFixed(2)}€, necesario: ${(amount / 100).toFixed(2)}€`
       }
     }
 
+    const balanceBefore = (before as any).balance as number
     const transaction: WalletTransaction = {
       customerId,
       type: 'debit',
@@ -247,27 +285,22 @@ export class VirtualWallet {
       reason,
       description,
       relatedEntityId,
-      balanceBefore: currentBalance.balance,
-      balanceAfter: currentBalance.balance - amount,
+      balanceBefore,
+      balanceAfter: balanceBefore - amount,
       createdAt: new Date()
     }
 
-    // Insert transaction
-    const transactionResult = await transactionsCollection.insertOne(transaction)
-
-    // Update wallet balance
-    await walletCollection.updateOne(
-      { customerId },
-      {
-        $inc: {
-          balance: -amount,
-          totalDebits: amount
-        },
-        $set: {
-          lastUpdated: new Date()
-        }
-      }
-    )
+    let transactionResult
+    try {
+      transactionResult = await transactionsCollection.insertOne(transaction)
+    } catch (err) {
+      // Could not record the debit: give the money back instead of losing it silently.
+      await walletCollection.updateOne(
+        { customerId },
+        { $inc: { balance: amount, totalDebits: -amount } }
+      )
+      throw err
+    }
 
     return {
       success: true,

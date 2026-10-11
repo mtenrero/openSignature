@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
-import { auth0UserManager } from '@/lib/auth/userManagement'
-import { getPlanById } from '@/lib/subscription/plans'
+import { changeToSelfServePlan } from '@/lib/subscription/planChange'
 
 export const runtime = 'nodejs'
 
@@ -16,36 +15,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { planId } = await request.json()
-
-    if (!planId) {
-      return NextResponse.json(
-        { error: 'Plan ID is required' },
-        { status: 400 }
-      )
+    let body: any
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
     }
 
-    const plan = getPlanById(planId)
-    if (!plan) {
-      return NextResponse.json(
-        { error: 'Invalid plan ID' },
-        { status: 400 }
-      )
+    // @ts-ignore - customerId is a custom property
+    if (!(session as any).customerId) {
+      return NextResponse.json({ error: 'Customer ID not found in session' }, { status: 401 })
     }
 
-    // Only allow free and pay_per_use plans through this endpoint
-    if (plan.id !== 'free' && plan.id !== 'pay_per_use') {
-      return NextResponse.json(
-        { error: 'This endpoint is only for free and pay-per-use plans' },
-        { status: 400 }
-      )
-    }
-
-    // Update user subscription in Auth0
-    await auth0UserManager.updateUserSubscription(
-      session.user.id,
-      plan.id
-    )
+    const outcome = await changeToSelfServePlan(session, body?.planId)
+    if (!outcome.ok) return outcome.response
+    const plan = outcome.plan
 
     return NextResponse.json({
       success: true,
