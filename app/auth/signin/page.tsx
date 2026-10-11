@@ -6,6 +6,7 @@ import { IconLogin, IconAlertTriangle, IconKey, IconArrowLeft, IconBrandGoogle, 
 import Link from 'next/link'
 import { signIn, useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { isSwitchAccount, safeCallbackUrl } from '@/lib/auth/customerId'
 
 function SignInPageContent() {
   const [loading, setLoading] = useState(false)
@@ -13,18 +14,22 @@ function SignInPageContent() {
   const [credentials, setCredentials] = useState({ email: '', password: '' })
   const router = useRouter()
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get('callbackUrl') || '/contracts'
+  const callbackUrl = safeCallbackUrl(
+    searchParams.get('callbackUrl'),
+    typeof window !== 'undefined' ? window.location.origin : ''
+  )
+  const switchAccount = isSwitchAccount(searchParams.get('switch'))
   const isSignup = searchParams.get('signup') === 'true'
   const provider = searchParams.get('provider')
   const { data: session, status } = useSession()
 
   useEffect(() => {
     // If user is already authenticated, redirect immediately
-    if (session && status === 'authenticated') {
+    if (session && status === 'authenticated' && !switchAccount) {
       console.log('[SIGNIN] User already authenticated, redirecting to:', callbackUrl)
       router.replace(callbackUrl)
     }
-  }, [session, status, router, callbackUrl])
+  }, [session, status, router, callbackUrl, switchAccount])
 
   const handleOAuthSignIn = async () => {
     try {

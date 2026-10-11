@@ -30,6 +30,7 @@ export const TEST_DB_NAME = 'osign_e2e'
 export const TEST_PARTNER_SECRET = 'e2e-partner-secret-do-not-use-in-prod'
 
 interface E2EState {
+  idpUrl?: string
   mongoUri: string
   serverPort: number
   serverPid?: number
@@ -51,6 +52,13 @@ async function waitForUrl(url: string, timeoutMs = 60_000): Promise<void> {
 
 export default async function globalSetup() {
   const port = Number(process.env.E2E_PORT ?? 3100)
+
+  // Local mock OIDC provider standing in for Auth0 (login e2e). Never the real tenant.
+  // @ts-expect-error plain ESM module without types
+  const { startMockIdp } = await import('./mock-idp/server.mjs')
+  const idp = await startMockIdp()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(global as any).__E2E_IDP__ = idp
 
   const mongo = await MongoMemoryServer.create({ binary: { version: '7.0.14' } })
   const uri = mongo.getUri()
@@ -98,8 +106,8 @@ export default async function globalSetup() {
     // Management API (and the real tenant) is never contacted. e2e authenticates
     // via the seeded Bearer osk_ API key, so the OAuth provider is never used.
     AUTH0_DISABLE_MANAGEMENT: 'true',
-    AUTH0_DOMAIN: 'e2e.example.auth0.com',
-    AUTH0_ISSUER: 'https://e2e.example.auth0.com',
+    AUTH0_DOMAIN: new URL(idp.issuer).host,
+    AUTH0_ISSUER: idp.issuer,
     AUTH0_CLIENT_ID: 'e2e-client-id',
     AUTH0_CLIENT_SECRET: 'e2e-client-secret',
     NODE_ENV: 'development',
@@ -148,7 +156,7 @@ export default async function globalSetup() {
 
   await waitForUrl(`http://localhost:${port}`, 120_000)
 
-  const state: E2EState = { mongoUri: uri, serverPort: port, serverPid: child.pid }
+  const state: E2EState = { idpUrl: idp.issuer, mongoUri: uri, serverPort: port, serverPid: child.pid }
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
   // eslint-disable-next-line no-console
   console.log(`[e2e] mongo=${uri} server=http://localhost:${port}`)
