@@ -2,6 +2,7 @@ import {
   getMissingContentFields,
   extractDynamicFieldNames,
   extractSignerInfo,
+  processContractContent,
 } from '@/lib/contractUtils'
 
 describe('extractDynamicFieldNames', () => {
@@ -88,5 +89,33 @@ describe('extractSignerInfo', () => {
     expect(info.clientEmail).toBe('ada@example.com')
     expect(info.clientPhone).toBe('+34600000000')
     expect(info.allFields.productName).toBe('Plan Pro')
+  })
+})
+
+describe('processContractContent — forPdf (documento final firmado)', () => {
+  const content = '<p>{{variable:clinicName}} atiende a {{dynamic:Nombre del animal}} ({{dynamic:clientName}})</p>'
+
+  it('PDF: variable de cuenta sin valor propio se resuelve con los overrides y no imprime [clinicName]', () => {
+    const out = processContractContent(content, { clinicName: 'Clinica Local E2E' }, { clientName: 'Ada' }, { forPdf: true })
+    expect(out).toContain('Clinica Local E2E')
+    expect(out).not.toContain('[clinicName]')
+  })
+
+  it('PDF: campo dinámico sin rellenar queda en blanco, no [Nombre del animal]', () => {
+    const out = processContractContent(content, { clinicName: 'X' }, { clientName: 'Ada' }, { forPdf: true })
+    expect(out).not.toContain('[Nombre del animal]')
+    expect(out).not.toContain('{{dynamic')
+    expect(out).toContain('Ada')
+  })
+
+  it('PDF: variable sin valor queda en blanco', () => {
+    const out = processContractContent(content, {}, {}, { forPdf: true })
+    expect(out).not.toContain('[')
+  })
+
+  it('pantalla del firmante: sigue mostrando el marcador entre corchetes', () => {
+    const out = processContractContent(content, {}, {})
+    expect(out).toContain('[Nombre del animal]')
+    expect(out).toContain('[clinicName]')
   })
 })

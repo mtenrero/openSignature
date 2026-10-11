@@ -100,6 +100,24 @@ export default async function globalSetup() {
     AUTH0_CLIENT_ID: 'e2e-client-id',
     AUTH0_CLIENT_SECRET: 'e2e-client-secret',
     NODE_ENV: 'development',
+    // AISLAMIENTO: Next carga .env.local (credenciales de PRODUCCION) y no
+    // pisa variables ya definidas, asi que se definen vacias.
+    DISABLE_SMS: 'true',
+    NEXT_PUBLIC_DISABLE_SMS: 'true',
+    SMS_PROVIDER: 'disabled',
+    SCALEWAY_KEY_ID: '',
+    SCALEWAY_KEY_SECRET: '',
+    SCALEWAY_PROJECT_ID: '',
+    BULKGATE_APPLICATION_ID: '',
+    BULKGATE_APPLICATION_TOKEN: '',
+    BULKGATE_API_URL: 'http://127.0.0.1:9/',
+    GATEWAYAPI_KEY: '',
+    SMS_TOKEN: '',
+    GATEWAYAPI_URL: 'http://127.0.0.1:9/',
+    MONGODB_URI: 'mongodb://127.0.0.1:9/none',
+    MONGODB_DB_NAME: TEST_DB_NAME,
+    AUTH0_MANAGEMENT_CLIENT_ID: '',
+    AUTH0_MANAGEMENT_CLIENT_SECRET: '',
   }
 
   const child: ChildProcess = spawn('npx', ['next', 'dev', '-p', String(port)], {

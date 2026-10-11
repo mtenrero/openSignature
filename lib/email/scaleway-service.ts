@@ -1,3 +1,4 @@
+import { isTestMode } from '@/lib/utils/testModeGuard'
 /**
  * Scaleway Transactional Email Service
  * Handles email sending via Scaleway API
@@ -52,6 +53,9 @@ class ScalewayEmailService {
    * Send an email via Scaleway API
    */
   async sendEmail(request: SendEmailRequest): Promise<EmailResponse> {
+    if (isTestMode()) {
+      return { success: false, error: 'Email deshabilitado en modo test (E2E_TEST_MODE)' }
+    }
     try {
       // Generate compliance headers
       const complianceHeaders = {
@@ -314,6 +318,7 @@ class ScalewayEmailService {
  * Create Scaleway email service instance
  */
 export function createScalewayEmailService(): ScalewayEmailService | null {
+  if (isTestMode()) return null
   try {
     const config: ScalewayEmailConfig = {
       apiKey: process.env.SCALEWAY_KEY_ID || '',

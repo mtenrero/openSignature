@@ -217,4 +217,31 @@ describe('POST /api/signature-requests', () => {
     expect(all).toHaveLength(1)
     expect(all[0].shortId).toBe(firstBody?.signatureRequest?.shortId ?? all[0].shortId)
   })
+
+  it('SMS deshabilitado: 403 SMS_DISABLED y NO deja solicitud pendiente huerfana', async () => {
+    const prev = process.env.DISABLE_SMS
+    process.env.DISABLE_SMS = 'true'
+    try {
+      const contract = await insertContract({})
+      const res = await POST(
+        buildRequest({
+          method: 'POST',
+          body: {
+            contractId: contract._id.toString(),
+            signatureType: 'sms',
+            signerName: 'Ada',
+            signerPhone: '+34600000000',
+          },
+        }) as any,
+      )
+      expect(res.status).toBe(403)
+      expect((await readJson(res)).errorCode).toBe('SMS_DISABLED')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const db = await (global as any).__getTestDb()
+      expect(await db.collection('signatureRequests').countDocuments({ customerId: TEST_CUSTOMER_ID })).toBe(0)
+    } finally {
+      if (prev === undefined) delete process.env.DISABLE_SMS
+      else process.env.DISABLE_SMS = prev
+    }
+  })
 })

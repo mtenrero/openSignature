@@ -122,6 +122,16 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
+    // Validar la disponibilidad del canal ANTES de crear nada: si no, queda una
+    // solicitud pendiente huerfana tras devolver 403.
+    if (signatureType === 'sms' && !isSMSEnabled()) {
+      return NextResponse.json({
+        success: false,
+        error: 'SMS functionality is currently disabled',
+        errorCode: 'SMS_DISABLED'
+      }, { status: 403 })
+    }
+
     // Get and capture the contract content as a snapshot
     const contractsCollection = await getContractsCollection()
     const contract = await contractsCollection.findOne({

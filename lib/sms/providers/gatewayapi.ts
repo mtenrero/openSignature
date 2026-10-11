@@ -1,3 +1,4 @@
+import { isTestMode } from '@/lib/utils/testModeGuard'
 import axios from 'axios'
 import { SmsProvider, SmsSendResult } from '../types'
 import { normalizePhoneWithPrefix } from '../utils/phone'
@@ -22,7 +23,7 @@ export class GatewayApiProvider implements SmsProvider {
   }
 
   async send(sender: string, message: string, recipientPhone: string): Promise<SmsSendResult> {
-    const isSMSDisabled = process.env.DISABLE_SMS === 'true'
+    const isSMSDisabled = isTestMode() || process.env.DISABLE_SMS === 'true'
     if (isSMSDisabled) {
       return {
         success: true,
