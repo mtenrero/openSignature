@@ -104,6 +104,16 @@ export class VirtualWallet {
             name: 'uniq_refund_credit_entity',
           },
         )
+        // A reversed legacy SEPA credit that later clears is restored AT MOST ONCE per
+        // payment intent (restoreReversedCredit).
+        await collection.createIndex(
+          { relatedEntityId: 1 },
+          {
+            unique: true,
+            partialFilterExpression: { type: 'credit', 'metadata.restoration': true, relatedEntityId: { $type: 'string' } },
+            name: 'uniq_restoration_credit_entity',
+          },
+        )
       } catch (err) {
         console.warn(
           '[wallet] Could not create uniq_credit_stripe_payment_intent index ' +
@@ -348,6 +358,75 @@ export class VirtualWallet {
       metadata: { reversal: true }
     }
     const result = await transactionsCollection.insertOne(transaction)
+    return { ...transaction, _id: result.insertedId }
+  }
+
+  /**
+   * The reversal debit written by reverseCredit for a payment intent (legacy SEPA rows
+   * credited up front that then failed/expired), if any.
+   */
+  static async findReversalByPaymentIntent(paymentIntentId: string): Promise<WalletTransaction | null> {
+    const collection = await this.getTransactionsCollection()
+    return await collection.findOne({
+      type: 'debit',
+      relatedEntityId: paymentIntentId,
+      'metadata.reversal': true
+    }) as WalletTransaction | null
+  }
+
+  /**
+   * A SEPA debit that was marked failed/expired (and whose up-front credit was reversed)
+   * turned out to clear in Stripe: give the reversed amount back, exactly once per
+   * payment intent (check + unique partial index on the deterministic relatedEntityId).
+   * Returns the restoration transaction, or null if there was no reversal to undo.
+   */
+  static async restoreReversedCredit(
+    customerId: string,
+    paymentIntentId: string,
+    maxAmount: number,
+    description: string
+  ): Promise<WalletTransaction | null> {
+    const reversal = await this.findReversalByPaymentIntent(paymentIntentId)
+    if (!reversal) return null
+    const amount = Math.min(reversal.amount, maxAmount)
+    if (!Number.isInteger(amount) || amount <= 0) return null
+
+    const walletCollection = await this.getWalletCollection()
+    const transactionsCollection = await this.getTransactionsCollection()
+    const restorationKey = `restore:${paymentIntentId}`
+    const findExisting = () =>
+      transactionsCollection.findOne({ relatedEntityId: restorationKey, type: 'credit', 'metadata.restoration': true })
+
+    const already = await findExisting()
+    if (already) return already as WalletTransaction
+
+    const current = await this.getBalance(customerId)
+    const transaction: WalletTransaction = {
+      customerId,
+      type: 'credit',
+      amount,
+      reason: 'top_up',
+      description,
+      relatedEntityId: restorationKey,
+      balanceBefore: current.balance,
+      balanceAfter: current.balance + amount,
+      createdAt: new Date(),
+      metadata: { restoration: true, paymentIntentId }
+    }
+    let result
+    try {
+      result = await transactionsCollection.insertOne(transaction)
+    } catch (err: any) {
+      if (err?.code === 11000) {
+        const winner = await findExisting()
+        if (winner) return winner as WalletTransaction
+      }
+      throw err
+    }
+    await walletCollection.updateOne(
+      { customerId },
+      { $inc: { balance: amount, totalCredits: amount }, $set: { lastUpdated: new Date() } }
+    )
     return { ...transaction, _id: result.insertedId }
   }
 
