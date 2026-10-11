@@ -105,6 +105,7 @@ export async function GET(
             // Preserve original fields for audit trail, content, and dynamic field values
             contractSnapshot: req.contractSnapshot,
             dynamicFieldValues: req.dynamicFieldValues,
+            variableOverrides: req.variableOverrides,
             signerInfo: req.signerInfo,
             auditRecords: req.auditRecords,
             accessLogs: req.accessLogs,
