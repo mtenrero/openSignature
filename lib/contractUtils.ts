@@ -164,7 +164,10 @@ export function getAccountVariableLabel(name: string): string {
 export function processContractContent(
   content: string, 
   accountVariableValues: {[key: string]: string}, 
-  dynamicFieldValues: {[key: string]: string | boolean} = {}
+  dynamicFieldValues: {[key: string]: string | boolean} = {},
+  // forPdf: el documento final firmado no debe imprimir el nombre entre corchetes
+  // de un campo/variable sin valor; se deja en blanco.
+  options: { forPdf?: boolean } = {}
 ): string {
   if (!content) return '<p>El contrato no tiene contenido aún.</p>'
 
@@ -183,6 +186,7 @@ export function processContractContent(
     if (value) {
       return `<span style="background: #f3e5f5; padding: 2px 6px; border-radius: 4px; border: 1px solid #9c27b0; color: #7c3aed; font-weight: 600; margin: 0 4px;">${value}</span>`
     }
+    if (options.forPdf) return ''
     return `<span style="background: #f3e5f5; padding: 2px 6px; border-radius: 4px; border: 1px solid #9c27b0; color: #7c3aed; font-weight: 600; margin: 0 4px;">[${fieldName}]</span>`
   })
 
@@ -195,7 +199,8 @@ export function processContractContent(
       const displayValue = typeof value === 'boolean' ? (value ? '✓ Aceptado' : '☐ No aceptado') : value
       return `<span style="background: #e3f2fd; padding: 2px 6px; border-radius: 4px; border: 1px solid #2196f3; color: #1976d2; font-weight: 600; margin: 0 4px;">${displayValue}</span>`
     }
-    // If no value, show placeholder
+    // If no value, show placeholder (en el PDF final, en blanco)
+    if (options.forPdf) return ''
     return `<span style="background: #e3f2fd; padding: 2px 6px; border-radius: 4px; border: 1px solid #2196f3; color: #1976d2; font-weight: 600; margin: 0 4px;">[${fieldName}]</span>`
   })
 

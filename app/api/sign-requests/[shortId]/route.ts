@@ -4,7 +4,7 @@ import { ObjectId } from 'mongodb'
 import crypto from 'crypto'
 import { extractClientIP, createSignatureMetadata } from '@/lib/deviceMetadata'
 import { auditTrailService } from '@/lib/auditTrail'
-import { extractSignerInfo } from '@/lib/contractUtils'
+import { extractSignerInfo, processContractContent } from '@/lib/contractUtils'
 import { getQualifiedTimestamp } from '@/lib/eidas/timestampClient'
 import { UsageAuditService } from '@/lib/usage/usageAudit'
 import { auth0UserManager } from '@/lib/auth/userManagement'
@@ -870,8 +870,35 @@ export async function PUT(
               }
             }
             
-            const pdfResult = await signedContractPDFGenerator.generateSignedContractPDF(
+            // Sustituir variables de cuenta y campos dinámicos (en blanco si no tienen valor),
+            // igual que el PDF descargable; antes se adjuntaba el contenido sin procesar.
+            const pdfVariableValues: { [key: string]: string } = {
+              fecha: new Date().toLocaleDateString('es-ES'),
+              fechaHora: new Date().toLocaleString('es-ES')
+            }
+            try {
+              const pdfVarDoc = await (await getVariablesCollection()).findOne({
+                customerId: signatureRequest.customerId,
+                type: 'variables'
+              })
+              for (const v of (pdfVarDoc?.variables || []) as any[]) {
+                if (v.enabled && v.name !== 'fecha' && v.placeholder) pdfVariableValues[v.name] = v.placeholder
+              }
+            } catch (varError) {
+              console.warn('[Signature Complete] Could not load account variables for PDF:', varError)
+            }
+            for (const [key, value] of Object.entries(signatureRequest.variableOverrides || {})) {
+              if (value && typeof value === 'string') pdfVariableValues[key] = value
+            }
+            const pdfContent = processContractContent(
               signatureRequest.contractSnapshot?.content || '',
+              pdfVariableValues,
+              dynamicFieldValues || {},
+              { forPdf: true }
+            )
+
+            const pdfResult = await signedContractPDFGenerator.generateSignedContractPDF(
+              pdfContent,
               sesSignature,
               {
                 companyName: process.env.COMPANY_NAME || 'oSign.EU',

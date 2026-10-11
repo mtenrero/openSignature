@@ -272,6 +272,11 @@ export async function GET(
     
     // Use default values where account values are missing
     const finalAccountVariableValues = { ...defaultValues, ...accountVariableValues }
+    // Overrides enviados por el partner al crear la solicitud (p. ej. variable:clinicName),
+    // los mismos que aplica la página del firmante
+    for (const [key, value] of Object.entries((decryptedSignature as any).variableOverrides || {})) {
+      if (value && typeof value === 'string') finalAccountVariableValues[key] = value
+    }
     
     console.log('[PDF DEBUG] Final variable values:', finalAccountVariableValues)
 
@@ -294,7 +299,8 @@ export async function GET(
     const processedContent = processContractContent(
       contractContent || '<p>Contract content not available</p>',
       finalAccountVariableValues,
-      dynamicFieldValues
+      dynamicFieldValues,
+      { forPdf: true }
     )
     
     console.log('[PDF DEBUG] Processed content after variable replacement:', processedContent.substring(0, 300) + '...')

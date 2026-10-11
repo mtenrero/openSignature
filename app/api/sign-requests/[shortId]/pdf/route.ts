@@ -265,13 +265,18 @@ export async function GET(
         fechaHora: new Date().toLocaleString('es-ES')
       }
       accountVariableValues = { ...defaults, ...accountVariableValues }
+      // Mismos overrides que aplica la página del firmante (p. ej. variable:clinicName del partner)
+      for (const [key, value] of Object.entries(signatureRequest.variableOverrides || {})) {
+        if (value && typeof value === 'string') accountVariableValues[key] = value
+      }
       const dynamicFieldValues = signatureRequest.dynamicFieldValues || {}
       
       // Process contract content to replace variables and dynamic fields
       const processedContent = processContractContent(
         signatureRequest.contractSnapshot?.content || '',
         accountVariableValues,
-        dynamicFieldValues
+        dynamicFieldValues,
+        { forPdf: true }
       )
       
       // Generate PDF with simple PDF generator (with basic HTML rendering)
