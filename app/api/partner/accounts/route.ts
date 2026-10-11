@@ -30,13 +30,21 @@ export async function POST(request: NextRequest) {
   }
 
   if (existing) {
-    // Previously revoked: re-activate and issue a fresh key.
+    // Previously revoked: re-activate as a PROVISIONED account. Revoking severs any earlier
+    // link, so a clinic that was linked to an existing oSign customer must not get a fresh
+    // key for that customer's account again: it gets its own partner customer.
     await accounts.updateOne(
       { partnerId: partner.id, externalId },
-      { $set: { status: 'active', email, businessName: businessName.trim(), taxId: typeof taxId === 'string' ? taxId : undefined, plan: partner.defaultPlan, reactivatedAt: new Date() } }
+      {
+        $set: {
+          status: 'active', customerId, userId: customerId, linkedVia: 'provisioned',
+          email, businessName: businessName.trim(), taxId: typeof taxId === 'string' ? taxId : undefined,
+          plan: partner.defaultPlan, reactivatedAt: new Date(),
+        },
+      }
     )
-    const apiKey = await issuePartnerKey(db, partner, existing.customerId, existing.userId || existing.customerId)
-    return NextResponse.json({ customerId: existing.customerId, apiKey, created: true }, { status: 201 })
+    const apiKey = await issuePartnerKey(db, partner, customerId, customerId)
+    return NextResponse.json({ customerId, apiKey, created: true }, { status: 201 })
   }
 
   try {

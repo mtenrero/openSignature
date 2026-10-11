@@ -211,6 +211,36 @@ describe('rotate-key and revoke', () => {
     expect(after.status).toBe(401)
   })
 
+  it('re-provisioning a revoked LINKED account creates its own partner customer, never a key for the linked one', async () => {
+    realAuthContext()
+    const db = await (global as any).__getTestDb()
+    await db.collection('esign_apikeys').insertOne({ _id: 'osk_linked_real_key_1', active: true, customerId: 'cust-real-9', userId: 'auth0|u9' })
+    await linkPOST(req('POST', '/api/partner/accounts/link', { externalId: EXT, apiKey: 'osk_linked_real_key_1' }))
+    await accountDELETE(req('DELETE', `/api/partner/accounts/${EXT}`), ctx(EXT))
+
+    const res = await create()
+    expect(res.status).toBe(201)
+    const body = await json(res)
+    expect(body.customerId).toBe(`partner_vetcontrol_${EXT}`)
+    expect(await db.collection('partner_accounts').findOne({ externalId: EXT })).toMatchObject({
+      customerId: `partner_vetcontrol_${EXT}`, linkedVia: 'provisioned', status: 'active',
+    })
+    const issued = await db.collection('esign_apikeys').findOne({ _id: body.apiKey })
+    expect(issued.customerId).toBe(`partner_vetcontrol_${EXT}`)
+    // The previously linked customer's own key is untouched.
+    expect((await db.collection('esign_apikeys').findOne({ _id: 'osk_linked_real_key_1' })).active).toBe(true)
+  })
+
+  it('re-provisioning a revoked provisioned account reactivates it with a fresh key', async () => {
+    const first = await json(await create())
+    await accountDELETE(req('DELETE', `/api/partner/accounts/${EXT}`), ctx(EXT))
+    const res = await create()
+    expect(res.status).toBe(201)
+    const again = await json(res)
+    expect(again.customerId).toBe(first.customerId)
+    expect(again.apiKey).not.toBe(first.apiKey)
+  })
+
   it('requires partner auth for rotate and revoke', async () => {
     expect((await rotatePOST(req('POST', `/api/partner/accounts/${EXT}/rotate-key`, undefined, {}), ctx(EXT))).status).toBe(401)
     expect((await accountDELETE(req('DELETE', `/api/partner/accounts/${EXT}`, undefined, {}), ctx(EXT))).status).toBe(401)
