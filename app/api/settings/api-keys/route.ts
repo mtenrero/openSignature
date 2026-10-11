@@ -13,6 +13,13 @@ export async function GET(request: NextRequest) {
   try {
     const authContext = await getAuthContext(request)
 
+    if (authContext?.isApiKey) {
+      return NextResponse.json(
+        { error: 'API keys cannot manage API keys; sign in interactively', errorCode: 'SESSION_REQUIRED' },
+        { status: 403 }
+      )
+    }
+
     if (!authContext || authContext.isOAuth) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -54,6 +61,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const authContext = await getAuthContext(request)
+
+    if (authContext?.isApiKey) {
+      return NextResponse.json(
+        { error: 'API keys cannot manage API keys; sign in interactively', errorCode: 'SESSION_REQUIRED' },
+        { status: 403 }
+      )
+    }
 
     if (!authContext || authContext.isOAuth) {
       return NextResponse.json(
@@ -115,6 +129,13 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const authContext = await getAuthContext(request)
+
+    if (authContext?.isApiKey) {
+      return NextResponse.json(
+        { error: 'API keys cannot manage API keys; sign in interactively', errorCode: 'SESSION_REQUIRED' },
+        { status: 403 }
+      )
+    }
 
     if (!authContext || authContext.isOAuth) {
       return NextResponse.json(

@@ -43,8 +43,8 @@ export default auth(async (req) => {
   // Public API routes that don't require authentication
   const publicApiRoutes = [
     '/api/auth',
-    '/api/oauth', // Allow all OAuth endpoints
-    '/api/test', // Test endpoints (temporary)
+    '/api/oauth/token', // OAuth token proxy (validates client credentials via Auth0)
+    '/api/oauth/client-mapping', // Auth0 Action lookup (INTERNAL_API_KEY bearer)
     '/api/openapi', // OpenAPI specification
     '/api/status',
     '/api/sign-requests',

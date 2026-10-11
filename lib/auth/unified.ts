@@ -7,6 +7,8 @@ export interface AuthContext {
   userId: string
   customerId: string
   isOAuth: boolean
+  /** True when authenticated with an osk_ API key (never an interactive session) */
+  isApiKey?: boolean
   jwtPayload?: JWTPayload
 }
 
@@ -72,7 +74,8 @@ export async function getAuthContext(request?: NextRequest): Promise<AuthContext
           return {
             userId: apiKey.userId,
             customerId: apiKey.customerId,
-            isOAuth: false
+            isOAuth: false,
+            isApiKey: true
           }
         }
       } catch (error) {
