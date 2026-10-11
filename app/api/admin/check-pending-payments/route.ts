@@ -54,6 +54,8 @@ export async function GET(request: NextRequest) {
 
 // POST /api/admin/check-pending-payments - Force check with optional filters
 export async function POST(request: NextRequest) {
+  const denied = verifyCronRequest(request)
+  if (denied) return denied
   const startTime = Date.now()
 
   try {

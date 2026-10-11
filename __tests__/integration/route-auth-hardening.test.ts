@@ -15,8 +15,7 @@ import { buildRequest, readJson } from '../helpers/nextRequest'
 import { mockAuthAs, TEST_CUSTOMER_ID } from '../helpers/mockAuth'
 import { insertContract } from '../helpers/fixtures'
 import { isAdminSession } from '@/lib/auth/admin'
-import { GET as cronStatus } from '@/app/api/admin/cron-status/route'
-import { GET as adminPending } from '@/app/api/admin/check-pending-payments/route'
+import { GET as adminPending, POST as adminPendingPost } from '@/app/api/admin/check-pending-payments/route'
 import { GET as auth0Diag } from '@/app/api/admin/auth0-diagnostics/route'
 import { GET as cronGet, POST as cronPost } from '@/app/api/cron/check-pending-payments/route'
 import { POST as emailRequest, GET as emailRequestStatus } from '@/app/api/email/signature-request/route'
@@ -61,7 +60,7 @@ describe('route inventory: every API route authenticates itself or is public by 
     'verify-integrity/[id]/pdf': 'public verification',
     'verify/[id]': 'public verification',
   }
-  const AUTH_MARKER = /getAuthContext|await auth\(\)|hybridAuth|requireAdmin|verifyCronRequest|CRON_SECRET|INTERNAL_API_KEY|validateJWT|requirePartner|authenticatePartner|constructEvent|stripe-signature|authorizeEmailRequest/
+  const AUTH_MARKER = /getAuthContext|await auth\(\)|hybridAuth|requireAdmin|verifyCronRequest|CRON_SECRET|INTERNAL_API_KEY|validateJWT|requirePartner|authenticatePartner|constructEvent|stripe-signature|authorizeEmailRequest|requireEmailAuth|await isAuthorized\(/
 
   function routes(dir: string): string[] {
     return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -73,9 +72,25 @@ describe('route inventory: every API route authenticates itself or is public by 
   const apiRoot = path.join(root, 'app/api')
   const all = routes(apiRoot).map((p) => ({ rel: path.relative(apiRoot, path.dirname(p)), src: fs.readFileSync(p, 'utf8') }))
 
-  it.each(all.map((r) => [r.rel, r.src]))('%s', (rel, src) => {
-    if (PUBLIC_BY_DESIGN[rel as string]) return
-    expect(AUTH_MARKER.test(src as string)).toBe(true)
+  // Cada handler exportado (GET, POST…) por separado: un GET protegido no puede
+  // tapar un POST abierto en el mismo fichero (caso admin/cron-status).
+  const HANDLER = /export\s+(?:async\s+function|const)\s+(GET|POST|PUT|PATCH|DELETE)\b/g
+  function handlers(src: string): Array<[string, string]> {
+    const marks = Array.from(src.matchAll(HANDLER))
+    return marks.map((m, i) => [m[1], src.slice(m.index!, i + 1 < marks.length ? marks[i + 1].index : src.length)])
+  }
+  const perHandler = all.flatMap((r) => handlers(r.src).map(([verb, body]) => [`${r.rel} ${verb}`, r.rel, body]))
+
+  // Handlers públicos dentro de un fichero protegido (solo salud, sin datos).
+  const PUBLIC_HANDLERS = new Set(['cron/process-refunds GET'])
+  it.each(perHandler)('%s', (name, rel, body) => {
+    if (PUBLIC_BY_DESIGN[rel as string] || PUBLIC_HANDLERS.has(name as string)) return
+    expect(AUTH_MARKER.test(body as string)).toBe(true)
+  })
+
+  it('no API route shells out (child_process)', () => {
+    const offenders = all.filter((r) => /child_process/.test(r.src)).map((r) => r.rel)
+    expect(offenders).toEqual([])
   })
 
   it('the public allowlist has no stale entries', () => {
@@ -87,7 +102,7 @@ describe('route inventory: every API route authenticates itself or is public by 
 
   it.each([
     'admin/stripe-debug', 'admin/test-subscription-update', 'admin/reset-stripe-customers',
-    'admin/cleanup-signatures', 'debug-subscription',
+    'admin/cleanup-signatures', 'debug-subscription', 'admin/cron-status',
   ])('debug route %s is deleted', (rel) => {
     expect(fs.existsSync(path.join(apiRoot, rel, 'route.ts'))).toBe(false)
   })
@@ -122,7 +137,7 @@ describe('middleware: a syntactic osk_ bearer is never authentication', () => {
   })
 
   it('anonymous API request is still 401', async () => {
-    expect((await call('/api/admin/cron-status')).status).toBe(401)
+    expect((await call('/api/admin/auth0-diagnostics')).status).toBe(401)
   })
 })
 
@@ -134,9 +149,11 @@ describe('with a fake osk_ key, every previously open route denies in-route', ()
   const req = (p: string, method: any = 'GET', body?: unknown) =>
     buildRequest({ method, url: `${U}${p}`, body, headers: { authorization: FAKE_KEY } }) as any
 
-  it('admin/cron-status 401', async () => { expect((await cronStatus(req('/api/admin/cron-status'))).status).toBe(401) })
   it('admin/auth0-diagnostics 401', async () => { expect((await auth0Diag(req('/api/admin/auth0-diagnostics'))).status).toBe(401) })
   it('admin/check-pending-payments 401', async () => { expect((await adminPending(req('/api/admin/check-pending-payments'))).status).toBe(401) })
+  it('admin/check-pending-payments POST without cron secret 401', async () => {
+    expect((await adminPendingPost(buildRequest({ method: 'POST', url: `${U}/api/admin/check-pending-payments`, body: { force: true } }) as any)).status).toBe(401)
+  })
   it('email/signature-request POST 401', async () => {
     const res = await emailRequest(req('/api/email/signature-request', 'POST', {
       recipientEmail: 'victim@example.com', contractDetails: { name: 'x', id: new ObjectId().toString(), content: '' }, signingUrl: 'https://osign.eu/x',
@@ -176,7 +193,7 @@ describe('admin allowlist (fail closed, never partner SSO)', () => {
   })
   it('admin route: ordinary signed-in user 403, partner SSO session 403', async () => {
     nextAuth().mockResolvedValue(sessionOf())
-    expect((await cronStatus(buildRequest({ url: `${U}/api/admin/cron-status` }) as any)).status).toBe(403)
+    expect((await auth0Diag(buildRequest({ url: `${U}/api/admin/auth0-diagnostics` }) as any)).status).toBe(403)
     process.env.OSIGN_ADMIN_EMAILS = 'someone@example.com'
     nextAuth().mockResolvedValue(sessionOf({ partnerId: 'vetcontrol' }))
     expect((await auth0Diag(buildRequest({ url: `${U}/api/admin/auth0-diagnostics` }) as any)).status).toBe(403)
