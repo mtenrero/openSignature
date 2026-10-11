@@ -5,6 +5,7 @@ import { auth0UserManager } from '@/lib/auth/userManagement'
 import { StripeManager } from '@/lib/payment/stripe'
 import { getPlanById } from '@/lib/subscription/plans'
 import { VirtualWallet } from '@/lib/wallet/wallet'
+import { rateLimitOr429 } from '@/lib/security/rateLimit'
 
 export const runtime = 'nodejs'
 
@@ -23,10 +24,15 @@ export async function POST(request: NextRequest) {
     const partnerBlock = rejectPartnerSso(session)
     if (partnerBlock) return partnerBlock
 
-    const body = await request.json()
-    const { planId } = body
+    let body: any
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    }
+    const planId = body?.planId
 
-    if (!planId) {
+    if (!planId || typeof planId !== 'string') {
       return NextResponse.json(
         { error: 'Plan ID is required' },
         { status: 400 }
@@ -56,6 +62,15 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // @ts-ignore - customerId is a custom property
+    if (!(session as any).customerId) {
+      return NextResponse.json({ error: 'Customer ID not found in session' }, { status: 401 })
+    }
+
+    // Every call creates a Stripe checkout session: cap the rate per customer.
+    const limited = await rateLimitOr429('subscription-checkout', (session as any).customerId, 10, 600)
+    if (limited) return limited
 
     // Get user info from Auth0
     const user = await auth0UserManager.getUser(session.user.id)
@@ -137,7 +152,7 @@ export async function POST(request: NextRequest) {
     }
 
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
-    const successUrl = `${baseUrl}/settings/subscription?success=true&plan=${planId}`
+    const successUrl = `${baseUrl}/settings/subscription?success=true&plan=${encodeURIComponent(plan.id)}`
     const cancelUrl = `${baseUrl}/settings/subscription?canceled=true`
 
     try {

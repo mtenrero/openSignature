@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/config'
 import { rejectPartnerSso } from '@/lib/auth/partnerBilling'
 import { stripe } from '@/lib/payment/stripe'
 import { VirtualWallet } from '@/lib/wallet/wallet'
+import { rateLimitOr429 } from '@/lib/security/rateLimit'
 
 export const runtime = 'nodejs'
 
@@ -21,14 +22,29 @@ export async function POST(request: NextRequest) {
     const partnerBlock = rejectPartnerSso(session)
     if (partnerBlock) return partnerBlock
 
-    const { paymentIntentId } = await request.json()
+    let reqBody: any
+    try {
+      reqBody = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    }
+    const paymentIntentId = reqBody?.paymentIntentId
 
-    if (!paymentIntentId) {
+    // @ts-ignore - customerId is a custom property
+    const userCustomerId = session.customerId as string
+    if (!userCustomerId) {
+      return NextResponse.json({ error: 'Customer ID not found in session' }, { status: 401 })
+    }
+
+    if (!paymentIntentId || typeof paymentIntentId !== 'string' || !/^pi_[A-Za-z0-9_]+$/.test(paymentIntentId)) {
       return NextResponse.json(
         { error: 'Payment Intent ID is required' },
         { status: 400 }
       )
     }
+
+    const limited = await rateLimitOr429('check-payment', userCustomerId, 30, 600)
+    if (limited) return limited
 
     // Retrieve the payment intent from Stripe (expand latest_charge — the `charges`
     // collection was removed from PaymentIntent in API version 2022-11-15).
@@ -36,29 +52,24 @@ export async function POST(request: NextRequest) {
       expand: ['latest_charge']
     })
 
-    console.log('Payment Intent details:', {
-      id: paymentIntent.id,
-      status: paymentIntent.status,
-      amount: paymentIntent.amount,
-      currency: paymentIntent.currency,
-      payment_method_types: paymentIntent.payment_method_types,
-      metadata: paymentIntent.metadata
-    })
+    // Ownership FIRST, whatever the status: a foreign payment intent must not even
+    // reveal its status/amount.
+    if (paymentIntent.metadata?.oSignEUCustomerId !== userCustomerId) {
+      return NextResponse.json(
+        { error: 'Payment does not belong to this user' },
+        { status: 403 }
+      )
+    }
 
     // Check if this is a wallet top-up payment that succeeded
     if (paymentIntent.status === 'succeeded' && paymentIntent.metadata?.type === 'wallet_topup') {
-      const customerId = paymentIntent.metadata.oSignEUCustomerId
-      const amountInCents = parseInt(paymentIntent.metadata.amountInCents || '0')
-
-      // @ts-ignore - customerId is a custom property
-      const userCustomerId = session.customerId as string
-
-      if (customerId !== userCustomerId) {
-        return NextResponse.json(
-          { error: 'Payment does not belong to this user' },
-          { status: 403 }
-        )
-      }
+      const customerId = userCustomerId
+      // Never credit more than Stripe says was actually received.
+      const metaCents = parseInt(paymentIntent.metadata.amountInCents || '0')
+      const receivedCents = Number(paymentIntent.amount_received ?? paymentIntent.amount ?? metaCents)
+      const amountInCents = Number.isFinite(metaCents) && metaCents > 0 && Number.isFinite(receivedCents)
+        ? Math.min(metaCents, receivedCents)
+        : 0
 
       try {
         // Check if credits were already added
@@ -103,7 +114,7 @@ export async function POST(request: NextRequest) {
           )
         }
       } catch (error) {
-        console.error('Error processing manual payment:', error)
+        console.error('Error processing manual payment:', error instanceof Error ? error.message : 'error')
         return NextResponse.json(
           { error: 'Error processing payment' },
           { status: 500 }
@@ -124,7 +135,7 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('Error checking payment:', error)
+    console.error('Error checking payment:', error instanceof Error ? error.message : 'error')
     return NextResponse.json(
       { error: 'Error checking payment' },
       { status: 500 }

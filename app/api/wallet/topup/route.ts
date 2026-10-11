@@ -4,6 +4,7 @@ import { rejectPartnerSso } from '@/lib/auth/partnerBilling'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { StripeManager } from '@/lib/payment/stripe'
 import { VirtualWallet } from '@/lib/wallet/wallet'
+import { rateLimitOr429 } from '@/lib/security/rateLimit'
 
 export const runtime = 'nodejs'
 
@@ -22,10 +23,16 @@ export async function POST(request: NextRequest) {
     const partnerBlock = rejectPartnerSso(session)
     if (partnerBlock) return partnerBlock
 
-    const body = await request.json()
-    const { amount } = body // Amount in euros
+    let body: any
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    }
+    const amount = body?.amount // Amount in euros
 
-    if (!amount || amount < 10 || amount > 1000) {
+    // Must be a real finite number (a string / NaN would slip past the range comparison)
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 10 || amount > 1000) {
       return NextResponse.json(
         { error: 'Cantidad debe estar entre 10€ y 1000€' },
         { status: 400 }
@@ -43,6 +50,13 @@ export async function POST(request: NextRequest) {
 
     // @ts-ignore - customerId is a custom property
     const customerId = session.customerId as string
+    if (!customerId) {
+      return NextResponse.json({ error: 'Customer ID not found in session' }, { status: 401 })
+    }
+
+    // Every call creates a Stripe checkout session: cap the rate per customer.
+    const limited = await rateLimitOr429('wallet-topup', customerId, 10, 600)
+    if (limited) return limited
 
     // Check user plan to determine wallet access
     const subscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(session.user.id)

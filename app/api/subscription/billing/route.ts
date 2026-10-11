@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/config'
 import { rejectPartnerSso } from '@/lib/auth/partnerBilling'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { StripeManager } from '@/lib/payment/stripe'
+import { rateLimitOr429 } from '@/lib/security/rateLimit'
 
 export const runtime = 'nodejs'
 
@@ -20,6 +21,10 @@ export async function POST(request: NextRequest) {
     // Partner billing goes through the partner: partner SSO sessions cannot change plan/buy.
     const partnerBlock = rejectPartnerSso(session)
     if (partnerBlock) return partnerBlock
+
+    // Each call creates a Stripe billing-portal session: cap the rate per user.
+    const limited = await rateLimitOr429('billing-portal', session.user.id, 10, 600)
+    if (limited) return limited
 
     // Get user info from Auth0
     const user = await auth0UserManager.getUser(session.user.id)

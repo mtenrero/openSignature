@@ -49,6 +49,19 @@ async function seedExpiredEmailRequest(customerId = CUSTOMER_ID) {
     signerName: 'Ada Lovelace',
     createdAt: fortyDaysAgo(),
   })
+  // The request was PAID from the wallet: the refund amount comes from this debit.
+  const cost = getPlanById('pay_per_use')!.limits.extraSignatureCost
+  await d.collection('wallet_transactions').insertOne({
+    customerId,
+    type: 'debit',
+    amount: cost,
+    reason: 'extra_signature',
+    description: 'Firma por email',
+    relatedEntityId: _id.toString(),
+    balanceBefore: cost,
+    balanceAfter: 0,
+    createdAt: fortyDaysAgo(),
+  })
   return _id.toString()
 }
 

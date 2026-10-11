@@ -60,7 +60,7 @@ describe('route inventory: every API route authenticates itself or is public by 
     'verify-integrity/[id]/pdf': 'public verification',
     'verify/[id]': 'public verification',
   }
-  const AUTH_MARKER = /getAuthContext|await auth\(\)|hybridAuth|requireAdmin|verifyCronRequest|CRON_SECRET|INTERNAL_API_KEY|validateJWT|requirePartner|authenticatePartner|constructEvent|stripe-signature|authorizeEmailRequest|requireEmailAuth|await isAuthorized\(/
+  const AUTH_MARKER = /getAuthContext|await auth\(\)|hybridAuth|requireAdmin|verifyCronRequest|hasValidCronSecret|CRON_SECRET|INTERNAL_API_KEY|validateJWT|requirePartner|authenticatePartner|constructEvent|stripe-signature|authorizeEmailRequest|requireEmailAuth|await isAuthorized\(/
 
   function routes(dir: string): string[] {
     return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
