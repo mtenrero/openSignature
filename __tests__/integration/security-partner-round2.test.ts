@@ -150,7 +150,6 @@ describe('N5: partner SSO sessions cannot change plan or billing', () => {
     ['POST /api/subscription', () => subscriptionPOST(post('/api/subscription'))],
     ['POST /api/subscription/billing', () => subBillingPOST(post('/api/subscription/billing'))],
     ['POST /api/subscription/refunds', () => refundsPOST(post('/api/subscription/refunds'))],
-    ['POST /api/wallet (manual credit)', () => walletPOST(post('/api/wallet'))],
     ['POST /api/wallet/topup', () => topupPOST(post('/api/wallet/topup'))],
     ['PUT /api/wallet/billing', () => walletBillingPUT(req('PUT', '/api/wallet/billing', { taxId: 'x' }))],
     ['POST /api/wallet/check-payment', () => checkPaymentPOST(post('/api/wallet/check-payment'))],
@@ -164,9 +163,9 @@ describe('N5: partner SSO sessions cannot change plan or billing', () => {
     expect((await json(res)).errorCode).toBe('SESSION_NOT_ALLOWED')
   })
 
-  it('N5 no wallet credit is written by a partner session', async () => {
+  it('N5 manual wallet credit is refused to a partner session and writes nothing', async () => {
     partnerSession('cust-p')
-    await walletPOST(post('/api/wallet'))
+    expect((await walletPOST(post('/api/wallet'))).status).toBe(403)
     const db = await getDb()
     const all = await Promise.all((await db.collections()).map((c: any) => c.countDocuments({})))
     expect(all.reduce((a: number, b: number) => a + b, 0)).toBe(0)

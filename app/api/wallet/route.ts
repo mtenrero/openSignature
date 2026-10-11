@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/lib/auth/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
 import { rejectPartnerSso } from '@/lib/auth/partnerBilling'
@@ -157,6 +158,9 @@ export async function GET(request: NextRequest) {
 
 // POST /api/wallet - Add credits (for manual testing, will be replaced by Stripe webhook)
 export async function POST(request: NextRequest) {
+  // Crédito manual sin pago: solo administradores (la UI recarga con /api/wallet/topup + Stripe).
+  const denied = await requireAdmin()
+  if (denied) return denied
   try {
     const session = await auth()
     if (!session?.user?.id) {

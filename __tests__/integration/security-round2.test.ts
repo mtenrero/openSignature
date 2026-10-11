@@ -168,3 +168,16 @@ describe('N4: local-auth bypasses are impossible in production', () => {
   })
 })
 
+
+describe('POST /api/wallet: crédito manual solo para administradores', () => {
+  it('wallet_manual_credit_is_admin_only', async () => {
+    const { POST } = require('@/app/api/wallet/route')
+    const { buildRequest } = require('../helpers/nextRequest')
+    const nextAuth = require('@/lib/auth/config').auth as jest.Mock
+    delete process.env.OSIGN_ADMIN_EMAILS
+    delete process.env.OSIGN_ADMIN_USER_IDS
+    nextAuth.mockResolvedValue({ user: { id: 'auth0|normal', email: 'normal@example.com' }, customerId: 'cust-normal' })
+    const res = await POST(buildRequest({ method: 'POST', url: 'http://localhost:3000/api/wallet', body: { amount: 1000 } }) as any)
+    expect(res.status).toBe(403)
+  })
+})
