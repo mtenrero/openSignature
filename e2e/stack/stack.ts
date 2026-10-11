@@ -6,6 +6,7 @@ import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 import { APIRequestContext, APIResponse, expect, Playwright } from '@playwright/test'
+import { createRequire } from 'module'
 import { MongoClient, Db } from 'mongodb'
 
 const STACK_DIR = process.env.OSIGN_STACK_DIR
@@ -95,5 +96,74 @@ export async function activeKeyOf(customerId: string): Promise<string | null> {
   try {
     const k: any = await db.collection('esign_apikeys').findOne({ customerId, active: true, partnerId: 'vetcontrol' })
     return k ? String(k._id) : null
+  } finally { await client.close() }
+}
+
+// ---- A brand-new VetControl tenant (its own user) ----
+// The local-dummy login always yields auth0|localdev. To get a REAL new tenant we mint the same
+// kind of session cookie NextAuth would (signed with the stack's test AUTH_SECRET) for a fresh sub.
+export const MIVET_DIR = process.env.MIVET_DIR
+export const state_: { idpUrl?: string; stripeUrl?: string; webhookSecret?: string; mongoUri: string } = state
+
+export interface NewTenant { sub: string; tenant: string; email: string; clinicName: string; api: APIRequestContext }
+
+export async function newMivetTenant(
+  playwright: Playwright,
+  opts: { clinicName?: string; email?: string; taxId?: string; seedProfile?: boolean } = {},
+): Promise<NewTenant> {
+  if (!MIVET_DIR) throw new Error('Set MIVET_DIR to the VetControl checkout')
+  const req = createRequire(path.join(MIVET_DIR, 'package.json'))
+  const { encode } = req('next-auth/jwt')
+  const id = `e2enew${crypto.randomBytes(5).toString('hex')}`
+  const sub = `auth0|${id}`
+  const tenant = `tenant_${id}`
+  const email = opts.email ?? `${id}@clinic.example.test`
+  const clinicName = opts.clinicName ?? `Clinica ${id}`
+  const payload = { sub, exp: 4102444800 }
+  const token = await encode({
+    secret: mivetEnv.AUTH_SECRET,
+    maxAge: 3600,
+    token: {
+      sub, provider: 'local-dummy', roles: ['admin'], aud: '8z0RHqNA2WYy6f7WIxisxQ7woT5UwHrx',
+      user: { id: sub, sub, name: clinicName, email },
+      accessToken: `e30.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.local-dummy`,
+    },
+  })
+  // The tenant database + the clinic profile a real signup would have left behind.
+  const mk = await fetch(`${couchUrl}/${tenant}`, { method: 'PUT', headers: couchHeaders })
+  if (![201, 412].includes(mk.status)) throw new Error(`couch create ${tenant} -> ${mk.status}`)
+  if (opts.seedProfile !== false) {
+    await couchPut(tenant, { _id: 'config:clinic', name: clinicName, businessName: clinicName, email, taxId: opts.taxId ?? 'B12345674' })
+  }
+  const api = await playwright.request.newContext({
+    baseURL: MIVET_URL,
+    extraHTTPHeaders: { cookie: `next-auth.session-token=${token}` },
+  })
+  return { sub, tenant, email, clinicName, api }
+}
+
+export function externalIdOf(tenant: string) { return expectedExternalId(tenant) }
+
+/** Polls until `fn` returns a truthy value (background work: login hook, lazy ensure). */
+export async function waitFor<T>(fn: () => Promise<T | null | undefined | false>, what: string, ms = 30_000): Promise<T> {
+  const end = Date.now() + ms
+  let last: unknown
+  while (Date.now() < end) {
+    try { const v = await fn(); if (v) return v } catch (e) { last = e }
+    await new Promise((r) => setTimeout(r, 500))
+  }
+  throw new Error(`Timed out waiting for ${what}${last ? ` (${String(last)})` : ''}`)
+}
+
+export async function partnerAccountsFor(tenant: string): Promise<any[]> {
+  const { client, db } = await osignDb()
+  try {
+    return await db.collection('partner_accounts').find({ partnerId: 'vetcontrol', externalId: expectedExternalId(tenant) }).toArray()
+  } finally { await client.close() }
+}
+export async function activeKeysFor(customerId: string): Promise<any[]> {
+  const { client, db } = await osignDb()
+  try {
+    return await db.collection('esign_apikeys').find({ customerId, active: true, partnerId: 'vetcontrol' }).toArray()
   } finally { await client.close() }
 }

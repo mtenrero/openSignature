@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { auth0BaseUrl } from '@/lib/auth/auth0Base'
 import { rateLimitOr429 } from '@/lib/security/rateLimit'
 import {
   GENERIC_REGISTER_MESSAGE,
@@ -54,23 +55,23 @@ export async function POST(request: NextRequest) {
     if (limitedEmail) return limitedEmail
 
     // Auth0 Management API configuration
-    const AUTH0_DOMAIN = process.env.AUTH0_ISSUER?.replace('https://', '').replace('/', '')
+    const AUTH0_BASE = auth0BaseUrl()
     const AUTH0_CLIENT_ID = process.env.AUTH0_MANAGEMENT_CLIENT_ID
     const AUTH0_CLIENT_SECRET = process.env.AUTH0_MANAGEMENT_CLIENT_SECRET
 
-    if (!AUTH0_DOMAIN || !AUTH0_CLIENT_ID || !AUTH0_CLIENT_SECRET) {
+    if (!AUTH0_BASE || !AUTH0_CLIENT_ID || !AUTH0_CLIENT_SECRET) {
       console.error('[REGISTER] Missing Auth0 Management API configuration')
       return NextResponse.json({ error: 'Configuración del servidor incompleta' }, { status: 500 })
     }
 
     // Get Management API access token
-    const tokenResponse = await fetch(`https://${AUTH0_DOMAIN}/oauth/token`, {
+    const tokenResponse = await fetch(`${AUTH0_BASE}/oauth/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         client_id: AUTH0_CLIENT_ID,
         client_secret: AUTH0_CLIENT_SECRET,
-        audience: `https://${AUTH0_DOMAIN}/api/v2/`,
+        audience: `${AUTH0_BASE}/api/v2/`,
         grant_type: 'client_credentials',
       }),
     })
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
 
     // Existing account (any connection): same answer as a fresh signup.
     const checkUserResponse = await fetch(
-      `https://${AUTH0_DOMAIN}/api/v2/users-by-email?email=${encodeURIComponent(input.email)}`,
+      `${AUTH0_BASE}/api/v2/users-by-email?email=${encodeURIComponent(input.email)}`,
       { method: 'GET', headers: { Authorization: `Bearer ${access_token}` } },
     )
     if (checkUserResponse.ok) {
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create user in Auth0 with a stable tenant id and the free plan.
-    const userResponse = await fetch(`https://${AUTH0_DOMAIN}/api/v2/users`, {
+    const userResponse = await fetch(`${AUTH0_BASE}/api/v2/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${access_token}` },
       body: JSON.stringify(buildAuth0UserPayload(input, generateBusinessId())),

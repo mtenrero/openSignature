@@ -21,6 +21,8 @@ import { SignJWT, exportJWK, generateKeyPair } from 'jose'
 
 export const MOCK_CLIENT_ID = 'e2e-client-id'
 export const MOCK_CLIENT_SECRET = 'e2e-client-secret'
+export const MOCK_MGMT_CLIENT_ID = 'e2e-mgmt-id'
+export const MOCK_MGMT_CLIENT_SECRET = 'e2e-mgmt-secret'
 export const NAMESPACE = 'https://vetcontrol-pro.eu.auth0.com'
 
 export const DEFAULT_USER = {
@@ -41,11 +43,21 @@ export async function startMockIdp({ port = 0, host = '127.0.0.1' } = {}) {
   const codes = new Map()
   const accessTokens = new Map()
   let issuer = ''
+  // Management API stand-in: users created through POST /api/v2/users (email -> record).
+  const mgmtTokens = new Set()
+  const created = new Map()
+  const mgmtAuthorized = (req) => {
+    const m = /^Bearer (.+)$/.exec(req.headers.authorization || '')
+    return !!m && mgmtTokens.has(m[1])
+  }
 
   const claimsFor = (u) => {
     const c = { sub: u.sub, email: u.email, email_verified: true, name: u.name }
     if (u.businessID && (u.businessIdVia === 'app_metadata' || u.businessIdVia === 'both')) {
       c.app_metadata = { businessID: u.businessID }
+      if (u.platforms_allowed) c.app_metadata.platforms_allowed = u.platforms_allowed
+    } else if (u.platforms_allowed) {
+      c.app_metadata = { platforms_allowed: u.platforms_allowed }
     }
     if (u.businessID && (u.businessIdVia === 'namespaced' || u.businessIdVia === 'both')) {
       c[`${NAMESPACE}/businessID`] = u.businessID
@@ -111,6 +123,45 @@ export async function startMockIdp({ port = 0, host = '127.0.0.1' } = {}) {
         return res.end()
       }
 
+      // ---- Management API (client_credentials + users) ----
+      if (url.pathname === '/oauth/token' && req.method === 'POST' && String(req.headers['content-type'] || '').includes('application/json')) {
+        const b = JSON.parse((await readBody(req)) || '{}')
+        if (b.grant_type !== 'client_credentials' || b.client_id !== MOCK_MGMT_CLIENT_ID || b.client_secret !== MOCK_MGMT_CLIENT_SECRET) {
+          return oauthError(res, 401, 'access_denied', 'bad management credentials')
+        }
+        if (b.audience !== `${issuer}/api/v2/`) return oauthError(res, 403, 'access_denied', 'bad audience')
+        const t = crypto.randomBytes(24).toString('hex')
+        mgmtTokens.add(t)
+        return json(res, 200, { access_token: t, token_type: 'Bearer', expires_in: 86400 })
+      }
+      if (url.pathname.startsWith('/api/v2/')) {
+        if (!mgmtAuthorized(req)) return json(res, 401, { statusCode: 401, error: 'Unauthorized' })
+        if (url.pathname === '/api/v2/users-by-email' && req.method === 'GET') {
+          const email = String(url.searchParams.get('email') || '').toLowerCase()
+          const u = created.get(email)
+          return json(res, 200, u ? [u] : [])
+        }
+        if (url.pathname === '/api/v2/users' && req.method === 'POST') {
+          const b = JSON.parse((await readBody(req)) || '{}')
+          const email = String(b.email || '').toLowerCase()
+          if (!email || !b.password || b.connection !== 'Username-Password-Authentication') {
+            return json(res, 400, { statusCode: 400, error: 'Bad Request', message: 'invalid payload' })
+          }
+          const dupUsername = [...created.values()].some((x) => x.username && x.username === b.username)
+          if (created.has(email) || dupUsername) {
+            return json(res, 409, { statusCode: 409, error: 'Conflict', code: 'user_exists', message: 'The user already exists.' })
+          }
+          const rec = {
+            user_id: `auth0|${crypto.randomBytes(12).toString('hex')}`,
+            email, username: b.username, name: b.name, email_verified: !!b.email_verified,
+            user_metadata: b.user_metadata || {}, app_metadata: b.app_metadata || {},
+          }
+          created.set(email, rec)
+          return json(res, 201, { ...rec })
+        }
+        return json(res, 404, { error: 'not_found' })
+      }
+
       if (url.pathname === '/oauth/token' && req.method === 'POST') {
         const form = Object.fromEntries(new URLSearchParams(await readBody(req)))
         log.token.push({ grant_type: form.grant_type, has_verifier: !!form.code_verifier })
@@ -146,10 +197,24 @@ export async function startMockIdp({ port = 0, host = '127.0.0.1' } = {}) {
         return res.end()
       }
 
+      if (url.pathname === '/__test/users') return json(res, 200, [...created.values()])
+      if (url.pathname === '/__test/login-as' && req.method === 'POST') {
+        // Auto-approve the user created through the Management API (what Auth0 would do after sign-up).
+        const { email } = JSON.parse((await readBody(req)) || '{}')
+        const rec = created.get(String(email || '').toLowerCase())
+        if (!rec) return json(res, 404, { error: 'no such created user' })
+        user = {
+          sub: rec.user_id, email: rec.email, name: rec.name,
+          businessID: rec.app_metadata?.businessID, businessIdVia: 'app_metadata',
+          platforms_allowed: rec.app_metadata?.platforms_allowed,
+        }
+        return json(res, 200, { ok: true })
+      }
       if (url.pathname === '/__test/log') return json(res, 200, log)
       if (url.pathname === '/__test/reset') {
         user = { ...DEFAULT_USER }
         log = { authorize: [], token: [] }
+        created.clear()
         return json(res, 200, { ok: true })
       }
       if (url.pathname === '/__test/user' && req.method === 'POST') {

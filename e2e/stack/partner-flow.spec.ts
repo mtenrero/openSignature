@@ -174,7 +174,7 @@ async function seedClinicData() {
   await couchPut(TENANT_DB, { _id: 'billingsettings:general', template: { taxId: 'B76543210', fiscalName: 'Clinica Fiscal SL' } })
   await couchPut(TENANT_DB, {
     _id: 'employee:e2e-vet', name: 'Marta', lastname: 'Veterinaria Local', email: 'dev@local.test',
-    id: 'COL-99887', estate: 'Madrid', active: true,
+    id: 'COL-99887', estate: 'Madrid', active: true, position: 'veterinarian',
   })
   const client = await couchGet(TENANT_DB, `client:${CLIENT_ID}`)
   await couchPut(TENANT_DB, {
