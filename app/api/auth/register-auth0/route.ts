@@ -4,11 +4,11 @@ import { rateLimitOr429 } from '@/lib/security/rateLimit'
 import {
   GENERIC_REGISTER_MESSAGE,
   buildAuth0UserPayload,
-  clientIp,
   emailRateKey,
   generateBusinessId,
   validateRegistration,
 } from '@/lib/auth/registration'
+import { clientIp } from '@/lib/security/clientIp'
 
 export const runtime = 'nodejs'
 

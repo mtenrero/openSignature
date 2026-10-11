@@ -109,7 +109,7 @@ export interface NewTenant { sub: string; tenant: string; email: string; clinicN
 
 export async function newMivetTenant(
   playwright: Playwright,
-  opts: { clinicName?: string; email?: string; taxId?: string; seedProfile?: boolean } = {},
+  opts: { clinicName?: string; email?: string; taxId?: string; seedProfile?: boolean; provider?: string } = {},
 ): Promise<NewTenant> {
   if (!MIVET_DIR) throw new Error('Set MIVET_DIR to the VetControl checkout')
   const req = createRequire(path.join(MIVET_DIR, 'package.json'))
@@ -124,7 +124,7 @@ export async function newMivetTenant(
     secret: mivetEnv.AUTH_SECRET,
     maxAge: 3600,
     token: {
-      sub, provider: 'local-dummy', roles: ['admin'], aud: '8z0RHqNA2WYy6f7WIxisxQ7woT5UwHrx',
+      sub, provider: opts.provider ?? 'local-dummy', roles: ['admin'], aud: '8z0RHqNA2WYy6f7WIxisxQ7woT5UwHrx',
       user: { id: sub, sub, name: clinicName, email },
       accessToken: `e30.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.local-dummy`,
     },

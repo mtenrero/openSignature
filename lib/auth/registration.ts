@@ -138,8 +138,8 @@ export function buildAuth0UserPayload(input: RegistrationInput, businessID: stri
   }
 }
 
-// Client IP resolution lives in one place for every IP-keyed rate limit (spoof-resistant).
-export { clientIp } from '@/lib/security/clientIp'
+// Client IP resolution lives in lib/security/clientIp (server-only: imports node:net). Do NOT re-export it here:
+// the signup page (client) imports this module.
 
 /**
  * Canonical form of an address for rate limiting, so aliases of one mailbox share a key:
