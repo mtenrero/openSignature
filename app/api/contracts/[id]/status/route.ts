@@ -130,7 +130,9 @@ export async function PUT(
       updatedAt: new Date(),
       ...(status === 'signed' && { signedAt: new Date() }),
       ...(status === 'completed' && { completedAt: new Date() }),
-      ...(status === 'archived' && { archivedAt: new Date() })
+      ...(status === 'archived' && { archivedAt: new Date() }),
+      // Remember that it was signed: a signed document is never refundable.
+      ...(status === 'archived' && (currentStatus === 'signed' || currentStatus === 'completed') && { signedBeforeArchive: true, previousStatus: currentStatus })
     }
 
     // Encrypt sensitive fields
