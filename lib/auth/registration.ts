@@ -131,22 +131,52 @@ export function buildAuth0UserPayload(input: RegistrationInput, businessID: stri
     },
     app_metadata: {
       businessID,
+      requireVerifiedEmail: true,
       role: 'user',
       platforms_allowed: ['osign'],
     },
   }
 }
 
-/** Best-effort client IP from the proxy headers (first hop of x-forwarded-for). */
-export function clientIp(headers: Headers): string {
-  const fwd = headers.get('x-forwarded-for')
-  const ip = (fwd ? fwd.split(',')[0] : headers.get('x-real-ip') || '').trim()
-  return ip || 'unknown'
+// Client IP resolution lives in one place for every IP-keyed rate limit (spoof-resistant).
+export { clientIp } from '@/lib/security/clientIp'
+
+/**
+ * Canonical form of an address for rate limiting, so aliases of one mailbox share a key:
+ * lowercase, `+tag` stripped for every domain, dots stripped for gmail/googlemail
+ * (googlemail.com is folded into gmail.com).
+ */
+export function normalizeEmail(email: string): string {
+  const lower = email.trim().toLowerCase()
+  const at = lower.lastIndexOf('@')
+  if (at < 1) return lower
+  let local = lower.slice(0, at)
+  let domain = lower.slice(at + 1)
+  const plus = local.indexOf('+')
+  if (plus > 0) local = local.slice(0, plus)
+  if (domain === 'gmail.com' || domain === 'googlemail.com') {
+    domain = 'gmail.com'
+    local = local.replace(/\./g, '')
+  }
+  return `${local}@${domain}`
 }
 
-/** Rate-limit subject for an email: hashed so no address is stored in rate_limits. */
+/** Rate-limit subject for an email: normalised + hashed so no address is stored in rate_limits. */
 export function emailRateKey(email: string): string {
-  return crypto.createHash('sha256').update(email.toLowerCase()).digest('hex').slice(0, 32)
+  return crypto.createHash('sha256').update(normalizeEmail(email)).digest('hex').slice(0, 32)
+}
+
+/**
+ * Accounts created by the self-service registration carry app_metadata.requireVerifiedEmail
+ * (and an `osign_` businessID). They may not sign in until Auth0 reports email_verified.
+ * Everyone else (legacy accounts, social logins, partner users) is unaffected.
+ */
+export function isEmailVerificationBlocked(profile: unknown): boolean {
+  const p = (profile ?? {}) as any
+  const meta = p.app_metadata
+  if (meta?.requireVerifiedEmail !== true) return false
+  if (typeof meta?.businessID !== 'string' || !meta.businessID.startsWith('osign_')) return false
+  return p.email_verified !== true
 }
 
 /**

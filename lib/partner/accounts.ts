@@ -7,6 +7,7 @@ import crypto from 'crypto'
 import type { Db } from 'mongodb'
 import { getDatabase } from '@/lib/db/mongodb'
 import type { PartnerConfig } from './auth'
+import { isSafeLocalPath, sameOriginPath } from '@/lib/auth/customerId'
 
 export const PARTNER_SCOPES = ['contracts', 'signature-requests', 'variables']
 export const SSO_TOKEN_TTL_MS = 60_000
@@ -116,9 +117,7 @@ export async function findAccount(db: Db, partnerId: string, externalId: string)
  */
 export function isAllowedReturnTo(returnTo: unknown, allowed: string[]): returnTo is string {
   if (typeof returnTo !== 'string' || returnTo.length === 0 || returnTo.length > 2048) return false
-  if (!returnTo.startsWith('/') || returnTo.startsWith('//')) return false
-  // eslint-disable-next-line no-control-regex
-  if (/[\\\u0000-\u001f\u007f]/.test(returnTo)) return false
+  if (!isSafeLocalPath(returnTo) || sameOriginPath(returnTo, 'http://partner.invalid') === null) return false
   let decoded: string
   try {
     decoded = decodeURIComponent(returnTo)

@@ -14,6 +14,7 @@ export const runtime = 'nodejs'
 
 const IP_LIMIT = 10 // registrations attempts per IP per hour
 const EMAIL_LIMIT = 3 // attempts per email per hour
+const GLOBAL_LIMIT = 300 // backstop: total attempts per hour across all IPs/emails
 const WINDOW_SECONDS = 3600
 
 /** Identical body for "created", "already exists" and bot traffic: no account enumeration. */
@@ -38,6 +39,10 @@ export async function POST(request: NextRequest) {
     // Per-IP limit first (cheap, before any validation/upstream work).
     const limitedIp = await rateLimitOr429('register', `ip:${clientIp(request.headers)}`, IP_LIMIT, WINDOW_SECONDS)
     if (limitedIp) return limitedIp
+
+    // Global backstop: caps total signup volume even if IP and email rotation both succeed.
+    const limitedGlobal = await rateLimitOr429('register-global', 'all', GLOBAL_LIMIT, WINDOW_SECONDS)
+    if (limitedGlobal) return limitedGlobal
 
     // Honeypot: the real form never fills `website`. Pretend success, do nothing.
     if (body && typeof body === 'object' && typeof (body as any).website === 'string' && (body as any).website.trim() !== '') {

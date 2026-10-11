@@ -1,4 +1,4 @@
-import { AUTH0_BUSINESS_ID_CLAIM, deriveCustomerId, isSwitchAccount, safeCallbackUrl } from './customerId'
+import { AUTH0_BUSINESS_ID_CLAIM, deriveCustomerId, isSafeLocalPath, isSwitchAccount, safeCallbackUrl } from './customerId'
 
 describe('deriveCustomerId (login: which customer a session belongs to)', () => {
   it('prefers app_metadata.businessID over everything', () => {
@@ -47,5 +47,29 @@ describe('isSwitchAccount', () => {
     expect(isSwitchAccount('true')).toBe(true)
     expect(isSwitchAccount(null)).toBe(false)
     expect(isSwitchAccount('0')).toBe(false)
+  })
+})
+
+describe('F2: control characters and encoded variants cannot smuggle an open redirect', () => {
+  const origin = 'https://osign.example'
+  const attacks = [
+    '/\t/evil.com', '/\n/evil.com', '/\r/evil.com', '/ /evil.com', '/\u00a0/evil.com', '/\u200b/evil.com',
+    '/%09/evil.com', '/%0a/evil.com', '/%0d/evil.com', '/%5cevil.com', '/%5Cevil.com', '/%2f%2fevil.com', '%2f%2fevil.com',
+    '/%252f%252fevil.com', '/%2509/evil.com', '/%255cevil.com', 'https://osign.example\t@evil.com',
+    'https://osign.example@evil.com', ' //evil.com', '\t//evil.com', 'https:\n//evil.com',
+  ]
+  it.each(attacks)('rejects %j', (attack) => {
+    expect(safeCallbackUrl(attack, origin)).toBe('/contracts')
+    expect(isSafeLocalPath(attack)).toBe(false)
+  })
+  it('works without a known origin (SSR) for local paths and refuses absolute URLs', () => {
+    expect(safeCallbackUrl('/contracts/1?a=b#c', '')).toBe('/contracts/1?a=b#c')
+    expect(safeCallbackUrl('https://evil.com/x', '')).toBe('/contracts')
+  })
+  it('a normalised path never starts with // (dot segments cannot rebuild it)', () => {
+    expect(safeCallbackUrl('/a/..//evil.com', origin)).toBe('/contracts')
+  })
+  it('still allows legitimate encoding in query strings', () => {
+    expect(safeCallbackUrl('/contracts?q=a%20b&r=%C3%A9', origin)).toBe('/contracts?q=a%20b&r=%C3%A9')
   })
 })

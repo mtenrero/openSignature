@@ -1,6 +1,6 @@
 import NextAuth, { NextAuthConfig } from "next-auth"
 import Auth0 from "next-auth/providers/auth0"
-import { isPlatformAllowed } from "@/lib/auth/registration"
+import { isEmailVerificationBlocked, isPlatformAllowed } from "@/lib/auth/registration"
 import { AUTH0_BUSINESS_ID_CLAIM, deriveCustomerId } from "./customerId"
 
 // Validate required environment variables.
@@ -118,6 +118,10 @@ export const config: NextAuthConfig = {
       // Accounts without that metadata (legacy) are allowed.
       if (account?.provider === 'auth0' && !isPlatformAllowed((profile as any)?.app_metadata)) {
         return false
+      }
+      // Self-registered accounts must confirm their email first (existing users are exempt).
+      if (account?.provider === 'auth0' && isEmailVerificationBlocked(profile)) {
+        return '/auth/error?error=EmailNotVerified'
       }
       return true
     },

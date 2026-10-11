@@ -20,6 +20,8 @@ function AuthErrorPageContent() {
         return 'Hay un problema con la configuración del servidor.'
       case 'AccessDenied':
         return 'No tienes permisos para acceder a esta aplicación.'
+      case 'EmailNotVerified':
+        return 'Verifica tu email: te hemos enviado un correo con un enlace de confirmación. Ábrelo y vuelve a iniciar sesión.'
       case 'Verification':
         return 'El enlace de verificación ha expirado o ya ha sido utilizado.'
       default:

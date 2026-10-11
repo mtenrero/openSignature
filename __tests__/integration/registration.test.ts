@@ -9,7 +9,7 @@ jest.mock('next-auth/providers/auth0', () => ({ __esModule: true, default: (opti
 import { POST as REGISTER } from '@/app/api/auth/register-auth0/route'
 import { GET as CONTRACTS_GET } from '@/app/api/contracts/route'
 import { GET as VARIABLES_GET } from '@/app/api/variables/route'
-import { GENERIC_REGISTER_MESSAGE } from '@/lib/auth/registration'
+import { GENERIC_REGISTER_MESSAGE, normalizeEmail } from '@/lib/auth/registration'
 import { buildRequest, readJson } from '../helpers/nextRequest'
 import { mockAuthAs } from '../helpers/mockAuth'
 
@@ -75,6 +75,7 @@ describe('registration: Auth0 user payload', () => {
     expect(p.app_metadata.businessID).toMatch(/^osign_[0-9a-f]{24}$/)
     expect(p.app_metadata.platforms_allowed).toEqual(['osign'])
     expect(p.app_metadata.role).toBe('user')
+    expect(p.app_metadata.requireVerifiedEmail).toBe(true)
     expect(p.user_metadata.subscriptionPlan).toBe('free')
     expect(p.user_metadata.subscriptionStatus).toBe('active')
     expect(p.verify_email).toBe(true)
@@ -206,6 +207,47 @@ describe('registration: rate limiting and anti-bot', () => {
     expect((await register(GOOD)).status).toBe(429)
   })
 
+  it('F1: rotating X-Forwarded-For (spoofed first hops) does not evade the per-IP limit', async () => {
+    const attempt = (i: number) =>
+      REGISTER(
+        buildRequest({
+          method: 'POST',
+          url: 'http://localhost:3000/api/auth/register-auth0',
+          body: { ...GOOD, email: `rot${i}@example.com`, username: `rot${i}` } as any,
+          // the proxy appends the real client (198.51.100.20) as the LAST hop
+          headers: { 'x-forwarded-for': `9.9.${i}.1, 198.51.100.20` },
+        }) as any,
+      )
+    for (let i = 0; i < 10; i++) expect((await attempt(i)).status).toBe(200)
+    expect((await attempt(99)).status).toBe(429)
+  })
+
+  it('F1: aliases of one mailbox (+tag, gmail dots, case, googlemail) share the per-email limit', async () => {
+    const variants = ['ana@gmail.com', 'ANA+a@gmail.com', 'a.n.a+b@googlemail.com']
+    for (const email of variants) expect((await register({ ...GOOD, email })).status).toBe(200)
+    expect((await register({ ...GOOD, email: 'a.na+zzz@gmail.com' })).status).toBe(429)
+  })
+
+  it('F1: +tag is stripped on every domain, dots only on gmail', () => {
+    expect(normalizeEmail('Bob+x@Example.com')).toBe('bob@example.com')
+    expect(normalizeEmail('b.o.b@example.com')).toBe('b.o.b@example.com')
+    expect(normalizeEmail('b.o.b+x@googlemail.com')).toBe('bob@gmail.com')
+  })
+
+  it('F1: global hourly ceiling is a backstop when IP and email both rotate', async () => {
+    const d = await (global as any).__getTestDb()
+    const windowStart = Math.floor(Date.now() / (3600 * 1000))
+    await d.collection('rate_limits').updateOne(
+      { _id: `register-global:all:${windowStart}` },
+      { $set: { count: 300, expiresAt: new Date(Date.now() + 7200_000) } },
+      { upsert: true },
+    )
+    fetchMock.mockClear()
+    const res = await register({ ...GOOD, email: 'fresh@example.com', username: 'fresh' }, '203.0.113.200')
+    expect(res.status).toBe(429)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('stores no email address in the rate limit collection', async () => {
     await register(GOOD)
     const d = await (global as any).__getTestDb()
@@ -299,6 +341,35 @@ describe('login callbacks (Auth0)', () => {
     expect(await run({ businessID: 'x' })).toBe(true)
     expect(await run({ platforms_allowed: ['vetcontrol'] })).toBe(false)
     expect(await run({ platforms_allowed: [] })).toBe(false)
+  })
+})
+
+describe('F3: email verification is enforced for new registrations only', () => {
+  let cfg: any
+  beforeAll(() => {
+    process.env.AUTH0_CLIENT_ID = 'id'
+    process.env.AUTH0_CLIENT_SECRET = 'secret'
+    process.env.AUTH0_ISSUER = `https://${DOMAIN}/`
+    cfg = jest.requireActual('@/lib/auth/config').config
+  })
+  const run = (profile: any) => cfg.callbacks.signIn({ account: { provider: 'auth0' }, profile: { sub: 'auth0|x', ...profile } })
+  const fresh = { businessID: 'osign_0123456789abcdef01234567', requireVerifiedEmail: true, platforms_allowed: ['osign'] }
+
+  it('blocks an unverified new registration and sends it to the verify-your-email page', async () => {
+    expect(await run({ email_verified: false, app_metadata: fresh })).toBe('/auth/error?error=EmailNotVerified')
+    expect(await run({ app_metadata: fresh })).toBe('/auth/error?error=EmailNotVerified')
+  })
+  it('lets the same account in once Auth0 reports email_verified', async () => {
+    expect(await run({ email_verified: true, app_metadata: fresh })).toBe(true)
+  })
+  it('does not affect existing users (no flag), osign_ without flag, or non-osign ids with the flag', async () => {
+    expect(await run({ email_verified: false, app_metadata: { businessID: 'osign_0123456789abcdef01234567' } })).toBe(true)
+    expect(await run({ email_verified: false, app_metadata: { businessID: '68b614f56d55fe52931dbda9' } })).toBe(true)
+    expect(await run({ email_verified: false, app_metadata: { businessID: 'legacy', requireVerifiedEmail: true } })).toBe(true)
+    expect(await run({ email_verified: false })).toBe(true)
+  })
+  it('the platform check still wins', async () => {
+    expect(await run({ email_verified: true, app_metadata: { ...fresh, platforms_allowed: ['vetcontrol'] } })).toBe(false)
   })
 })
 
