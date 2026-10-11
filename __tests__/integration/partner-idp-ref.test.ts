@@ -150,6 +150,66 @@ describe('idpTenantRef on provisioning and link', () => {
   })
 })
 
+describe('R2: revoked accounts and idpTenantRefs', () => {
+  it('revoking clears idpTenantRefs, so a re-provision after the ref moved elsewhere is NOT a 500', async () => {
+    await create(EXT, { idpTenantRef: REF })
+    await accountDELETE(req('DELETE', `/api/partner/accounts/${EXT}`), ctx(EXT))
+    expect((await dbOf().then((d: any) => d.collection('partner_accounts').findOne({ externalId: EXT }))).idpTenantRefs).toBeUndefined()
+    await create(EXT2, { idpTenantRef: REF })
+    const res = await create(EXT)
+    expect(res.status).toBe(201)
+    expect((await resolveAuthentikAccount({ vc_tenant_ref: REF }))?.customerId).toBe(`partner_vetcontrol_${EXT2}`)
+  })
+
+  it('legacy revoked doc still holding a stale ref: reactivation drops it (no E11000 / 500)', async () => {
+    await create(EXT)
+    await create(EXT2, { idpTenantRef: REF })
+    const db = await dbOf()
+    await accountDELETE(req('DELETE', `/api/partner/accounts/${EXT}`), ctx(EXT))
+    await db.collection('partner_accounts').updateOne({ externalId: EXT }, { $set: { idpTenantRefs: [REF] } }) // legacy revoked row (not in the partial index)
+    const res = await create(EXT)
+    expect(res.status).toBe(201)
+    expect((await db.collection('partner_accounts').findOne({ externalId: EXT })).idpTenantRefs).toBeUndefined()
+    expect((await resolveAuthentikAccount({ vc_tenant_ref: REF }))?.customerId).toBe(`partner_vetcontrol_${EXT2}`)
+  })
+
+  it('reactivation asking for a ref held by another active account is 409 IDP_TENANT_REF_CONFLICT, never 500', async () => {
+    await create(EXT)
+    await create(EXT2, { idpTenantRef: REF })
+    await accountDELETE(req('DELETE', `/api/partner/accounts/${EXT}`), ctx(EXT))
+    const res = await create(EXT, { idpTenantRef: REF })
+    expect(res.status).toBe(409)
+    expect((await json(res)).errorCode).toBe('IDP_TENANT_REF_CONFLICT')
+  })
+
+  it('PATCH {idpTenantRef:null, replace:true} clears the refs, also on a revoked account; without replace it is 400', async () => {
+    await create(EXT, { idpTenantRef: REF })
+    expect((await patch(EXT, { idpTenantRef: null })).status).toBe(400)
+    const db = await dbOf()
+    await accountDELETE(req('DELETE', `/api/partner/accounts/${EXT}`), ctx(EXT))
+    await db.collection('partner_accounts').updateOne({ externalId: EXT }, { $set: { idpTenantRefs: [REF] } })
+    const res = await patch(EXT, { idpTenantRef: null, replace: true })
+    expect(res.status).toBe(200)
+    expect((await json(res)).idpTenantRefs).toEqual([])
+    expect((await db.collection('partner_accounts').findOne({ externalId: EXT })).idpTenantRefs).toBeUndefined()
+    expect((await patch(EXT, { idpTenantRef: REF })).status).toBe(409) // adding to a revoked account stays refused
+  })
+
+  it('link reactivation drops stale refs and answers 409 on a taken ref', async () => {
+    const db = await dbOf()
+    await db.collection('esign_apikeys').insertOne({ _id: 'osk_existing_customer_key_8', active: true, customerId: 'cust-8', userId: 'auth0|u8' })
+    const link = (b: any = {}) => linkPOST(req('POST', '/api/partner/accounts/link', { externalId: EXT, apiKey: 'osk_existing_customer_key_8', ...b }))
+    expect((await link({ idpTenantRef: REF })).status).toBe(200)
+    await accountDELETE(req('DELETE', `/api/partner/accounts/${EXT}`), ctx(EXT))
+    await create(EXT2, { idpTenantRef: REF })
+    await db.collection('partner_accounts').updateOne({ externalId: EXT }, { $set: { idpTenantRefs: [REF] } })
+    expect((await link()).status).toBe(200)
+    expect((await db.collection('partner_accounts').findOne({ externalId: EXT })).idpTenantRefs).toBeUndefined()
+    await accountDELETE(req('DELETE', `/api/partner/accounts/${EXT}`), ctx(EXT))
+    expect((await link({ idpTenantRef: REF })).status).toBe(409)
+  })
+})
+
 describe('resolveAuthentikAccount (real DB)', () => {
   it('only resolves ACTIVE accounts of the configured partner, never by email', async () => {
     await create(EXT, { idpTenantRef: REF })

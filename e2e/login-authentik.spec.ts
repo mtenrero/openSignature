@@ -33,7 +33,7 @@ test.describe('login with VetControl (authentik)', () => {
   test('signin page offers Entrar con VetControl and it logs into the clinic account', async ({ page, playwright, baseURL }) => {
     const tenant = `tenant-${rand()}`
     const { partner, customerId } = await provision(playwright, baseURL, tenant)
-    await idpPost('/__test/authentik-user', { vc_tenant_ref: refOf(tenant), sub: 'ak-sub-unstable-1' })
+    await idpPost('/__test/authentik-user', { osign_tenant_ref: refOf(tenant), sub: 'ak-sub-unstable-1' })
 
     await page.goto('/auth/signin')
     await page.getByRole('button', { name: /Entrar con VetControl/ }).click()
@@ -60,14 +60,14 @@ test.describe('login with VetControl (authentik)', () => {
   test('?provider=authentik auto-starts and honours a safe callbackUrl; unsafe falls back', async ({ page, playwright, baseURL }) => {
     const tenant = `tenant-${rand()}`
     const { partner } = await provision(playwright, baseURL, tenant)
-    await idpPost('/__test/authentik-user', { vc_tenant_ref: refOf(tenant) })
+    await idpPost('/__test/authentik-user', { osign_tenant_ref: refOf(tenant) })
     await page.goto(`/auth/signin?provider=authentik&callbackUrl=${encodeURIComponent('https://evil.example/x')}`)
     await expect(page).toHaveURL(/localhost:\d+\/contracts$/, { timeout: 60_000 })
     await partner.dispose()
   })
 
   test('a clinic that has not activated oSign lands on clinic_not_enabled (no session)', async ({ page }) => {
-    await idpPost('/__test/authentik-user', { vc_tenant_ref: refOf(`never-provisioned-${rand()}`) })
+    await idpPost('/__test/authentik-user', { osign_tenant_ref: refOf(`never-provisioned-${rand()}`) })
     await page.goto('/auth/signin?provider=authentik')
     await expect(page).toHaveURL(/\/auth\/error\?error=clinic_not_enabled/, { timeout: 60_000 })
     await expect(page.getByText(/Ajustes → Firma digital/)).toBeVisible()
@@ -76,7 +76,7 @@ test.describe('login with VetControl (authentik)', () => {
 
   test('an email that matches the account but no vc_tenant_ref never logs in', async ({ page, playwright, baseURL }) => {
     const { partner } = await provision(playwright, baseURL, `tenant-${rand()}`)
-    await idpPost('/__test/authentik-user', { vc_tenant_ref: null, email: 'clinic@example.com' })
+    await idpPost('/__test/authentik-user', { osign_tenant_ref: null, email: 'clinic@example.com' })
     await page.goto('/auth/signin?provider=authentik')
     await expect(page).toHaveURL(/error=clinic_not_enabled/, { timeout: 60_000 })
     await partner.dispose()
@@ -85,7 +85,7 @@ test.describe('login with VetControl (authentik)', () => {
   test('revoking the partner account kills the session', async ({ page, playwright, baseURL }) => {
     const tenant = `tenant-${rand()}`
     const { partner, externalId } = await provision(playwright, baseURL, tenant)
-    await idpPost('/__test/authentik-user', { vc_tenant_ref: refOf(tenant) })
+    await idpPost('/__test/authentik-user', { osign_tenant_ref: refOf(tenant) })
     await page.goto('/auth/signin?provider=authentik')
     await expect(page).toHaveURL(/\/contracts$/, { timeout: 60_000 })
     expect((await page.request.get('/api/contracts')).status()).toBe(200)
@@ -97,11 +97,12 @@ test.describe('login with VetControl (authentik)', () => {
   test('logout ends the Authentik session (id_token_hint) and the oSign session', async ({ page, playwright, baseURL }) => {
     const tenant = `tenant-${rand()}`
     const { partner } = await provision(playwright, baseURL, tenant)
-    await idpPost('/__test/authentik-user', { vc_tenant_ref: refOf(tenant) })
+    await idpPost('/__test/authentik-user', { osign_tenant_ref: refOf(tenant) })
     await page.goto('/auth/signin?provider=authentik')
     await expect(page).toHaveURL(/\/contracts$/, { timeout: 60_000 })
 
     await page.goto('/api/auth/idp-logout')
+    await page.getByRole('button', { name: /Cerrar sesión/ }).click()
     await expect(page).toHaveURL(/\/auth\/signin/, { timeout: 30_000 })
     const log = await idpLog()
     expect(log.endSession).toHaveLength(1)

@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
     // Previously revoked: re-activate as a PROVISIONED account. Revoking severs any earlier
     // link, so a clinic that was linked to an existing oSign customer must not get a fresh
     // key for that customer's account again: it gets its own partner customer.
+    try {
     await accounts.updateOne(
       { partnerId: partner.id, externalId },
       {
@@ -57,9 +58,14 @@ export async function POST(request: NextRequest) {
           plan: partner.defaultPlan, reactivatedAt: new Date(),
         },
         // Sessions/SSO tokens minted before the disconnect carry the old generation.
+        $unset: { idpTenantRefs: '' },
         $inc: { generation: 1 },
       }
     )
+    } catch (error: any) {
+      if (error?.code === 11000 && error?.keyPattern?.idpTenantRefs) return partnerError('idpTenantRef belongs to another account', 'IDP_TENANT_REF_CONFLICT', 409)
+      throw error
+    }
     const apiKey = await issuePartnerKey(db, partner, customerId, customerId, externalId)
     return finish(NextResponse.json({ customerId, apiKey, created: true }, { status: 201 }))
   }

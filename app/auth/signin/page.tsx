@@ -52,7 +52,10 @@ function SignInPageContent() {
   // starts the VetControl login by itself; callbackUrl went through safeCallbackUrl above.
   useEffect(() => {
     if (provider !== 'authentik' || !providersLoaded || !authentikEnabled) return
-    if (status !== 'unauthenticated' && !(status === 'authenticated' && switchAccount)) return
+    // Always start the IdP flow, even with an existing oSign session (Auth0, partner SSO or
+    // another clinic's Authentik): Authentik SSO makes it silent and the new session
+    // REPLACES the old one. Never skip into the existing session.
+    if (status === 'loading') return
     if (autoStarted.current) return
     autoStarted.current = true
     void handleAuthentikSignIn()
@@ -61,11 +64,13 @@ function SignInPageContent() {
 
   useEffect(() => {
     // If user is already authenticated, redirect immediately
+    // (not while ?provider=authentik is pending: that flow replaces the session instead)
+    if (provider === 'authentik' && (!providersLoaded || authentikEnabled)) return
     if (session && status === 'authenticated' && !switchAccount) {
       console.log('[SIGNIN] User already authenticated, redirecting to:', callbackUrl)
       router.replace(callbackUrl)
     }
-  }, [session, status, router, callbackUrl, switchAccount])
+  }, [session, status, router, callbackUrl, switchAccount, provider, providersLoaded, authentikEnabled])
 
   const handleOAuthSignIn = async () => {
     try {

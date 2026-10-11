@@ -3,6 +3,6 @@
  * must be impossible in production, whatever the environment variables say. Edge-safe
  * (no Node imports): used by middleware.ts too.
  */
-export function isProductionRuntime(): boolean {
-  return process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
+export function isProductionRuntime(env: Record<string, string | undefined> = process.env): boolean {
+  return env.NODE_ENV === 'production' || env.VERCEL_ENV === 'production'
 }

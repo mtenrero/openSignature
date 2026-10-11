@@ -140,6 +140,25 @@ describe('authentik jwt mapping', () => {
   })
 })
 
+describe('R5: raw tenant/attributes claims are never persisted', () => {
+  it('a mapping that leaks tenant/attributes: warns, stores no raw id_token and no raw claim', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const t = await jwt(akProfile({ tenant: 'tenant_secret_42', attributes: { tenant: 'tenant_secret_42' } }), { sub: 'x', idToken: 'stale' })
+    expect(warn).toHaveBeenCalled()
+    expect(t.idToken).toBeUndefined()
+    expect(JSON.stringify(t)).not.toContain('tenant_secret_42')
+    expect(t).not.toHaveProperty('tenant')
+    expect(t).not.toHaveProperty('attributes')
+    warn.mockRestore()
+  })
+  it('a clean profile keeps the id_token (needed for logout) and only email/name/sub-derived fields', async () => {
+    const t = await jwt(akProfile({ groups: ['g'], picture: 'http://p' }))
+    expect(t.idToken).toBe('idt')
+    expect(t).not.toHaveProperty('groups')
+    expect(t).not.toHaveProperty('picture')
+  })
+})
+
 describe('authentik sessions behave like partner SSO sessions', () => {
   it('session exposes partnerId (=> no API keys / admin / billing) and idp, never the id_token', async () => {
     const t = await jwt(akProfile())

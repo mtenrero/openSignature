@@ -2,7 +2,7 @@ import NextAuth, { NextAuthConfig } from "next-auth"
 import Auth0 from "next-auth/providers/auth0"
 import { isEmailVerificationBlocked, isPlatformAllowed } from "@/lib/auth/registration"
 import { AUTH0_BUSINESS_ID_CLAIM, deriveCustomerId } from "./customerId"
-import { AUTHENTIK_PROVIDER_ID, CLINIC_NOT_ENABLED_URL, authentikEnv, resolveAuthentikAccount } from "./authentik"
+import { AUTHENTIK_PROVIDER_ID, CLINIC_NOT_ENABLED_URL, authentikEnv, resolveAuthentikAccount, authentikSessionFields } from "./authentik"
 
 // Validate required environment variables.
 // `next build` ("Collecting page data") imports every route module, so a hard throw
@@ -207,11 +207,14 @@ export const config: NextAuthConfig = {
         if (!match) return null
         token.id = match.userId
         token.sub = match.userId
-        token.email = (profile as any)?.email ?? token.email
-        token.name = (profile as any)?.name ?? token.name
+        // Only vc_tenant_ref / email / name / sub are ever persisted from the profile.
+        const f = authentikSessionFields(profile, typeof account.id_token === 'string' ? account.id_token : undefined)
+        token.email = f.email ?? token.email
+        token.name = f.name ?? token.name
         token.idp = AUTHENTIK_PROVIDER_ID
-        token.idpSub = (profile as any)?.sub
-        token.idToken = account.id_token
+        token.idpSub = f.sub
+        if (f.idToken) token.idToken = f.idToken
+        else delete token.idToken
         delete token.accessToken
         token.customerId = match.customerId
         token.partnerSso = match.partnerId

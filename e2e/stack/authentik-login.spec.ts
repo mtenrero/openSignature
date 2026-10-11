@@ -11,7 +11,7 @@ const idp = state_.idpUrl as string
 if (!idp || !/^http:\/\/127\.0\.0\.1:\d+$/.test(idp)) throw new Error('stack state has no local mock IdP')
 const idpPost = (p: string, body?: unknown) => fetch(`${idp}${p}`, { method: 'POST', body: JSON.stringify(body ?? null) })
 const idpLog = async () => (await fetch(`${idp}/__test/log`)).json() as Promise<{ authorize: Record<string, string>[]; token: unknown[]; endSession: Record<string, string>[] }>
-// T = tenant id WITHOUT the "tenant_" prefix (what Authentik's user.attributes.tenant holds)
+// T = tenant id WITHOUT the "tenant_" prefix (VetControl writes sha256(osign-idp:T) to Authentik user.attributes.osign_tenant_ref, emitted verbatim as vc_tenant_ref)
 const refOfTenantDb = (tenantDb: string) => crypto.createHash('sha256').update(`osign-idp:${tenantDb.replace(/^tenant_/, '')}`).digest('hex')
 const sessionOf = async (page: Page) => (await page.request.get('/api/auth/session')).json()
 
@@ -44,7 +44,7 @@ test.describe('authentik login on the full stack', () => {
   test('b) Entrar con VetControl -> the clinic account; per-user email recorded; restrictions apply', async ({ page, playwright }) => {
     const o = await onboarded(playwright); t = o.t
     await waitFor(async () => (await partnerAccountsFor(t!.tenant))[0]?.idpTenantRefs?.length, 'idpTenantRef')
-    await idpPost('/__test/authentik-user', { vc_tenant_ref: refOfTenantDb(t.tenant), sub: 'ak-sub-b', email: 'dra.perez@clinic.example.test', name: 'Dra Perez' })
+    await idpPost('/__test/authentik-user', { osign_tenant_ref: refOfTenantDb(t.tenant), sub: 'ak-sub-b', email: 'dra.perez@clinic.example.test', name: 'Dra Perez' })
 
     await page.goto('/auth/signin')
     await page.getByRole('button', { name: /Entrar con VetControl/ }).click()
@@ -68,7 +68,7 @@ test.describe('authentik login on the full stack', () => {
   })
 
   test('c) a tenant with no oSign account lands on clinic_not_enabled and gets no session', async ({ page }) => {
-    await idpPost('/__test/authentik-user', { vc_tenant_ref: refOfTenantDb(`tenant_nobody${Date.now()}`) })
+    await idpPost('/__test/authentik-user', { osign_tenant_ref: refOfTenantDb(`tenant_nobody${Date.now()}`) })
     await page.goto('/auth/signin?provider=authentik')
     await expect(page).toHaveURL(/\/auth\/error\?error=clinic_not_enabled/, { timeout: 60_000 })
     await expect(page.getByText(/Ajustes → Firma digital/)).toBeVisible()
@@ -82,7 +82,7 @@ test.describe('authentik login on the full stack', () => {
     expect(st.directLoginBase).toBe(OSIGN_URL)
     // exactly the URL VetControl's directLoginUrl() builds; drive the oSign side with it
     const url = `${st.directLoginBase}/auth/signin?provider=authentik&callbackUrl=${encodeURIComponent('/contracts')}`
-    await idpPost('/__test/authentik-user', { vc_tenant_ref: refOfTenantDb(t.tenant), sub: 'ak-sub-d' })
+    await idpPost('/__test/authentik-user', { osign_tenant_ref: refOfTenantDb(t.tenant), sub: 'ak-sub-d' })
     await page.goto(url)
     await expect(page).toHaveURL(/\/contracts$/, { timeout: 60_000 })
     expect((await sessionOf(page)).customerId).toBe(o.acc.customerId)
@@ -98,10 +98,11 @@ test.describe('authentik login on the full stack', () => {
   test('e) revoking the partner account kills the session; logout calls end-session', async ({ page, playwright }) => {
     const o = await onboarded(playwright); t = o.t
     await waitFor(async () => (await partnerAccountsFor(t!.tenant))[0]?.idpTenantRefs?.length, 'idpTenantRef')
-    await idpPost('/__test/authentik-user', { vc_tenant_ref: refOfTenantDb(t.tenant) })
+    await idpPost('/__test/authentik-user', { osign_tenant_ref: refOfTenantDb(t.tenant) })
     await page.goto('/auth/signin?provider=authentik')
     await expect(page).toHaveURL(/\/contracts$/, { timeout: 60_000 })
     await page.goto('/api/auth/idp-logout')
+    await page.getByRole('button', { name: /Cerrar sesión/ }).click()
     await expect(page).toHaveURL(/\/auth\/signin/, { timeout: 30_000 })
     const log = await idpLog()
     expect(log.endSession).toHaveLength(1)
@@ -123,7 +124,7 @@ test.describe('authentik login on the full stack', () => {
     const payloads = ['/\t/evil.example', '/%09/evil.example', '/\\evil.example', '//evil.example', '/%0d%0aSet-Cookie:x=1', 'javascript:alert(1)', 'https://evil.example/x', '/contracts%00//evil.example']
     for (const p of payloads) {
       await idpPost('/__test/reset')
-      await idpPost('/__test/authentik-user', { vc_tenant_ref: refOfTenantDb(t.tenant) })
+      await idpPost('/__test/authentik-user', { osign_tenant_ref: refOfTenantDb(t.tenant) })
       await page.context().clearCookies()
       await page.goto(`/auth/signin?provider=authentik&callbackUrl=${encodeURIComponent(p)}`)
       await expect(page).toHaveURL(/^http:\/\/localhost:3100\/[^/]/, { timeout: 60_000 })

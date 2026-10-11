@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     if (existing) {
       await db.collection('partner_accounts').updateOne(
         { partnerId: partner.id, externalId },
-        { $set: { ...fields, reactivatedAt: new Date() }, $inc: { generation: 1 } }
+        { $set: { ...fields, reactivatedAt: new Date() }, $unset: { idpTenantRefs: '' }, $inc: { generation: 1 } }
       )
     } else {
       await db.collection('partner_accounts').insertOne({
@@ -82,6 +82,9 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     if (error?.code === 11000 && error?.keyPattern?.customerId) {
       return partnerError('Customer already linked to another externalId', 'CUSTOMER_ALREADY_LINKED', 409)
+    }
+    if (error?.code === 11000 && error?.keyPattern?.idpTenantRefs) {
+      return partnerError('idpTenantRef belongs to another account', 'IDP_TENANT_REF_CONFLICT', 409)
     }
     if (error?.code === 11000) return partnerError('externalId already linked to another customer', 'ALREADY_LINKED_OTHER', 409)
     throw error

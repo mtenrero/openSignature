@@ -37,10 +37,12 @@ export const DEFAULT_USER = {
 }
 
 // "authentik" flavour: per-provider issuer under /authentik/ (trailing slash, like Authentik's
-// /application/o/<slug>/), confidential client, PKCE+nonce, vc_tenant_ref claim.
+// /application/o/<slug>/), confidential client, PKCE+nonce. Like the real scope mapping it emits
+// vc_tenant_ref = user.attributes.osign_tenant_ref VERBATIM (no hashing; VetControl writes the
+// 64-hex ref) and never the raw `tenant` / `attributes` claims.
 export const DEFAULT_AK_USER = {
   sub: 'ak-hashed-sub-0001', email: 'vet@example.com', name: 'Vet User',
-  vc_tenant_ref: null, role: 'admin',
+  osign_tenant_ref: null, role: 'admin',
 }
 
 export async function startMockIdp({ port = 0, host = '127.0.0.1' } = {}) {
@@ -77,7 +79,9 @@ export async function startMockIdp({ port = 0, host = '127.0.0.1' } = {}) {
 
   const akClaims = (u) => {
     const c = { sub: u.sub, email: u.email, email_verified: true, name: u.name, role: u.role }
-    if (u.vc_tenant_ref) c.vc_tenant_ref = u.vc_tenant_ref
+    if (u.osign_tenant_ref) c.vc_tenant_ref = u.osign_tenant_ref
+    // test hook: simulate a misconfigured mapping that leaks forbidden claims
+    if (u.leak_tenant_claim) { c.tenant = u.leak_tenant_claim; c.attributes = { tenant: u.leak_tenant_claim } }
     return c
   }
 

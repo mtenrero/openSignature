@@ -1,14 +1,18 @@
 /**
  * Authentik OIDC login (VetControl users -> their clinic's partner account).
  *
- * Identity is the pseudonymous `vc_tenant_ref` claim (sha256 hex of "osign-idp:" + tenant,
- * computed by Authentik; oSign never sees the raw tenant id). It is matched against an
+ * Identity is the opaque `vc_tenant_ref` claim: Authentik's scope mapping emits it verbatim
+ * from user.attributes.osign_tenant_ref (written by VetControl, 64 lowercase hex = sha256
+ * of "osign-idp:" + tenant; Authentik does NOT hash anything and the mapping must never
+ * emit the raw `tenant` / `attributes` claims, oSign never sees the raw tenant id). It is matched against an
  * ACTIVE partner_accounts row's idpTenantRefs. NEVER match by email and NEVER use the
  * Authentik `sub` as an identity key (it is not stable): both are kept for audit only.
  *
  * Edge-safe on purpose (lib/auth/config.ts is bundled into the middleware): MongoDB is
  * only reached through dynamic imports inside functions.
  */
+
+import { isProductionRuntime } from './productionGuard'
 
 export const AUTHENTIK_PROVIDER_ID = 'authentik'
 export const AUTHENTIK_DEFAULT_SCOPE = 'openid profile email osign_tenant_ref'
@@ -28,6 +32,13 @@ export function authentikEnv(env: Record<string, string | undefined> = process.e
   const clientId = env.AUTHENTIK_CLIENT_ID?.trim()
   const clientSecret = env.AUTHENTIK_CLIENT_SECRET?.trim()
   if (!issuer || !clientId || !clientSecret) return null
+  // Auth.js would pass allowInsecureRequests for http issuers: only the local e2e mock IdP
+  // (E2E_TEST_MODE, never production) may be plain http.
+  const insecureOk = env.E2E_TEST_MODE === 'true' && !isProductionRuntime(env)
+  if (!/^https:\/\//i.test(issuer) && !insecureOk) {
+    console.error('[AUTHENTIK] AUTHENTIK_ISSUER must be https://: Authentik login disabled')
+    return null
+  }
   return {
     issuer,
     clientId,
@@ -88,4 +99,40 @@ export function buildEndSessionUrl(endpoint: string, idTokenHint: string | undef
 /** Authentik's per-provider end-session endpoint when discovery is unavailable. */
 export function fallbackEndSessionEndpoint(issuer: string): string {
   return `${issuer.replace(/\/+$/, '')}/end-session/`
+}
+
+/** Claims the Authentik mapping must NEVER emit (raw tenant id / user attributes). */
+export const FORBIDDEN_AUTHENTIK_CLAIMS = ['tenant', 'attributes'] as const
+
+export interface AuthentikSessionFields {
+  vc_tenant_ref?: string
+  email?: string
+  name?: string
+  sub?: string
+  /** Only present when the id_token carries no forbidden claim (it is stored for logout). */
+  idToken?: string
+  leaked: string[]
+}
+
+/**
+ * The ONLY profile data oSign persists in the session token: vc_tenant_ref, email, name, sub.
+ * If the id_token carries a forbidden claim (tenant / attributes) a warning naming the claim
+ * (never its value) is logged and the raw id_token is NOT stored, so it cannot leak into
+ * the session cookie; logout then goes without id_token_hint.
+ */
+export function authentikSessionFields(profile: unknown, idToken?: string): AuthentikSessionFields {
+  const p = (profile ?? {}) as Record<string, unknown>
+  const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
+  const leaked = FORBIDDEN_AUTHENTIK_CLAIMS.filter((c) => c in p)
+  if (leaked.length) {
+    console.warn(`[AUTHENTIK] id_token carries forbidden claim(s): ${leaked.join(', ')}. Fix the scope mapping; raw id_token not stored`)
+  }
+  return {
+    vc_tenant_ref: validIdpTenantRef(p.vc_tenant_ref) ? p.vc_tenant_ref : undefined,
+    email: str(p.email),
+    name: str(p.name),
+    sub: str(p.sub),
+    idToken: leaked.length ? undefined : idToken,
+    leaked,
+  }
 }

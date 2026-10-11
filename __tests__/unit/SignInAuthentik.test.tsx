@@ -13,8 +13,9 @@ let query = ''
 let sessionStatus: 'unauthenticated' | 'authenticated' = 'unauthenticated'
 const signInMock = jest.fn().mockResolvedValue(undefined)
 const getProvidersMock = jest.fn()
+const replaceMock = jest.fn()
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({ push: jest.fn(), replace: replaceMock }),
   useSearchParams: () => new URLSearchParams(query),
 }))
 jest.mock('next-auth/react', () => ({
@@ -27,6 +28,7 @@ beforeAll(() => {
 })
 beforeEach(() => {
   signInMock.mockClear()
+  replaceMock.mockClear()
   sessionStatus = 'unauthenticated'
   getProvidersMock.mockResolvedValue({ auth0: {}, authentik: {} })
 })
@@ -72,12 +74,29 @@ describe('signin page: Entrar con VetControl', () => {
     expect(signInMock).not.toHaveBeenCalled()
   })
 
-  it('does not auto-start for an already signed-in user (no switch)', async () => {
+  it('R1: ?provider=authentik STARTS the IdP flow even with an existing oSign session (no skip into it)', async () => {
     sessionStatus = 'authenticated'
+    query = 'provider=authentik&callbackUrl=%2Fcontracts'
+    renderPage()
+    await waitFor(() => expect(signInMock).toHaveBeenCalledTimes(1))
+    expect(signInMock).toHaveBeenCalledWith('authentik', { callbackUrl: '/contracts', redirect: true }, undefined)
+    expect(replaceMock).not.toHaveBeenCalled()
+  })
+
+  it('R1: an existing session without ?provider=authentik still redirects into it', async () => {
+    sessionStatus = 'authenticated'
+    query = 'callbackUrl=%2Fcontracts'
+    renderPage()
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/contracts'))
+    expect(signInMock).not.toHaveBeenCalled()
+  })
+
+  it('R1: ?provider=authentik with the provider disabled and a session falls back to the normal redirect', async () => {
+    sessionStatus = 'authenticated'
+    getProvidersMock.mockResolvedValue({ auth0: {} })
     query = 'provider=authentik'
     renderPage()
-    await waitFor(() => expect(getProvidersMock).toHaveBeenCalled())
-    await new Promise((r) => setTimeout(r, 50))
+    await waitFor(() => expect(replaceMock).toHaveBeenCalled())
     expect(signInMock).not.toHaveBeenCalled()
   })
 })
