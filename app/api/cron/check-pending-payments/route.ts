@@ -55,6 +55,7 @@ export async function GET(request: NextRequest) {
         checked: results.checked,
         updated: results.updated,
         confirmed: results.confirmed,
+        recovered: results.recovered,
         failed: results.failed,
         errorCount: results.errors.length
       },
@@ -105,6 +106,7 @@ export async function POST(request: NextRequest) {
         checked: results.checked,
         updated: results.updated,
         confirmed: results.confirmed,
+        recovered: results.recovered,
         failed: results.failed,
         errorCount: results.errors.length
       },

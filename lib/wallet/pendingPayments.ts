@@ -246,6 +246,23 @@ export class PendingPaymentManager {
   ): Promise<boolean> {
     const collection = await this.getCollection()
     const paymentIntentId = String(pendingPayment.stripePaymentIntentId)
+    // The caller's copy may be stale (a concurrent failure may have terminated the row
+    // after it was read): decide on the stored state.
+    const stored = (await collection.findOne({ _id: pendingPayment._id })) as PendingPayment | null
+    const current = stored ?? pendingPayment
+    if (current.status === 'confirmed') return false
+
+    // Late success of a row that had been failed/expired: legacy rows were credited up
+    // front and reversed on failure -> give the reversed amount back (once). Rows that were
+    // never credited fall through to the normal credit below.
+    if ((current.status === 'failed' || current.status === 'expired') && current.walletTransactionId) {
+      await VirtualWallet.restoreReversedCredit(
+        current.customerId,
+        paymentIntentId,
+        creditAmount,
+        `Restitución: ${current.description} (pago confirmado tras fallo)`
+      )
+    }
     const tx = await VirtualWallet.addCredits(
       pendingPayment.customerId,
       creditAmount,
@@ -254,7 +271,7 @@ export class PendingPaymentManager {
       paymentIntentId,
       chargeId || pendingPayment.stripeChargeId
     )
-    if (tx._id && pendingPayment.walletTransactionId) {
+    if (tx._id && current.walletTransactionId) {
       // legacy pre-credited row: drop the "(PENDIENTE)" tag of its original transaction
       await VirtualWallet.updateTransactionDescription(pendingPayment.walletTransactionId, pendingPayment.description)
     }
@@ -271,6 +288,40 @@ export class PendingPaymentManager {
       }
     )
     return res.modifiedCount === 1
+  }
+
+  /**
+   * Re-check rows that were marked failed/expired in the last `days` days against Stripe:
+   * a SEPA debit can be reported failed (or time out locally) and clear later, and a
+   * missed webhook must not leave the customer without their money.
+   */
+  static async recheckRecentlyFailed(days = 14): Promise<{ checked: number; recovered: number; errors: string[] }> {
+    const collection = await this.getCollection()
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+    const rows = await collection.find({
+      status: { $in: ['failed', 'expired'] },
+      failedAt: { $gte: since },
+      $or: [{ recheckedAt: { $exists: false } }, { recheckedAt: { $lt: oneHourAgo } }]
+    }).toArray() as PendingPayment[]
+
+    const out = { checked: rows.length, recovered: 0, errors: [] as string[] }
+    for (const row of rows) {
+      try {
+        const pi = await stripe.paymentIntents.retrieve(String(row.stripePaymentIntentId), { expand: ['latest_charge'] })
+        if (pi.status === 'succeeded') {
+          const received = Number(pi.amount_received ?? pi.amount)
+          const creditAmount = Number.isFinite(received) && received > 0 ? Math.min(row.amount, received) : row.amount
+          const chargeId = typeof pi.latest_charge === 'string' ? pi.latest_charge : pi.latest_charge?.id
+          if (await this.settleSucceeded(row, creditAmount, chargeId)) out.recovered++
+        } else {
+          await collection.updateOne({ _id: row._id, status: { $in: ['failed', 'expired'] } }, { $set: { recheckedAt: new Date(), lastCheckedAt: new Date() } })
+        }
+      } catch (err: any) {
+        out.errors.push(`${row.stripePaymentIntentId}: ${err?.message}`)
+      }
+    }
+    return out
   }
 
   /**
@@ -307,6 +358,16 @@ export class PendingPaymentManager {
         await collection.updateOne({ _id: pendingPayment._id }, { $set: { status: pendingPayment.status }, $unset: { failedAt: '' } })
         throw err
       }
+      // A success may have confirmed the row while the reversal was being written: undo it.
+      const after = (await collection.findOne({ _id: pendingPayment._id })) as PendingPayment | null
+      if (after?.status === 'confirmed') {
+        await VirtualWallet.restoreReversedCredit(
+          pendingPayment.customerId,
+          String(pendingPayment.stripePaymentIntentId),
+          pendingPayment.amount,
+          `Restitución: ${pendingPayment.description} (pago confirmado tras fallo)`
+        )
+      }
     }
     return true
   }
@@ -319,6 +380,7 @@ export class PendingPaymentManager {
     updated: number
     confirmed: number
     failed: number
+    recovered: number
     errors: string[]
   }> {
 
@@ -341,6 +403,7 @@ export class PendingPaymentManager {
       updated: 0,
       confirmed: 0,
       failed: 0,
+      recovered: 0,
       errors: [] as string[]
     }
 
@@ -366,6 +429,12 @@ export class PendingPaymentManager {
         results.errors.push(`${payment.stripePaymentIntentId}: ${error.message}`)
       }
     }
+
+    // Late successes: failed/expired rows that Stripe now reports as paid.
+    const late = await this.recheckRecentlyFailed()
+    results.recovered = late.recovered
+    results.confirmed += late.recovered
+    results.errors.push(...late.errors)
 
     console.log(`✅ Checked ${results.checked} payments: ${results.confirmed} confirmed, ${results.failed} failed, ${results.updated} updated`)
 
