@@ -35,11 +35,13 @@ export async function changeToSelfServePlan(session: any, planId: unknown): Prom
   }
 
   const userId = session?.user?.id as string
-  let current: any = null
+  let current: any
   try {
     current = await auth0UserManager.getUserSubscriptionInfo(userId)
   } catch {
-    current = null
+    // Cannot tell the current plan / whether a live subscription exists: fail CLOSED
+    // (treating the user as "free" would skip the live-subscription guard below).
+    return fail(503, { error: 'Could not verify your current plan, try again later', errorCode: 'PLAN_CHECK_FAILED' })
   }
 
   // Same plan as today (when we can tell): nothing to write.

@@ -88,6 +88,16 @@ describe('plan changes', () => {
     expect(a0.updateUserSubscription).toHaveBeenCalledWith(USER, 'free')
   })
 
+  it('plan-change fails CLOSED (503) when the current plan cannot be read: nothing is written', async () => {
+    a0.getUserSubscriptionInfo.mockRejectedValue(new Error('auth0 down'))
+    const res = await SETPLAN_POST(req('/api/subscription/set-plan', { planId: 'free' }))
+    expect(res.status).toBe(503)
+    expect(((await readJson(res as any)) as any).errorCode).toBe('PLAN_CHECK_FAILED')
+    expect((await SUB_POST(req('/api/subscription', { planId: 'free' }))).status).toBe(503)
+    expect(a0.updateUserSubscription).not.toHaveBeenCalled()
+    expect(s.subscriptions.list).not.toHaveBeenCalled()
+  })
+
   it('a session without customerId cannot change plan', async () => {
     ;(auth as jest.Mock).mockResolvedValue({ user: { id: USER } })
     expect((await SETPLAN_POST(req('/api/subscription/set-plan', { planId: 'free' }))).status).toBe(401)
