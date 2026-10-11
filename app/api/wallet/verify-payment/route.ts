@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
             )
             console.log(`Added immediate credits for customer ${customerId}: ${VirtualWallet.formatAmount(amountInCents)}`)
           } else if (isSepaPaymentPending) {
-            // For SEPA, create pending payment and add credits immediately as pending
+            // For SEPA, register the pending payment. NO credit until it clears.
             await PendingPaymentManager.createPendingPayment({
               customerId,
               stripePaymentIntentId: paymentIntentId as string,
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
       status: checkoutSession.payment_status,
       paymentMethod: (checkoutSession.payment_intent as any)?.payment_method_types?.[0] || 'unknown',
       message: isSepaPaymentPending
-        ? 'SEPA payment created as pending. Credits added to wallet and will be confirmed automatically when payment processes.'
+        ? 'SEPA payment registered as pending. The credit is added to the wallet only when the payment clears.'
         : undefined
     })
 

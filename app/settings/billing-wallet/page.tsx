@@ -536,7 +536,7 @@ function BillingWalletPageContent() {
       } else if (pending && paymentMethod === 'sepa_debit') {
         notifications.show({
           title: 'Pago SEPA Pendiente',
-          message: `Recarga de ${amount}€ añadida al monedero como PENDIENTE. Se confirmará automáticamente cuando el pago SEPA se procese (5-7 días hábiles).`,
+          message: `Recarga de ${amount}€ PENDIENTE. Se añadirá al monedero cuando el pago SEPA se procese (5-7 días hábiles).`,
           color: 'blue',
           autoClose: 12000
         })
@@ -1031,7 +1031,7 @@ function BillingWalletPageContent() {
                     <Card withBorder shadow="sm" padding="lg" radius="md">
                       <Text size="lg" fw={600} mb="md">Pagos Pendientes</Text>
                       <Alert color="yellow" mb="md">
-                        Los pagos SEPA pueden tardar 5-7 días laborables en confirmarse. Los créditos ya están disponibles en tu monedero.
+                        Los pagos SEPA pueden tardar 5-7 días laborables en confirmarse. El importe se añadirá a tu monedero cuando el pago se confirme; hasta entonces no está disponible.
                       </Alert>
 
                       {walletData.pendingPayments.map((payment) => (
@@ -1049,8 +1049,8 @@ function BillingWalletPageContent() {
                               </Text>
                             </Group>
                             <Group>
-                              <Text fw={500} c="green">
-                                +{payment.formattedAmount}
+                              <Text fw={500} c="dimmed">
+                                {payment.formattedAmount}
                               </Text>
                               <Text size="xs" c="dimmed">
                                 {new Date(payment.createdAt).toLocaleDateString('es-ES')}

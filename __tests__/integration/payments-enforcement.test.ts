@@ -40,6 +40,7 @@ import { stripe, StripeManager } from '@/lib/payment/stripe'
 import { auth } from '@/lib/auth/config'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { VirtualWallet } from '@/lib/wallet/wallet'
+import { PendingPaymentManager } from '@/lib/wallet/pendingPayments'
 import { buildRequest, readJson } from '../helpers/nextRequest'
 
 const s = stripe as unknown as {
@@ -313,6 +314,38 @@ describe('POST /api/wallet/check-payment', () => {
     expect((await CHECK_POST(req('/api/wallet/check-payment', { paymentIntentId: 'cs_nope' }))).status).toBe(400)
     ;(auth as jest.Mock).mockResolvedValue(null)
     expect((await CHECK_POST(req('/api/wallet/check-payment', { paymentIntentId: 'pi_chk' }))).status).toBe(401)
+  })
+})
+
+describe('SEPA top-ups are credited only once they clear', () => {
+  it('verify-payment of an unpaid SEPA session registers a pending row and credits NOTHING', async () => {
+    s.customers.retrieve.mockResolvedValue({ id: 'cus_mine', metadata: { customerId: CUST } })
+    s.checkout.sessions.retrieve.mockResolvedValue({
+      id: 'cs_sepa', customer: 'cus_mine', payment_status: 'unpaid', amount_total: 6050, amount_subtotal: 5000,
+      payment_intent: { id: 'pi_sepa_v', payment_method_types: ['sepa_debit'] },
+      metadata: { type: 'wallet_topup', oSignEUCustomerId: CUST, amountInCents: '5000' },
+    })
+    const res = await VERIFY_POST(req('/api/wallet/verify-payment', { sessionId: 'cs_sepa' }))
+    expect(res.status).toBe(200)
+    expect(await balance(CUST)).toBe(0)
+    expect(await VirtualWallet.getTransactions(CUST)).toHaveLength(0)
+    expect(await PendingPaymentManager.getPendingPayments(CUST)).toHaveLength(1)
+  })
+
+  it('check-payment credits the pending SEPA top-up once it succeeded, and closes the pending row', async () => {
+    await PendingPaymentManager.createPendingPayment({
+      customerId: CUST, stripePaymentIntentId: 'pi_sepa_c', amount: 5000, description: 'Bono (SEPA)', paymentMethod: 'sepa_debit',
+    })
+    s.paymentIntents.retrieve.mockResolvedValue({
+      id: 'pi_sepa_c', status: 'succeeded', amount: 6050, amount_received: 6050, latest_charge: 'ch_sepa_c',
+      metadata: { type: 'wallet_topup', oSignEUCustomerId: CUST, amountInCents: '5000' },
+    })
+    expect(await balance(CUST)).toBe(0)
+    await CHECK_POST(req('/api/wallet/check-payment', { paymentIntentId: 'pi_sepa_c' }))
+    await CHECK_POST(req('/api/wallet/check-payment', { paymentIntentId: 'pi_sepa_c' }))
+    expect(await balance(CUST)).toBe(5000)
+    expect(await VirtualWallet.getTransactions(CUST)).toHaveLength(1)
+    expect((await PendingPaymentManager.findByPaymentIntent('pi_sepa_c'))?.status).toBe('confirmed')
   })
 })
 

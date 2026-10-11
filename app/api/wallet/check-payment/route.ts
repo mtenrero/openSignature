@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
 import { stripe } from '@/lib/payment/stripe'
 import { VirtualWallet } from '@/lib/wallet/wallet'
+import { PendingPaymentManager } from '@/lib/wallet/pendingPayments'
 import { rateLimitOr429 } from '@/lib/security/rateLimit'
 
 export const runtime = 'nodejs'
@@ -67,6 +68,22 @@ export async function POST(request: NextRequest) {
         : 0
 
       try {
+        // A SEPA top-up waiting for clearing is credited ONLY now that Stripe says it
+        // succeeded (idempotent per payment intent), and its pending row is closed.
+        const pending = await PendingPaymentManager.findByPaymentIntent(paymentIntent.id)
+        if (pending && pending.status !== 'confirmed' && amountInCents) {
+          const chargeId = typeof paymentIntent.latest_charge === 'string'
+            ? paymentIntent.latest_charge
+            : paymentIntent.latest_charge?.id
+          await PendingPaymentManager.settleSucceeded(pending, Math.min(pending.amount, amountInCents), chargeId)
+          return NextResponse.json({
+            success: true,
+            message: 'Credits added successfully',
+            amount: Math.min(pending.amount, amountInCents) / 100,
+            paymentIntentId: paymentIntent.id
+          })
+        }
+
         // Check if credits were already added
         const existingTransaction = await VirtualWallet.findTransactionByPaymentIntent(paymentIntent.id)
 
