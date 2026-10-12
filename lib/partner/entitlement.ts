@@ -61,19 +61,27 @@ export interface EntitlementInput {
   asOf: Date
 }
 
-const indexed = new WeakSet<object>()
+/**
+ * The unique indexes are LOAD-BEARING for fail-closed behaviour: without the unique
+ * (customerId, period) index a claim at the quota would upsert a SECOND counter doc and
+ * hand out another full quota. So callers await the index build (one shared promise per
+ * Db, no "flag set before the build finished" window) and a failed build THROWS, which
+ * every claim turns into "not included".
+ */
+const indexed = new WeakMap<object, Promise<void>>()
 
 export async function getEntitlementDb(): Promise<Db> {
   const db = await getDatabase()
-  if (!indexed.has(db)) {
-    indexed.add(db)
-    try {
+  let ready = indexed.get(db)
+  if (!ready) {
+    ready = (async () => {
       await db.collection(ENTITLEMENTS).createIndex({ customerId: 1 }, { unique: true })
       await db.collection(ENTITLEMENT_USAGE).createIndex({ customerId: 1, period: 1 }, { unique: true })
-    } catch {
-      indexed.delete(db)
-    }
+    })()
+    indexed.set(db, ready)
+    ready.catch(() => indexed.delete(db))
   }
+  await ready
   return db
 }
 
@@ -251,8 +259,10 @@ export async function claimIncludedSend(customerId: string, action: IncludedActi
 }
 
 /**
- * Give a claimed slot back (the send did not go out). Best effort, never below 0,
- * only within the same period the slot was claimed in. Never throws.
+ * Give a claimed slot back. Best effort, never below 0, only within the same period the
+ * slot was claimed in. Never throws. ONLY for a send that produced no usable link: POST
+ * /api/signature-requests deliberately does not call it on an email failure, because the
+ * request and its signatureUrl still exist (refunding would mint free requests).
  */
 export async function releaseIncludedSend(customerId: string, claim: IncludedClaim, deps: IncludedDeps = {}): Promise<void> {
   if (!claim.included || !claim.period) return

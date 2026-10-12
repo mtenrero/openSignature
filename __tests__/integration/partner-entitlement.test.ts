@@ -8,7 +8,7 @@
  *    concurrent race at quota-1.
  *  - Enforcement in POST /api/signature-requests with the REAL UsageTracker + wallet:
  *    included sends are free, SMS is still charged, over quota => wallet, wallet empty =>
- *    Spanish refusal, failed email => slot refunded, resends count.
+ *    Spanish refusal, failed email => slot NOT refunded (the link still exists), resends count.
  */
 import crypto from 'crypto'
 import { NextRequest } from 'next/server'
@@ -375,6 +375,30 @@ describe('included quota logic (fail closed)', () => {
     expect(await used(CUST)).toBe(3)
   })
 
+  it('missing unique index (build fails) => fail closed, never a second counter doc', async () => {
+    const db = await getDb()
+    await db.collection(ENTITLEMENT_USAGE).dropIndexes().catch(() => undefined)
+    await seedEntitlement(CUST)
+    // Duplicate (customerId, period) docs make the unique index build fail. Without the
+    // index a claim at the quota would upsert a fresh counter and grant another 500.
+    const period = periodOf(new Date())
+    await db.collection(ENTITLEMENT_USAGE).insertMany([
+      { customerId: 'dup', period, used: 1 }, { customerId: 'dup', period, used: 1 },
+    ] as any)
+    await setUsed(CUST, 500)
+    let fresh: typeof import('@/lib/partner/entitlement') | undefined
+    jest.isolateModules(() => { fresh = require('@/lib/partner/entitlement') })
+    const claim = await fresh!.claimIncludedSend(CUST, 'email')
+    expect(claim.included).toBe(false)
+    expect(await db.collection(ENTITLEMENT_USAGE).countDocuments({ customerId: CUST, period })).toBe(1)
+    expect(await used(CUST)).toBe(500)
+    // Concurrent callers share one index build: none slips past while it is in progress.
+    jest.isolateModules(() => { fresh = require('@/lib/partner/entitlement') })
+    const many = await Promise.all(Array.from({ length: 5 }, () => fresh!.claimIncludedSend(CUST, 'qr')))
+    expect(many.every((c) => !c.included)).toBe(true)
+    await db.collection(ENTITLEMENT_USAGE).deleteMany({ customerId: 'dup' })
+  })
+
   it('summary reports remaining and caps used at the quota', async () => {
     await seedEntitlement(CUST)
     await setUsed(CUST, 120)
@@ -485,21 +509,40 @@ describe('enforcement in POST /api/signature-requests (real UsageTracker + walle
     expect(await used(CUST)).toBe(0)
   })
 
-  it('a failed email delivery gives the slot back', async () => {
+  it('a failed email delivery does NOT give the slot back: the request and its signatureUrl still exist', async () => {
     await seedEntitlement(CUST)
     sendSignatureRequest.mockResolvedValue({ success: false, error: 'smtp' })
     const { res, body } = await send('email')
     expect(res.status).toBe(200) // existing behaviour: the request exists, delivery failure is not fatal
-    expect(body.includedSend).toBe(false)
-    expect(await used(CUST)).toBe(0)
+    expect(body.signatureUrl).toMatch(/\/sign\//) // usable link handed back to the caller
+    expect(body.includedSend).toBe(true)
+    expect(await used(CUST)).toBe(1)
   })
 
-  it('an email exception also gives the slot back', async () => {
+  it('an email exception does not give the slot back either', async () => {
     await seedEntitlement(CUST)
     sendSignatureRequest.mockRejectedValue(new Error('boom'))
-    const { res } = await send('email')
+    const { res, body } = await send('email')
     expect(res.status).toBe(200)
-    expect(await used(CUST)).toBe(0)
+    expect(body.signatureUrl).toBeTruthy()
+    expect(await used(CUST)).toBe(1)
+  })
+
+  it('attack: a deliberately undeliverable address cannot mint free requests past the quota', async () => {
+    await seedEntitlement(CUST)
+    await setUsed(CUST, 499)
+    sendSignatureRequest.mockResolvedValue({ success: false, error: 'invalid recipient' })
+    const first = await send('email', { signerEmail: 'a@x.es; b@x.es' })
+    expect(first.res.status).toBe(200)
+    expect(first.body.signatureUrl).toBeTruthy()
+    // Before the fix the slot was refunded and this loop produced unlimited free links.
+    for (let i = 0; i < 3; i++) {
+      const again = await send('email', { signerEmail: 'a@x.es; b@x.es' })
+      expect(again.res.status).toBe(403) // empty wallet, quota used up
+      expect(again.body.signatureUrl).toBeUndefined()
+    }
+    expect(await used(CUST)).toBe(500)
+    expect(await balance()).toBe(0)
   })
 
   it('a resend counts as another send (consistent with the existing metering)', async () => {

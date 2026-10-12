@@ -7,7 +7,7 @@ import { ObjectId } from 'mongodb'
 import { auditTrailService } from '@/lib/auditTrail'
 import { extractClientIP } from '@/lib/deviceMetadata'
 import { UsageAuditService } from '@/lib/usage/usageAudit'
-import { claimIncludedSend, releaseIncludedSend, exhaustedNotice, type IncludedClaim } from '@/lib/partner/entitlement'
+import { claimIncludedSend, exhaustedNotice, type IncludedClaim } from '@/lib/partner/entitlement'
 import { UsageTracker } from '@/lib/subscription/usage'
 import { extractSignerInfo, extractDynamicFieldNames, extractVariableFieldNames, normalizeFieldName, getUnconfiguredAccountVariables } from '@/lib/contractUtils'
 import { auth0UserManager } from '@/lib/auth/userManagement'
@@ -754,21 +754,19 @@ export async function POST(request: NextRequest) {
             }
           } else {
             // Don't fail the request creation if email fails, just log it.
-            // The email did not go out: give the included slot back.
-            await releaseIncludedSend(customerId, includedClaim)
-            includedClaim = { included: false }
+            // The included slot is NOT given back: the request exists and its signatureUrl
+            // is returned below, so it can still be signed (shared by hand). Refunding would
+            // let a deliberately undeliverable address mint unlimited free requests. Same as
+            // the wallet path, which debits before sending and never refunds.
           }
           } else {
             console.error(`[Signature Request] Email service not available - check configuration`)
-            await releaseIncludedSend(customerId, includedClaim)
-            includedClaim = { included: false }
           }
         }
 
       } catch (emailError) {
-        // Don't fail the request creation if email fails, just log it
-        await releaseIncludedSend(customerId, includedClaim)
-        includedClaim = { included: false }
+        // Don't fail the request creation if email fails, just log it. The slot stays
+        // consumed (the request and its signatureUrl still exist; see above).
       }
     } else if (signatureType === 'sms' && signerPhone) {
       // Check if SMS is enabled
