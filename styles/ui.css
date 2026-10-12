@@ -400,6 +400,9 @@ button.os-tile { cursor: pointer; }
 
 /* Every StatusBadge: sentence case, never squeezed by a long neighbour */
 .os-badge { text-transform: none; letter-spacing: 0; font-size: 12px; flex: none; max-width: none; }
+/* Badge text pinned to AA-safe colours (Mantine's light variant is 2.5-3.4:1 at 12px); see __tests__/unit/statusBadgeContrast.test.ts */
+:root[data-mantine-color-scheme='light'] .os-badge { color: var(--os-badge-fg-light); }
+:root[data-mantine-color-scheme='dark'] .os-badge { color: var(--os-badge-fg-dark); }
 .os-hero-badge { flex: none; }
 
 /* Sheets follow the surface token (dark mode) and ActionSheet sizes to content */
