@@ -218,4 +218,3 @@ export async function exampleComplianceDashboard(signatures: any[]) {
 
   return report
 }
-`
