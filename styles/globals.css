@@ -3,6 +3,10 @@
 @import '@mantine/notifications/styles.css';
 @import '@mantine/dropzone/styles.css';
 @import '@mantine/tiptap/styles.css';
+@import './tokens.css';
+@import './ui.css';
+@import './signer.css';
+@import './editor.css';
 
 html,
 body {
@@ -18,4 +22,78 @@ a {
 
 * {
   box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100dvh;
+  height: auto;
+}
+
+body {
+  background: var(--os-bg);
+  color: var(--os-text);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+:focus-visible {
+  outline: 2px solid var(--os-brand);
+  outline-offset: 2px;
+}
+
+/* Inputs always >= 16px: prevents iOS zoom on focus. */
+input,
+select,
+textarea,
+.mantine-Input-input {
+  font-size: max(16px, 1rem);
+}
+
+/* Coarse pointers (touch): 44px minimum targets. */
+@media (pointer: coarse) {
+  .mantine-Button-root {
+    min-height: var(--os-touch);
+  }
+  .mantine-ActionIcon-root {
+    min-width: var(--os-touch);
+    min-height: var(--os-touch);
+  }
+  .mantine-Tabs-tab,
+  .mantine-SegmentedControl-label,
+  .mantine-Chip-label {
+    min-height: var(--os-touch);
+  }
+  .mantine-Chip-label {
+    display: inline-flex;
+    align-items: center;
+  }
+  /* Form fields: 44px tall (Mantine md = 42px). */
+  .mantine-Input-input,
+  .mantine-PasswordInput-innerInput {
+    min-height: var(--os-touch);
+  }
+  .mantine-Select-input,
+  .mantine-NumberInput-input {
+    min-height: var(--os-touch);
+  }
+  .mantine-Switch-root label,
+  .mantine-Checkbox-root label {
+    min-height: var(--os-touch);
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth/config'
+import { getAuthContext } from '@/lib/auth/unified'
 import { getContractsCollection } from '@/lib/db/mongodb'
 import { ObjectId } from 'mongodb'
 import { RefundSystem } from '@/lib/subscription/refundSystem'
@@ -13,9 +13,10 @@ export async function POST(
 ) {
   try {
     const { id: contractId } = await params
-    const session = await auth()
+    // Contracts belong to the customerId (businessID), which is not always the user id.
+    const authContext = await getAuthContext(request)
 
-    if (!session?.user?.id) {
+    if (!authContext?.customerId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -34,7 +35,7 @@ export async function POST(
     // Check if contract exists and belongs to user
     const contract = await contractsCollection.findOne({
       _id: new ObjectId(contractId),
-      customerId: session.user.id
+      customerId: authContext.customerId
     })
 
     if (!contract) {
@@ -64,7 +65,7 @@ export async function POST(
           status: 'archived',
           archivedAt: new Date(),
           archivedReason: reason,
-          archivedBy: session.user.id,
+          archivedBy: authContext.userId,
           // Remember that it was signed: a signed document is never refundable.
           ...((contract.status === 'signed' || contract.status === 'completed') && { signedBeforeArchive: true, previousStatus: contract.status })
         }

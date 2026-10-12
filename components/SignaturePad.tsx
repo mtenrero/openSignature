@@ -1,222 +1,210 @@
 'use client'
 
-import React, { useRef, useEffect, useState } from 'react'
-import { Box, Button, Group, Text, ActionIcon, Stack, rem } from '@mantine/core'
-import { IconEraser, IconArrowBack, IconDownload } from '@tabler/icons-react'
+import React, { useRef, useEffect, useState, useCallback } from 'react'
+import { Button, Group, Text, ActionIcon } from '@mantine/core'
+import { IconEraser, IconArrowBack, IconCheck } from '@tabler/icons-react'
 import SignaturePad from 'signature_pad'
 
 interface SignaturePadComponentProps {
   onSignatureChange?: (signatureDataURL: string | null) => void
+  /** Fixed canvas width in px (inline mode). Default: container width, max 500. */
   width?: number | undefined
+  /** Canvas height in px (inline mode). */
   height?: number
   backgroundColor?: string
   penColor?: string
+  /** The canvas fills its parent (which must have a height). Used by the full-screen capture sheet. */
+  fill?: boolean
+  /** When set, a "Usar esta firma" button is rendered; it is disabled while the pad is empty. */
+  onConfirm?: (signatureDataURL: string) => void
+  confirmLabel?: string
 }
+
+type Pt = { x: number; y: number; time: number; pressure?: number }
+type StrokeGroup = { points: Pt[] } & Record<string, unknown>
 
 export function SignaturePadComponent({
   onSignatureChange,
   width,
   height = 200,
   backgroundColor = '#ffffff',
-  penColor = '#000000'
+  penColor = '#000000',
+  fill = false,
+  onConfirm,
+  confirmLabel = 'Usar esta firma',
 }: SignaturePadComponentProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
   const signaturePadRef = useRef<SignaturePad | null>(null)
+  const sizeRef = useRef<{ w: number; h: number } | null>(null)
   const [isEmpty, setIsEmpty] = useState(true)
   const [signatureDataURL, setSignatureDataURL] = useState<string | null>(null)
-  const [canvasSize, setCanvasSize] = useState({ width: width || 400, height })
 
-  // Handle responsive canvas sizing
-  useEffect(() => {
-    const updateCanvasSize = () => {
-      if (containerRef.current && canvasRef.current && !signaturePadRef.current) {
-        const container = containerRef.current
-        const containerWidth = container.clientWidth - 32 // Subtract padding
-        const newWidth = width || Math.min(containerWidth, 500)
-        const newHeight = height
+  const syncState = useCallback(() => {
+    const pad = signaturePadRef.current
+    if (!pad) return
+    const empty = pad.isEmpty()
+    setIsEmpty(empty)
+    setSignatureDataURL(empty ? null : pad.toDataURL('image/png'))
+  }, [])
 
-        setCanvasSize({ width: newWidth, height: newHeight })
-        
-        // Update canvas actual size
-        const canvas = canvasRef.current
-        const dpr = window.devicePixelRatio || 1
-        canvas.width = newWidth * dpr
-        canvas.height = newHeight * dpr
-        canvas.style.width = `${newWidth}px`
-        canvas.style.height = `${newHeight}px`
-        
-        const ctx = canvas.getContext('2d')
-        if (ctx) {
-          ctx.scale(dpr, dpr)
-        }
-      }
+  // Size the canvas to its box (devicePixelRatio aware). Resizing a canvas wipes it, so the strokes are
+  // saved first and replayed scaled to the new size: rotating the phone keeps the signature.
+  const applySize = useCallback(() => {
+    const canvas = canvasRef.current
+    const box = boxRef.current
+    if (!canvas || !box) return
+    let w: number
+    let h: number
+    if (fill) {
+      w = box.clientWidth
+      h = box.clientHeight
+    } else {
+      w = width || Math.min(Math.max(box.clientWidth - 24, 0), 500)
+      h = height
     }
+    if (w <= 0 || h <= 0) return
+    const prev = sizeRef.current
+    if (prev && prev.w === w && prev.h === h) return
 
-    updateCanvasSize()
-    // Only add resize listener on initial setup, not on every dependency change
-    const handleResize = () => {
-      if (!signaturePadRef.current) {
-        updateCanvasSize()
+    const pad = signaturePadRef.current
+    const saved = pad && !pad.isEmpty() ? (pad.toData() as unknown as StrokeGroup[]) : null
+
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = Math.round(w * dpr)
+    canvas.height = Math.round(h * dpr)
+    canvas.style.width = `${w}px`
+    canvas.style.height = `${h}px`
+    canvas.getContext('2d')?.scale(dpr, dpr)
+    sizeRef.current = { w, h }
+
+    if (pad) {
+      pad.clear()
+      if (saved && prev) {
+        const sx = w / prev.w
+        const sy = h / prev.h
+        pad.fromData(saved.map((g) => ({ ...g, points: g.points.map((p) => ({ ...p, x: p.x * sx, y: p.y * sy })) })) as never)
       }
+      syncState()
     }
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, []) // Remove width, height dependencies to prevent constant re-sizing
+  }, [fill, width, height, syncState])
 
   useEffect(() => {
-    if (canvasRef.current && !signaturePadRef.current) {
-      const canvas = canvasRef.current
-      const signaturePad = new SignaturePad(canvas, {
-        backgroundColor,
-        penColor,
-        velocityFilterWeight: 0.7,
-        minWidth: 0.8,
-        maxWidth: 3.0,
-        throttle: 16,
-        minDistance: 5,
-        dotSize: 2.0,
-      })
-
-      signaturePadRef.current = signaturePad
-
-      // Handle signature changes - only on endStroke to avoid conflicts
-      const handleSignatureChange = () => {
-        const isEmptyNow = signaturePad.isEmpty()
-        setIsEmpty(isEmptyNow)
-        
-        // Store signature data in state
-        const dataURL = isEmptyNow ? null : signaturePad.toDataURL('image/png')
-        setSignatureDataURL(dataURL)
-      }
-
-      // Only listen to endStroke to avoid double calls
-      signaturePad.addEventListener('endStroke', handleSignatureChange)
-
-      return () => {
-        signaturePad.off()
-        signaturePadRef.current = null
-      }
+    applySize()
+    const onResize = () => applySize()
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
+    let ro: ResizeObserver | undefined
+    if (typeof ResizeObserver !== 'undefined' && boxRef.current) {
+      ro = new ResizeObserver(onResize)
+      ro.observe(boxRef.current)
     }
-  }, []) // Remove dependencies to prevent re-initialization
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
+      ro?.disconnect()
+    }
+  }, [applySize])
 
-  // Handle prop changes without reinitializing
   useEffect(() => {
-    if (signaturePadRef.current) {
-      // Update signature pad colors
-      const signaturePad = signaturePadRef.current
-      signaturePad.backgroundColor = backgroundColor
-      signaturePad.penColor = penColor
+    if (!canvasRef.current || signaturePadRef.current) return
+    const pad = new SignaturePad(canvasRef.current, {
+      backgroundColor,
+      penColor,
+      velocityFilterWeight: 0.7,
+      minWidth: 0.8,
+      maxWidth: 3.0,
+      throttle: 16,
+      minDistance: 5,
+      dotSize: 2.0,
+    })
+    signaturePadRef.current = pad
+    pad.addEventListener('endStroke', syncState)
+    return () => {
+      pad.off()
+      signaturePadRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    const pad = signaturePadRef.current
+    if (pad) {
+      pad.backgroundColor = backgroundColor
+      pad.penColor = penColor
     }
   }, [backgroundColor, penColor])
 
-  // Handle onSignatureChange callback updates
   useEffect(() => {
-    if (onSignatureChange) {
-      onSignatureChange(signatureDataURL)
-    }
+    onSignatureChange?.(signatureDataURL)
   }, [signatureDataURL, onSignatureChange])
 
   const clearSignature = () => {
-    if (signaturePadRef.current) {
-      const signaturePad = signaturePadRef.current
-      signaturePad.clear()
-      setIsEmpty(true)
-      setSignatureDataURL(null)
-    }
+    signaturePadRef.current?.clear()
+    setIsEmpty(true)
+    setSignatureDataURL(null)
   }
 
   const undoLastStroke = () => {
-    if (signaturePadRef.current) {
-      const signaturePad = signaturePadRef.current
-      const data = signaturePad.toData()
-      if (data && data.length > 0) {
-        data.pop() // Remove last stroke
-        signaturePad.fromData(data)
-        const isEmptyNow = signaturePad.isEmpty()
-        setIsEmpty(isEmptyNow)
-        
-        // Update signature data in state
-        const dataURL = isEmptyNow ? null : signaturePad.toDataURL('image/png')
-        setSignatureDataURL(dataURL)
-      }
+    const pad = signaturePadRef.current
+    if (!pad) return
+    const data = pad.toData()
+    if (data && data.length > 0) {
+      data.pop()
+      pad.fromData(data)
+      syncState()
     }
   }
 
+  const confirm = () => {
+    const pad = signaturePadRef.current
+    if (!pad || pad.isEmpty()) return
+    onConfirm?.(pad.toDataURL('image/png'))
+  }
+
   return (
-    <Stack gap="md">
-      <Box
-        ref={containerRef}
-        style={{
-          border: '2px dashed var(--mantine-color-gray-3)',
-          borderRadius: rem(8),
-          padding: rem(16),
-          backgroundColor: 'var(--mantine-color-gray-0)',
-          position: 'relative',
-          width: '100%',
-        }}
-      >
+    <div className={`os-pad${fill ? ' os-pad--fill' : ''}`}>
+      <div ref={boxRef} className="os-pad__box">
         <canvas
           ref={canvasRef}
-          style={{
-            display: 'block',
-            margin: '0 auto',
-            border: '1px solid var(--mantine-color-gray-3)',
-            borderRadius: rem(4),
-            backgroundColor,
-            cursor: 'crosshair',
-            touchAction: 'none', // Prevent scrolling while drawing on mobile
-            maxWidth: '100%',
-          }}
+          className="os-pad__canvas"
+          role="img"
+          aria-label="Área de firma: dibuja tu firma con el dedo o un lápiz"
+          data-testid="signature-canvas"
         />
-
         {isEmpty && (
-          <Box
-            style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              pointerEvents: 'none',
-              opacity: 0.5,
-            }}
-          >
-            <Text ta="center" c="dimmed" size="sm">
-              👆 Firma aquí con tu dedo o stylus
-            </Text>
-          </Box>
+          <div className="os-pad__placeholder">
+            <span>Firma aquí con el dedo o un lápiz</span>
+          </div>
         )}
-      </Box>
+        {fill ? <div className="os-pad__line" aria-hidden="true" /> : null}
+      </div>
 
-      <Group justify="space-between">
-        <Text size="sm" c="dimmed">
-          {isEmpty ? 'Sin firma' : 'Firma capturada'}
-        </Text>
-
-        <Group gap="xs">
-          <ActionIcon
-            variant="light"
-            color="orange"
-            onClick={undoLastStroke}
-            disabled={isEmpty}
-            title="Deshacer último trazo"
-          >
-            <IconArrowBack size={16} />
-          </ActionIcon>
-
-          <Button
-            variant="light"
-            color="red"
-            size="xs"
-            leftSection={<IconEraser size={14} />}
-            onClick={clearSignature}
-            disabled={isEmpty}
-          >
-            Limpiar
+      {onConfirm ? (
+        <div className="os-pad__actions">
+          <Button variant="default" size="md" leftSection={<IconEraser size={18} />} onClick={clearSignature} disabled={isEmpty}>
+            Borrar
           </Button>
+          <Button className="os-pad__confirm" size="md" leftSection={<IconCheck size={18} />} onClick={confirm} disabled={isEmpty}>
+            {confirmLabel}
+          </Button>
+        </div>
+      ) : (
+        <Group justify="space-between" wrap="nowrap">
+          <Text size="sm" c="dimmed">
+            {isEmpty ? 'Sin firma' : 'Firma capturada'}
+          </Text>
+          <Group gap="xs" wrap="nowrap">
+            <ActionIcon variant="light" color="orange" size="lg" onClick={undoLastStroke} disabled={isEmpty} aria-label="Deshacer último trazo">
+              <IconArrowBack size={18} />
+            </ActionIcon>
+            <Button variant="light" color="red" size="md" leftSection={<IconEraser size={16} />} onClick={clearSignature} disabled={isEmpty}>
+              Borrar
+            </Button>
+          </Group>
         </Group>
-      </Group>
-    </Stack>
+      )}
+    </div>
   )
 }
 

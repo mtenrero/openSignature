@@ -1,131 +1,54 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { Container, Title, Button, Card, TextInput, Textarea, Stack, Group, Tabs, Select, ActionIcon, Modal, Box, Text, Loader, Badge, Menu, Alert, Divider, SegmentedControl, Checkbox, SimpleGrid, ScrollArea } from '@mantine/core'
-import { IconDeviceFloppy, IconPlus, IconTrash, IconEye, IconArrowLeft, IconEdit, IconCode, IconChevronDown, IconCheck, IconArchive, IconRefresh, IconRobot, IconWand, IconSparkles } from '@tabler/icons-react'
+import React, { useState, useEffect, useRef } from 'react'
+import { Container, Card, TextInput, Stack, Tabs, Collapse, Button, SimpleGrid } from '@mantine/core'
+import { IconChevronDown } from '@tabler/icons-react'
 import { useRouter, useParams } from 'next/navigation'
 import { notifications } from '@mantine/notifications'
-import { RichTextEditor } from '../../../../components/RichTextEditor'
+import { RichTextEditor, type RichTextEditorHandle } from '../../../../components/RichTextEditor'
+import { PageHeader } from '../../../../components/ui/PageHeader'
+import { ListSkeleton } from '../../../../components/ui/ListSkeleton'
+import { EditorHeader } from '../../../../components/contract-editor/EditorHeader'
+import { AiGenerateBanner, AiGenerateSheet, AiQuestionsSheet } from '../../../../components/contract-editor/AiGenerateBanner'
+import { VariablesTab } from '../../../../components/contract-editor/VariablesTab'
+import { DynamicFieldsTab } from '../../../../components/contract-editor/DynamicFieldsTab'
+import { CodeTab } from '../../../../components/contract-editor/CodeTab'
+import { FieldFormSheet, SecuritySheet, StatusSheet } from '../../../../components/contract-editor/EditorSheets'
+import {
+  defaultUserFields,
+  emptyContract,
+  emptyFieldForm,
+  isContentEmpty,
+  migrateLegacyContent,
+  statusLabel,
+  userDynamicFieldsConfig,
+  type EditorContract,
+  type FieldForm,
+  type LocalUserField,
+} from '../../../../components/contract-editor/constants'
+import { useIsMobile } from '../../../../lib/ui/useIsMobile'
 
-import { DynamicField, UserField, ContractParameters } from '../../../../components/dataTypes/Contract'
+import { DynamicField, ContractParameters } from '../../../../components/dataTypes/Contract'
 import { getMissingContentFields } from '../../../../lib/contractUtils'
-
-// Using DynamicField from Contract.ts - no need for separate interface
-
-interface LocalUserField {
-  id: string
-  name: string
-  type: 'text' | 'number' | 'phone' | 'email' | 'accept'
-  required: boolean
-  placeholder: string
-  label: string
-  order: number
-}
-
-// Configuración de campos dinámicos preestablecidos del usuario (del gestor de contratos)
-const userDynamicFieldsConfig: DynamicField[] = [
-  { id: '1', name: 'fecha', type: 'date', required: true, placeholder: 'Fecha actual', enabled: true },
-  { id: '2', name: 'miNombre', type: 'name', required: true, placeholder: 'Tu nombre completo', enabled: true },
-  { id: '3', name: 'miDireccion', type: 'address', required: true, placeholder: 'Tu dirección completa', enabled: true },
-  { id: '4', name: 'miTelefono', type: 'phone', required: false, placeholder: 'Tu teléfono de contacto', enabled: true },
-  { id: '5', name: 'miIdentificacionFiscal', type: 'taxId', required: true, placeholder: 'Tu RUC/CI/NIT', enabled: true },
-  { id: '6', name: 'miEmail', type: 'email', required: false, placeholder: 'Tu correo electrónico', enabled: true },
-  { id: '7', name: 'miCuentaBancaria', type: 'text', required: false, placeholder: 'Tu cuenta bancaria', enabled: true }
-]
-
-// Campos dinámicos predefinidos para el firmante (cliente)
-// IMPORTANTE: Estos campos son OBLIGATORIOS y deben estar siempre presentes
-const defaultUserFields: LocalUserField[] = [
-  {
-    id: 'client-name',
-    name: 'clientName',
-    type: 'text',
-    required: true,
-    placeholder: 'Ingrese su nombre completo',
-    label: 'Nombre del firmante',
-    order: 1
-  },
-  {
-    id: 'client-tax-id',
-    name: 'clientTaxId',
-    type: 'text',
-    required: true,
-    placeholder: 'Ingrese su NIF/DNI/CIF',
-    label: 'NIF del firmante',
-    order: 2
-  },
-  {
-    id: 'client-phone',
-    name: 'clientPhone',
-    type: 'phone',
-    required: false,
-    placeholder: 'Ingrese su teléfono (opcional)',
-    label: 'SMS del firmante (opcional)',
-    order: 3
-  },
-  {
-    id: 'client-email',
-    name: 'clientEmail',
-    type: 'email',
-    required: false,
-    placeholder: 'Ingrese su email (opcional)',
-    label: 'Mail del firmante (opcional)',
-    order: 4
-  }
-]
-
-const emptyContract = {
-  id: '',
-  name: 'Nuevo Contrato',
-  description: '',
-  content: '',
-  dynamicFields: [] as DynamicField[],
-  userFields: defaultUserFields as UserField[], // 🔥 Include default client fields
-  parameters: {
-    requireDoubleSignatureSMS: false
-  } as ContractParameters
-}
-
-// Migrate legacy content formats to new internal format
-const migrateLegacyContent = (content: string): string => {
-  if (!content) return ''
-  
-  let migratedContent = content
-  
-  // Convert old {{fieldName}} patterns to {{variable:fieldName}}
-  // Only if they don't already have the new format
-  migratedContent = migratedContent.replace(/\{\{([^:}]+)\}\}/g, (match, fieldName) => {
-    const trimmedFieldName = fieldName.trim()
-    if (trimmedFieldName && !trimmedFieldName.includes(':')) {
-      return `{{variable:${trimmedFieldName}}}`
-    }
-    return match
-  })
-  
-  // Convert old [Campo dinámico: fieldName] patterns to {{dynamic:fieldName}}
-  migratedContent = migratedContent.replace(/\[Campo (?:dinámico|de usuario):\s*([^\]]+)\]/g, (match, fieldName) => {
-    const trimmedFieldName = fieldName.trim()
-    if (trimmedFieldName) {
-      return `{{dynamic:${trimmedFieldName}}}`
-    }
-    return match
-  })
-  
-  return migratedContent
-}
 
 export default function ContractEditorPage() {
   const router = useRouter()
   const params = useParams()
   const contractId = params.id as string
 
-  const [contrato, setContrato] = useState(emptyContract)
-  const [contenido, setContenido] = useState(contrato.content)
+  const [contrato, setContrato] = useState<EditorContract>(emptyContract)
+  const [contenido, setContenido] = useState(emptyContract.content)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [userFieldModalOpen, setUserFieldModalOpen] = useState(false)
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState('editor')
+  const [activeTab, setActiveTab] = useState<string | null>('editor')
+  const [statusSheetOpen, setStatusSheetOpen] = useState(false)
+  const [securitySheetOpen, setSecuritySheetOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [aiBannerDismissed, setAiBannerDismissed] = useState(false)
+  const editorRef = useRef<RichTextEditorHandle>(null)
+  const isMobile = useIsMobile()
   const [accountVariables, setAccountVariables] = useState<DynamicField[]>(userDynamicFieldsConfig)
   
   // AI Generation state
@@ -142,14 +65,7 @@ export default function ContractEditorPage() {
   const [existingContract, setExistingContract] = useState('')
 
 
-  const [newUserField, setNewUserField] = useState({
-    name: '',
-    type: 'text' as const,
-    required: false,
-    placeholder: '',
-    label: '',
-    order: 0
-  })
+  const [newUserField, setNewUserField] = useState<FieldForm>(emptyFieldForm)
 
   useEffect(() => {
     const loadContract = async () => {
@@ -634,9 +550,6 @@ export default function ContractEditorPage() {
     router.push(`/contracts/${contractId}/preview`)
   }
 
-
-
-
   const handleAddUserField = () => {
     if (newUserField.name.trim() && newUserField.label.trim()) {
       // Clean the field name to prevent issues with spaces and special characters
@@ -655,7 +568,7 @@ export default function ContractEditorPage() {
         ...contrato,
         userFields: [...(contrato.userFields || []), field]
       })
-      setNewUserField({ name: '', type: 'text', required: false, placeholder: '', label: '', order: 0 })
+      setNewUserField(emptyFieldForm)
       setUserFieldModalOpen(false)
     }
   }
@@ -692,7 +605,7 @@ export default function ContractEditorPage() {
           : field
       )
     }))
-    setNewUserField({ name: '', type: 'text', required: false, placeholder: '', label: '', order: 0 })
+    setNewUserField(emptyFieldForm)
     setEditingFieldId(null)
     setUserFieldModalOpen(false)
   }
@@ -773,735 +686,204 @@ export default function ContractEditorPage() {
     }
   }
 
-  const getAvailableStatusTransitions = (currentStatus: string) => {
-    const transitions: { [key: string]: { status: string; label: string; icon: React.ReactNode; color: string }[] } = {
-      'draft': [
-        { status: 'active', label: 'Activar', icon: <IconCheck size={16} />, color: 'green' },
-        { status: 'archived', label: 'Archivar', icon: <IconArchive size={16} />, color: 'gray' }
-      ],
-      'active': [
-        { status: 'archived', label: 'Archivar', icon: <IconArchive size={16} />, color: 'gray' }
-      ],
-      'signed': [
-        { status: 'archived', label: 'Archivar', icon: <IconArchive size={16} />, color: 'gray' }
-      ],
-      'completed': [
-        { status: 'archived', label: 'Archivar', icon: <IconArchive size={16} />, color: 'gray' }
-      ],
-      'archived': [
-        { status: 'active', label: 'Reactivar', icon: <IconRefresh size={16} />, color: 'green' }
-      ]
-    }
-    
-    return transitions[currentStatus] || []
+  // --- UI glue (mobile redesign): the AI form lives in a sheet, so hand over to the Q&A sheet when it opens.
+  useEffect(() => {
+    if (showQAMode) setShowAISection(false)
+  }, [showQAMode])
+
+  const openAddField = () => {
+    setEditingFieldId(null)
+    setNewUserField(emptyFieldForm)
+    setUserFieldModalOpen(true)
   }
+
+  const closeFieldSheet = () => {
+    setUserFieldModalOpen(false)
+    setEditingFieldId(null)
+    setNewUserField(emptyFieldForm)
+  }
+
+  // The "Insertar" buttons in the Variables / Campos tabs insert into the document and jump back to it.
+  const insertFromTab = (name: string, kind: 'variable' | 'dynamic') => {
+    setActiveTab('editor')
+    editorRef.current?.insertToken(name, kind)
+  }
+
+  const editFieldByName = (name: string) => {
+    const field = contrato.userFields?.find((f) => f.name === name)
+    if (field) handleStartEditField(field as LocalUserField)
+  }
+
+  const contentEmpty = isContentEmpty(contenido)
+  const requireOtp = (contrato.parameters?.requireDoubleSignatureSMS || false) && !isSMSDisabled
 
   if (loading) {
     return (
-      <Container size="xl">
-        <Stack align="center" justify="center" style={{ minHeight: '400px' }}>
-          <Loader size="lg" />
-          <Text size="lg" c="dimmed">Cargando contrato...</Text>
-        </Stack>
-      </Container>
+      <>
+        <PageHeader title="Cargando contrato..." back="/contracts" />
+        <Container size="xl" data-testid="page-content">
+          <ListSkeleton rows={4} />
+        </Container>
+      </>
     )
   }
 
+  // Short visible labels on phones; the full name (with counts) stays in each tab's aria-label.
+  const tabLabel = (short: string, full: string) => (isMobile ? short : full)
+
   return (
-    <Container size="xl">
-      <Stack gap="lg">
-        {/* Header */}
-        <Group justify="space-between" align="center" wrap="wrap" gap="sm">
-          <Group gap="xs" style={{ minWidth: 0, flex: '1 1 auto' }}>
-            <ActionIcon variant="subtle" onClick={() => router.push('/contracts')}>
-              <IconArrowLeft size={20} />
-            </ActionIcon>
-            <Box>
-              <Title size="1.5rem" fw={600}>
-                {contrato.name}
-              </Title>
-              <Text size="sm" c="dimmed">
-                Editor de Contrato
-              </Text>
-            </Box>
-          </Group>
+    <>
+      <EditorHeader
+        name={contrato.name}
+        status={contrato.status}
+        saving={saving}
+        canUseAi={contentEmpty}
+        onSave={handleSave}
+        onPreview={handlePreview}
+        onOpenStatus={() => setStatusSheetOpen(true)}
+        onOpenSecurity={() => setSecuritySheetOpen(true)}
+        onOpenAi={() => setShowAISection(true)}
+      />
 
-          <Group gap="xs" wrap="wrap">
-            {/* Contract Status */}
-            <Menu shadow="md" width={200}>
-              <Menu.Target>
-                <Button
-                  variant="light"
-                  rightSection={<IconChevronDown size={16} />}
-                  color={
-                    contrato.status === 'active' ? 'green' :
-                    contrato.status === 'signed' ? 'blue' :
-                    contrato.status === 'completed' ? 'violet' :
-                    contrato.status === 'archived' ? 'gray' :
-                    'yellow'
-                  }
-                >
-                  Estado: {
-                    contrato.status === 'active' ? 'Activo' :
-                    contrato.status === 'signed' ? 'Firmado' :
-                    contrato.status === 'completed' ? 'Completado' :
-                    contrato.status === 'archived' ? 'Archivado' :
-                    'Borrador'
-                  }
-                </Button>
-              </Menu.Target>
-
-              <Menu.Dropdown>
-                <Menu.Label>Cambiar Estado</Menu.Label>
-                {getAvailableStatusTransitions(contrato.status || 'draft').map((transition) => (
-                  <Menu.Item
-                    key={transition.status}
-                    leftSection={transition.icon}
-                    onClick={() => handleStatusChange(transition.status)}
-                  >
-                    {transition.label}
-                  </Menu.Item>
-                ))}
-                {getAvailableStatusTransitions(contrato.status || 'draft').length === 0 && (
-                  <Menu.Item disabled>
-                    No hay transiciones disponibles
-                  </Menu.Item>
-                )}
-              </Menu.Dropdown>
-            </Menu>
-
-            <Button
-              variant="light"
-              leftSection={<IconEye size={16} />}
-              onClick={handlePreview}
-            >
-              Vista Previa
-            </Button>
-            <Button
-              leftSection={<IconDeviceFloppy size={16} />}
-              onClick={handleSave}
-              loading={saving}
-            >
-              Guardar
-            </Button>
-          </Group>
-        </Group>
-
-        {/* Contract Info */}
-        <Card shadow="sm" padding="lg" radius="md" withBorder>
-          <Stack gap="md">
-            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-              <TextInput
-                label="Nombre del contrato"
-                value={contrato.name}
-                onChange={(event) => setContrato({ ...contrato, name: event.target.value })}
-              />
-              <TextInput
-                label="Descripción"
-                value={contrato.description}
-                onChange={(event) => setContrato({ ...contrato, description: event.target.value })}
-              />
-            </SimpleGrid>
-
-            <Divider label="Configuración de Seguridad" labelPosition="center" />
-
-            <Checkbox
-              label="Verificación OTP obligatoria - Requiere código de verificación vía SMS/email antes de firmar"
-              description={isSMSDisabled ? "SMS está deshabilitado en la configuración del sistema" : "El firmante recibirá un código de verificación temporal (válido 10min) que deberá introducir antes de poder firmar"}
-              checked={(contrato.parameters?.requireDoubleSignatureSMS || false) && !isSMSDisabled}
-              disabled={isSMSDisabled}
-              onChange={(event) => setContrato({
-                ...contrato,
-                parameters: {
-                  ...contrato.parameters,
-                  requireDoubleSignatureSMS: event.currentTarget.checked
-                } as ContractParameters
-              })}
-            />
-          </Stack>
-        </Card>
-
-        <Tabs value={activeTab} onChange={setActiveTab}>
-          {/* Scrollable on mobile so the 5 tabs never overflow / wrap awkwardly. */}
-          <ScrollArea type="auto" scrollbarSize={6} offsetScrollbars="x">
-            <Tabs.List style={{ flexWrap: 'nowrap' }}>
-              <Tabs.Tab value="editor" leftSection={<IconEdit size={16} />}>
-                Editor
-              </Tabs.Tab>
-              <Tabs.Tab value="variables">
-                Variables ({accountVariables.length})
-              </Tabs.Tab>
-              <Tabs.Tab value="dynamicFields">
-                Campos Dinámicos ({contrato.userFields?.length || 0})
-              </Tabs.Tab>
-              <Tabs.Tab value="parameters">
-                Parámetros
-              </Tabs.Tab>
-              <Tabs.Tab value="code" leftSection={<IconCode size={16} />}>
-                Código
-              </Tabs.Tab>
-            </Tabs.List>
-          </ScrollArea>
-
-          <Tabs.Panel value="editor" pt="md">
-            {/* AI Generation Section */}
-            {!showAISection ? (
-              <Alert
-                icon={<IconSparkles size={20} />}
-                title="🚀 Generar contenido con Inteligencia Artificial"
-                color="blue"
-                variant="light"
-                withCloseButton={false}
-                style={{
-                  background: 'var(--mantine-color-blue-0)',
-                  border: '2px solid var(--mantine-color-blue-6)',
-                  marginBottom: '1rem'
-                }}
+      <Container size="xl" data-testid="page-content" className="os-touch" pb="xl">
+        <Stack gap="md">
+          {/* Name / description: always open on >= sm, a collapsible row on phones so the document comes first. */}
+          <Card padding="md">
+            {isMobile && (
+              <Button
+                variant="subtle"
+                color="gray"
+                fullWidth
+                justify="space-between"
+                rightSection={<IconChevronDown size={18} style={{ transform: detailsOpen ? 'rotate(180deg)' : undefined }} />}
+                onClick={() => setDetailsOpen((o) => !o)}
+                aria-expanded={detailsOpen}
+                style={{ minHeight: 44 }}
               >
-                <Text size="sm" mb="md" c="var(--mantine-color-gray-7)">
-                  Usa IA para generar automáticamente el contenido del contrato basado en una descripción simple.
-                </Text>
-                <Group>
-                  <Button
-                    leftSection={<IconRobot size={16} />}
-                    onClick={() => setShowAISection(true)}
-                    variant="filled"
-                    color="blue"
-                    disabled={!!contenido.trim()}
-                  >
-                    {contenido.trim() ? 'Ya hay contenido' : 'Generar con IA'}
-                  </Button>
-                  {contenido.trim() && (
-                    <Text size="xs" c="dimmed">
-                      La IA está disponible solo para contratos vacíos
-                    </Text>
-                  )}
-                </Group>
-              </Alert>
-            ) : (
-              <Card shadow="sm" padding="lg" radius="md" withBorder style={{
-                background: 'var(--mantine-color-blue-0)',
-                border: '2px solid var(--mantine-color-blue-6)',
-                marginBottom: '1rem'
-              }}>
-                <Group justify="space-between" mb="md">
-                  <Group>
-                    <IconWand size={24} style={{ color: 'var(--mantine-color-blue-6)' }} />
-                    <Title size="1.2rem" fw={600} c="var(--mantine-color-blue-9)">
-                      Generación Asistida por IA
-                    </Title>
-                  </Group>
-                  <Button
-                    variant="subtle"
-                    size="sm"
-                    onClick={() => setShowAISection(false)}
-                  >
-                    Cancelar
-                  </Button>
-                </Group>
-                
-                <Stack gap="md">
-                  <SegmentedControl
-                    value={aiMode}
-                    onChange={(value) => setAiMode(value as 'generate' | 'adapt')}
-                    data={[
-                      { label: '🚀 Generar desde cero', value: 'generate' },
-                      { label: '📋 Adaptar contrato existente', value: 'adapt' }
-                    ]}
-                    fullWidth
-                  />
-
-                  {aiMode === 'adapt' && (
-                    <Textarea
-                      label="Pega aquí el contenido del contrato existente"
-                      placeholder="Pega aquí el texto completo del contrato que quieres adaptar al formato del sistema..."
-                      value={existingContract}
-                      onChange={(event) => setExistingContract(event.target.value)}
-                      minRows={8}
-                      maxRows={15}
-                      autosize
-                      required
-                      styles={{
-                        input: {
-                          backgroundColor: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))',
-                          color: 'light-dark(var(--mantine-color-dark-9), var(--mantine-color-gray-0))',
-                          border: '1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))',
-                          fontFamily: 'monospace',
-                          fontSize: '0.85rem'
-                        }
-                      }}
-                    />
-                  )}
-
-                  <Textarea
-                    label={aiMode === 'adapt' ? 'Describe qué adaptaciones necesitas (opcional)' : 'Describe el contrato que necesitas'}
-                    placeholder={aiMode === 'adapt' 
-                      ? 'Ej: Convierte este contrato al formato del sistema, adapta las cláusulas de pago, agrega campos para datos del cliente...'
-                      : 'Ej: Necesito un contrato de servicios de consultoría tecnológica para una empresa de desarrollo web, con cláusulas de confidencialidad, plazos de entrega, forma de pago mensual y penalizaciones por retraso...'
-                    }
-                    value={aiDescription}
-                    onChange={(event) => setAiDescription(event.target.value)}
-                    minRows={aiMode === 'adapt' ? 3 : 4}
-                    maxRows={8}
-                    autosize
-                    required={aiMode === 'generate'}
-                  />
-                  
-                  <Alert color="blue" variant="light" style={{
-                    background: 'light-dark(var(--mantine-color-blue-1), var(--mantine-color-dark-6))',
-                    border: '1px solid light-dark(var(--mantine-color-blue-3), var(--mantine-color-blue-8))'
-                  }}>
-                    <Text size="sm" c="light-dark(var(--mantine-color-gray-7), var(--mantine-color-gray-2))">
-                      <Text component="span" fw={600} c="light-dark(var(--mantine-color-blue-7), var(--mantine-color-blue-4))">
-                        {aiMode === 'adapt' ? 'La IA adaptará el contrato:' : 'La IA incluirá automáticamente:'}
-                      </Text><br />
-                      {aiMode === 'adapt' ? (
-                        <>
-                          • Convertirá información del emisor a variables del sistema<br />
-                          • Identificará y creará campos dinámicos para datos del cliente<br />
-                          • Adaptará el formato a HTML estructurado<br />
-                          • Mantendrá todo el contenido legal original<br />
-                          • Agregará cláusulas faltantes según estándares españoles
-                        </>
-                      ) : (
-                        <>
-                          • Variables de tu cuenta (nombre, dirección, NIF, etc.)<br />
-                          • 4 campos predefinidos del firmante (nombre, NIF, SMS, mail)<br />
-                          • Estructura legal española con cláusulas de cumplimiento<br />
-                          • Campos dinámicos adicionales según el tipo de contrato
-                        </>
-                      )}
-                    </Text>
-                  </Alert>
-                  
-                  <Button
-                    size="lg"
-                    leftSection={<IconSparkles size={20} />}
-                    onClick={handleGenerateWithAI}
-                    disabled={
-                      (!aiDescription.trim() && aiMode === 'generate') || 
-                      (aiMode === 'adapt' && !existingContract.trim()) || 
-                      generatingWithAI
-                    }
-                    loading={generatingWithAI}
-                    fullWidth
-                  >
-                    {generatingWithAI 
-                      ? (aiMode === 'adapt' ? 'Adaptando contrato...' : 'Generando contrato...') 
-                      : (aiMode === 'adapt' ? 'Adaptar Contrato con IA' : 'Generar Contrato con IA')
-                    }
-                  </Button>
-                </Stack>
-              </Card>
+                Detalles del contrato · {statusLabel(contrato.status)}
+              </Button>
             )}
+            <Collapse in={!isMobile || detailsOpen}>
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md" pt={isMobile ? 'sm' : 0}>
+                <TextInput
+                  label="Nombre del contrato"
+                  value={contrato.name}
+                  onChange={(event) => setContrato({ ...contrato, name: event.target.value })}
+                />
+                <TextInput
+                  label="Descripción"
+                  value={contrato.description}
+                  onChange={(event) => setContrato({ ...contrato, description: event.target.value })}
+                />
+              </SimpleGrid>
+            </Collapse>
+          </Card>
 
-            {/* Q&A Mode for Additional Information */}
-            {showQAMode && (
-              <Card shadow="sm" padding="lg" radius="md" withBorder style={{
-                background: 'var(--mantine-color-orange-0)',
-                border: '2px solid var(--mantine-color-orange-6)',
-                marginBottom: '1rem'
-              }}>
-                <Group justify="space-between" mb="md">
-                  <Group>
-                    <IconSparkles size={24} style={{ color: 'var(--mantine-color-orange-6)' }} />
-                    <Title size="1.2rem" fw={600} c="var(--mantine-color-orange-9)">
-                      📝 Información Adicional Requerida
-                    </Title>
-                  </Group>
-                  <Button
-                    variant="subtle"
-                    size="sm"
-                    onClick={() => {
-                      setShowQAMode(false)
-                      setAiQuestions([])
-                      setAiAnswers({})
-                    }}
-                  >
-                    Cancelar
-                  </Button>
-                </Group>
-                
-                <Alert color="orange" variant="light" mb="md">
-                  <Text size="sm">
-                    La IA generó un contrato base, pero necesita información adicional para completarlo correctamente.
-                    Por favor responde las siguientes preguntas:
-                  </Text>
-                </Alert>
+          <Tabs value={activeTab} onChange={setActiveTab} keepMounted>
+            <Tabs.List className="os-editor-tabs" aria-label="Secciones del contrato">
+              <Tabs.Tab value="editor" aria-label="Editor">Editor</Tabs.Tab>
+              <Tabs.Tab value="variables" aria-label={`Variables (${accountVariables.length})`}>
+                {tabLabel('Variables', `Variables (${accountVariables.length})`)}
+              </Tabs.Tab>
+              <Tabs.Tab value="dynamicFields" aria-label={`Campos Dinámicos (${contrato.userFields?.length || 0})`}>
+                {tabLabel('Campos', `Campos Dinámicos (${contrato.userFields?.length || 0})`)}
+              </Tabs.Tab>
+              <Tabs.Tab value="code" aria-label="Código">Código</Tabs.Tab>
+            </Tabs.List>
 
-                <Stack gap="md">
-                  {aiQuestions.map((question, index) => (
-                    <Textarea
-                      key={index}
-                      label={`${index + 1}. ${question}`}
-                      placeholder="Escribe tu respuesta aquí..."
-                      value={aiAnswers[question] || ''}
-                      onChange={(event) => setAiAnswers(prev => ({
-                        ...prev,
-                        [question]: event.target.value
-                      }))}
-                      minRows={2}
-                      required
-                      styles={{
-                        input: {
-                          backgroundColor: 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))',
-                          color: 'light-dark(var(--mantine-color-dark-9), var(--mantine-color-gray-0))',
-                          border: '1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))',
-                          '&:focus': {
-                            borderColor: 'light-dark(var(--mantine-color-orange-5), var(--mantine-color-orange-4))'
-                          }
-                        },
-                        label: {
-                          color: 'light-dark(var(--mantine-color-dark-7), var(--mantine-color-gray-2))',
-                          fontWeight: 500
-                        }
-                      }}
-                    />
-                  ))}
-                  
-                  <Button
-                    size="lg"
-                    leftSection={<IconSparkles size={20} />}
-                    onClick={handleCompleteQA}
-                    disabled={aiQuestions.some(q => !aiAnswers[q]?.trim()) || generatingWithAI}
-                    loading={generatingWithAI}
-                    fullWidth
-                    color="orange"
-                  >
-                    {generatingWithAI ? 'Completando contrato...' : 'Completar Contrato con la Información'}
-                  </Button>
-                </Stack>
-              </Card>
-            )}
-
-            <Card shadow="sm" padding="lg" radius="md" withBorder>
+            <Tabs.Panel value="editor" pt="md">
+              {contentEmpty && !aiBannerDismissed && !showAISection && (
+                <AiGenerateBanner onStart={() => setShowAISection(true)} onDismiss={() => setAiBannerDismissed(true)} />
+              )}
               <RichTextEditor
+                ref={editorRef}
                 content={contenido}
                 onChange={setContenido}
                 variables={accountVariables}
                 dynamicFields={contrato.userFields || []}
                 onInsertField={handleInsertField}
-                onAddField={() => {
-                  setEditingFieldId(null)
-                  setNewUserField({ name: '', type: 'text', required: false, placeholder: '', label: '', order: 0 })
-                  setUserFieldModalOpen(true)
-                }}
+                onAddField={openAddField}
+                onEditField={editFieldByName}
               />
-            </Card>
-          </Tabs.Panel>
+            </Tabs.Panel>
 
-          <Tabs.Panel value="variables" pt="md">
-            <Card shadow="sm" padding="lg" radius="md" withBorder>
-              <Group justify="space-between" mb="md">
-                <Box>
-                  <Title size="1.2rem" fw={600}>
-                    Variables de la Cuenta
-                  </Title>
-                  <Text size="sm" c="dimmed">
-                    Variables preconfiguradas desde tus ajustes de cuenta
-                  </Text>
-                </Box>
-              </Group>
+            <Tabs.Panel value="variables" pt="md">
+              <VariablesTab variables={accountVariables} onInsert={(name) => insertFromTab(name, 'variable')} />
+            </Tabs.Panel>
 
-              <Stack gap="sm">
-                {accountVariables.map(variable => (
-                  <Card key={variable.id} padding="sm" withBorder style={{ borderColor: 'var(--mantine-color-purple-3)' }}>
-                    <Group justify="space-between" align="center">
-                      <Box>
-                        <Text fw={500} c="purple">{variable.name}</Text>
-                        <Text size="sm" c="dimmed">
-                          Tipo: {variable.type} | Requerido: {variable.required ? 'Sí' : 'No'}
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                          Placeholder: {variable.placeholder}
-                        </Text>
-                      </Box>
-                      <Group>
-                        <Button
-                          size="xs"
-                          variant="light"
-                          color="purple"
-                          onClick={() => handleInsertField(variable.name, false, 'variable')}
-                        >
-                          Insertar
-                        </Button>
-                      </Group>
-                    </Group>
-                  </Card>
-                ))}
-                {accountVariables.length === 0 && (
-                  <Text c="dimmed" ta="center" py="lg">
-                    No hay variables configuradas. Ve a tus ajustes para configurar variables de cuenta.
-                  </Text>
-                )}
-              </Stack>
-            </Card>
-          </Tabs.Panel>
-
-          <Tabs.Panel value="dynamicFields" pt="md">
-            <Card shadow="sm" padding="lg" radius="md" withBorder>
-              <Group justify="space-between" mb="md">
-                <Box>
-                  <Title size="1.2rem" fw={600}>
-                    Campos Dinámicos
-                  </Title>
-                  <Text size="sm" c="dimmed">
-                    Campos donde el usuario debe introducir datos
-                  </Text>
-                </Box>
-                <Button
-                  leftSection={<IconPlus size={16} />}
-                  onClick={() => {
-                    setEditingFieldId(null)
-                    setNewUserField({ name: '', type: 'text', required: false, placeholder: '', label: '', order: 0 })
-                    setUserFieldModalOpen(true)
-                  }}
-                  color="blue"
-                >
-                  Agregar Campo
-                </Button>
-              </Group>
-
-              {/* Mandatory Fields Warning */}
-              <Card shadow="sm" padding="md" radius="md" withBorder mb="md" style={{ borderColor: 'var(--mantine-color-blue-3)', backgroundColor: 'var(--mantine-color-blue-0)' }}>
-                <Group>
-                  <Box>
-                    <Text fw={600} c="blue" size="sm">📋 Campos Predefinidos del Firmante</Text>
-                    <Text size="xs" c="dimmed" mb="xs">
-                      Todos los contratos incluyen 4 campos predefinidos que siempre están disponibles:
-                    </Text>
-                    <Stack gap="xs" mt="xs">
-                      <Text size="xs" c="red" fw={600}>• Nombre del firmante (clientName) - OBLIGATORIO usar en el contenido</Text>
-                      <Text size="xs" c="red" fw={600}>• NIF del firmante (clientTaxId) - OBLIGATORIO usar en el contenido</Text>
-                      <Text size="xs" c="blue">• SMS del firmante (clientPhone) - Opcional</Text>
-                      <Text size="xs" c="blue">• Mail del firmante (clientEmail) - Opcional</Text>
-                    </Stack>
-                    <Text size="xs" c="dimmed" mt="xs">
-                      ⚠️ El contrato no se puede activar si no usas los campos Nombre y NIF en el contenido.
-                    </Text>
-                  </Box>
-                </Group>
-              </Card>
-
-              <Stack gap="sm">
-                {contrato.userFields?.map(field => {
-                  // Los campos predefinidos no se pueden eliminar
-                  const isPredefined = ['clientName', 'clientTaxId', 'clientPhone', 'clientEmail'].includes(field.name)
-                  const isMandatory = ['clientName', 'clientTaxId'].includes(field.name)
-
-                  return (
-                    <Card key={field.id} padding="sm" withBorder style={{
-                      borderColor: isMandatory ? 'var(--mantine-color-red-3)' : 'var(--mantine-color-blue-3)',
-                      backgroundColor: isPredefined ? 'var(--mantine-color-gray-0)' : 'transparent'
-                    }}>
-                      <Group justify="space-between" align="center">
-                        <Box>
-                          <Group gap="xs">
-                            <Text fw={500} c={isMandatory ? 'red' : 'blue'}>{field.label}</Text>
-                            {isPredefined && <Badge size="xs" color={isMandatory ? 'red' : 'blue'}>Predefinido</Badge>}
-                            {isMandatory && <Badge size="xs" color="red">Obligatorio</Badge>}
-                          </Group>
-                          <Text size="sm" c="dimmed">
-                            Nombre: {field.name} | Tipo: {field.type} | Requerido: {field.required ? 'Sí' : 'No'}
-                          </Text>
-                          <Text size="xs" c="dimmed">
-                            Placeholder: {field.placeholder}
-                          </Text>
-                        </Box>
-                        <Group>
-                          <Button
-                            size="xs"
-                            variant="light"
-                            color="blue"
-                            onClick={() => handleInsertField(field.name, true)}
-                          >
-                            Insertar
-                          </Button>
-                          {!isPredefined && (
-                            <>
-                              <ActionIcon
-                                color="blue"
-                                variant="subtle"
-                                onClick={() => handleStartEditField(field as LocalUserField)}
-                              >
-                                <IconEdit size={16} />
-                              </ActionIcon>
-                              <ActionIcon
-                                color="red"
-                                variant="subtle"
-                                onClick={() => handleRemoveUserField(field.id)}
-                              >
-                                <IconTrash size={16} />
-                              </ActionIcon>
-                            </>
-                          )}
-                        </Group>
-                      </Group>
-                    </Card>
-                  )
-                })}
-                {(!contrato.userFields || contrato.userFields.length === 0) && (
-                  <Text c="dimmed" ta="center" py="lg">
-                    No hay campos dinámicos configurados
-                  </Text>
-                )}
-              </Stack>
-            </Card>
-          </Tabs.Panel>
-
-
-          <Tabs.Panel value="parameters" pt="md">
-            <Card shadow="sm" padding="lg" radius="md" withBorder>
-              <Title size="1.2rem" fw={600} mb="md">
-                Parámetros del Contrato
-              </Title>
-              <Stack gap="md">
-                <div>
-                  <Text fw={500} mb="xs">Firma Digital</Text>
-                  <Group>
-                    <input
-                      type="checkbox"
-                      checked={(contrato.parameters?.requireDoubleSignatureSMS || false) && !isSMSDisabled}
-                      disabled={isSMSDisabled}
-                      onChange={(e) => setContrato({
-                        ...contrato,
-                        parameters: {
-                          ...contrato.parameters,
-                          requireDoubleSignatureSMS: e.target.checked
-                        } as ContractParameters
-                      })}
-                    />
-                    <Text size="sm" c={isSMSDisabled ? "dimmed" : undefined}>
-                      Requerir doble firma por SMS (mayor garantía legal)
-                      {isSMSDisabled && <span> - SMS deshabilitado</span>}
-                    </Text>
-                  </Group>
-                </div>
-
-              </Stack>
-            </Card>
-          </Tabs.Panel>
-
-          <Tabs.Panel value="code" pt="md">
-            <Card shadow="sm" padding="lg" radius="md" withBorder>
-              <Title size="1.2rem" fw={600} mb="md">
-                Formato Interno
-              </Title>
-              <Text size="sm" c="dimmed" mb="md">
-                Este es el formato interno usado para almacenar el contrato. Utiliza:
-                <br />• <code>{'{{variable:nombreVariable}}'}</code> para variables de cuenta
-                <br />• <code>{'{{dynamic:nombreCampo}}'}</code> para campos dinámicos
-                <br />• HTML estándar para formateo (párrafos, negritas, etc.)
-              </Text>
-              <Textarea
-                value={contenido}
-                onChange={(event) => setContenido(event.target.value)}
-                minRows={20}
-                styles={{
-                  input: {
-                    fontFamily: 'monospace',
-                    fontSize: '14px',
-                    lineHeight: '1.5',
-                  }
-                }}
-                placeholder="<p>Tu contenido aquí con {{variable:nombreVariable}} y {{dynamic:nombreCampo}}</p>"
+            <Tabs.Panel value="dynamicFields" pt="md">
+              <DynamicFieldsTab
+                fields={contrato.userFields || []}
+                onAdd={openAddField}
+                onEdit={handleStartEditField}
+                onRemove={handleRemoveUserField}
+                onInsert={(name) => insertFromTab(name, 'dynamic')}
               />
-            </Card>
-          </Tabs.Panel>
-        </Tabs>
-      </Stack>
+            </Tabs.Panel>
 
-
-      {/* Add/Edit Dynamic Field Modal */}
-      <Modal
-        opened={userFieldModalOpen}
-        onClose={() => {
-          setUserFieldModalOpen(false)
-          setEditingFieldId(null)
-          setNewUserField({ name: '', type: 'text', required: false, placeholder: '', label: '', order: 0 })
-        }}
-        title={editingFieldId ? 'Editar campo del firmante' : 'Nuevo campo del firmante'}
-        centered
-      >
-        <Stack gap="md">
-          <Alert color="blue" variant="light" icon={<IconSparkles size={16} />}>
-            <Text size="sm">
-              Crea un campo para pedir información a quien firma (por ejemplo un importe o una matrícula).
-              Aparecerá en el formulario de firma y podrás insertarlo en el texto del contrato.
-            </Text>
-          </Alert>
-
-          <TextInput
-            label="Etiqueta del campo"
-            description="Lo que verá el firmante"
-            placeholder="ej: Nombre Completo"
-            value={newUserField.label}
-            onChange={(event) => setNewUserField({ ...newUserField, label: event.target.value })}
-            data-autofocus
-          />
-
-          <TextInput
-            label="Nombre técnico"
-            placeholder="ej: nombreCompleto"
-            value={newUserField.name}
-            onChange={(event) => setNewUserField({ ...newUserField, name: event.target.value })}
-            description={editingFieldId
-              ? 'El nombre técnico no se puede cambiar porque está referenciado en el contenido del contrato'
-              : "Los espacios se convertirán a guiones bajos automáticamente. Ej: 'nombre cliente' → 'nombre_cliente'"
-            }
-            disabled={!!editingFieldId}
-          />
-
-          <TextInput
-            label="Texto de ayuda (placeholder)"
-            placeholder="ej: Ingrese su nombre completo"
-            value={newUserField.placeholder}
-            onChange={(event) => setNewUserField({ ...newUserField, placeholder: event.target.value })}
-          />
-
-          <Group grow>
-            <Select
-              label="Tipo de campo"
-              data={[
-                { value: 'text', label: 'Texto' },
-                { value: 'number', label: 'Número' },
-                { value: 'phone', label: 'Teléfono' },
-                { value: 'email', label: 'Email' },
-                { value: 'accept', label: 'Aceptar términos' }
-              ]}
-              value={newUserField.type}
-              onChange={(value) => setNewUserField({ ...newUserField, type: value as any })}
-            />
-
-            <Checkbox
-              label="Obligatorio"
-              description="El firmante deberá rellenarlo"
-              checked={newUserField.required}
-              onChange={(event) => setNewUserField({ ...newUserField, required: event.currentTarget.checked })}
-              styles={{ root: { alignSelf: 'center' } }}
-            />
-          </Group>
-
-          <Group justify="flex-end">
-            <Button variant="light" onClick={() => {
-              setUserFieldModalOpen(false)
-              setEditingFieldId(null)
-              setNewUserField({ name: '', type: 'text', required: false, placeholder: '', label: '', order: 0 })
-            }}>
-              Cancelar
-            </Button>
-            {editingFieldId ? (
-              <Button onClick={handleSaveEditField} disabled={!newUserField.label.trim()}>
-                Guardar Cambios
-              </Button>
-            ) : (
-              <Button onClick={handleAddUserField} disabled={!newUserField.name.trim() || !newUserField.label.trim()}>
-                Agregar Campo
-              </Button>
-            )}
-          </Group>
+            <Tabs.Panel value="code" pt="md">
+              <CodeTab value={contenido} onChange={setContenido} />
+            </Tabs.Panel>
+          </Tabs>
         </Stack>
-      </Modal>
-    </Container>
+      </Container>
+
+      <FieldFormSheet
+        opened={userFieldModalOpen}
+        onClose={closeFieldSheet}
+        editing={!!editingFieldId}
+        form={newUserField}
+        onChange={setNewUserField}
+        onAdd={handleAddUserField}
+        onSaveEdit={handleSaveEditField}
+      />
+
+      <StatusSheet
+        opened={statusSheetOpen}
+        onClose={() => setStatusSheetOpen(false)}
+        current={contrato.status || 'draft'}
+        onSelect={handleStatusChange}
+      />
+
+      <SecuritySheet
+        opened={securitySheetOpen}
+        onClose={() => setSecuritySheetOpen(false)}
+        checked={requireOtp}
+        disabled={isSMSDisabled}
+        onChange={(v) =>
+          setContrato({
+            ...contrato,
+            parameters: { ...contrato.parameters, requireDoubleSignatureSMS: v } as ContractParameters,
+          })
+        }
+      />
+
+      <AiGenerateSheet
+        opened={showAISection}
+        onClose={() => setShowAISection(false)}
+        mode={aiMode}
+        onModeChange={setAiMode}
+        description={aiDescription}
+        onDescriptionChange={setAiDescription}
+        existingContract={existingContract}
+        onExistingContractChange={setExistingContract}
+        generating={generatingWithAI}
+        onGenerate={handleGenerateWithAI}
+      />
+
+      <AiQuestionsSheet
+        opened={showQAMode}
+        onClose={() => {
+          setShowQAMode(false)
+          setAiQuestions([])
+          setAiAnswers({})
+        }}
+        questions={aiQuestions}
+        answers={aiAnswers}
+        onAnswer={(q, v) => setAiAnswers((prev) => ({ ...prev, [q]: v }))}
+        generating={generatingWithAI}
+        onComplete={handleCompleteQA}
+      />
+    </>
   )
 }

@@ -1,12 +1,16 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { Container, Title, Button, Card, TextInput, Textarea, Stack, Group, Text, Box, Divider, rem, Center, Loader, Alert } from '@mantine/core'
-import { IconArrowLeft, IconDownload, IconSend, IconSignature, IconCheck, IconAlertTriangle, IconSettings } from '@tabler/icons-react'
+import { Container, Button, Card, TextInput, Stack, Text, Box, Progress, Alert } from '@mantine/core'
+import { notifications } from '@mantine/notifications'
+import { IconArrowLeft, IconEdit, IconSignature, IconAlertTriangle, IconSettings } from '@tabler/icons-react'
 import { useRouter, useParams } from 'next/navigation'
 import { SignaturePadComponent } from '../../../../components/SignaturePad'
 import { DynamicField } from '../../../../components/dataTypes/Contract'
-import { SigningStepper, defaultSigningSteps } from '../../../../components/SigningStepper'
+import { defaultSigningSteps } from '../../../../components/SigningStepper'
+import { NewSignatureRequestWizard } from '../../../../components/signature-request/NewSignatureRequestWizard'
+import { ListSkeleton, PageHeader, StickyActionBar } from '../../../../components/ui'
+import { canRequestSignature } from '../../../../lib/contracts/listModel'
 import { DynamicFieldsForm } from '../../../../components/DynamicFieldsForm'
 import {
   fetchAccountVariables,
@@ -40,6 +44,7 @@ export default function ContractPreviewPage() {
   const [signatureDataUrl, setSignatureDataUrl] = useState<string>('')
   const [currentStep, setCurrentStep] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [wizardOpen, setWizardOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -235,24 +240,7 @@ export default function ContractPreviewPage() {
     }
   }, [steps.length, currentStep])
   
-  // Debug logging with detailed needsDynamicFields calculation
-  const contentHasDynamic = contract?.content ? contractNeedsDynamicFields(contract.content) : false
-  const userFieldsHaveEnabled = contract?.userFields?.some((field: any) => field.enabled) || false
-  
-  
-  // Additional debug for content patterns
-  if (contract?.content) {
-    console.log('Content Analysis:', {
-      hasInternalDynamic: /\{\{dynamic:([^}]+)\}\}/g.test(contract.content),
-      hasSpanDynamic: /<span[^>]*data-dynamic-field[^>]*>/g.test(contract.content),
-      hasBadgeDynamic: /data-field="[^"]+"/g.test(contract.content),
-      contentStart: contract.content.substring(0, 200),
-      contentEnd: contract.content.substring(contract.content.length - 200)
-    })
-  }
-  
   const handleDynamicFieldsSubmit = useCallback(() => {
-    console.log('handleDynamicFieldsSubmit called, currentStep:', currentStep)
     setCurrentStep(prevStep => prevStep + 1)
   }, [currentStep])
 
@@ -274,12 +262,12 @@ export default function ContractPreviewPage() {
 
   const handleSubmit = async () => {
     if (!validateForm()) {
-      alert('Por favor, completa todos los campos requeridos')
+      notifications.show({ message: 'Por favor, completa todos los campos requeridos', color: 'orange' })
       return
     }
 
     if (!signatureDataUrl) {
-      alert('Por favor, firma el contrato antes de enviarlo')
+      notifications.show({ message: 'Por favor, firma el contrato antes de enviarlo', color: 'orange' })
       return
     }
 
@@ -287,19 +275,13 @@ export default function ContractPreviewPage() {
 
     try {
       // Here would go the logic to send the signed contract
-      console.log('Contract signed:', {
-        contractId,
-        timestamp: new Date().toISOString()
-      })
-
       // Simulate sending
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      await new Promise(resolve => setTimeout(resolve, 600))
 
-      alert('¡Contrato firmado exitosamente!')
-      router.push('/signatures')
-    } catch (error) {
+      notifications.show({ title: 'Simulación completada', message: 'Así se vería la firma del cliente. No se ha guardado nada.', color: 'green' })
+          } catch (error) {
       console.error('Error submitting contract:', error)
-      alert('Error al enviar el contrato. Por favor, inténtalo de nuevo.')
+      notifications.show({ message: 'Error en la simulación. Inténtalo de nuevo.', color: 'red' })
     } finally {
       setIsSubmitting(false)
     }
@@ -307,210 +289,94 @@ export default function ContractPreviewPage() {
 
   if (loading || !contract) {
     return (
-      <Container size="sm" py="xl">
-        <Center>
-          <Stack align="center" gap="md">
-            <Loader size="lg" />
-            <Title size="1.2rem">
-              Cargando vista previa del contrato...
-            </Title>
-          </Stack>
-        </Center>
-      </Container>
-    )
-  }
-  
-  if (isSubmitting) {
-    return (
-      <Container size="sm" py="xl">
-        <Center>
-          <Stack align="center" gap="md">
-            <Loader size="lg" />
-            <Title size="1.2rem">
-              Procesando firma...
-            </Title>
-            <Text ta="center" c="dimmed">
-              Por favor espera mientras procesamos tu firma digital
-            </Text>
-          </Stack>
-        </Center>
-      </Container>
+      <>
+        <PageHeader title="Vista previa" back={`/contracts/${contractId}/edit`} />
+        <Container size="sm" data-testid="page-content"><ListSkeleton rows={4} /></Container>
+      </>
     )
   }
 
-  // Render based on current step
+  const canRequest = canRequestSignature(contract)
+  const stepLabels: Record<string, string> = { data: 'Datos', review: 'Contrato', sign: 'Firma de prueba' }
+
   const renderCurrentStep = () => {
     const stepId = steps[currentStep]?.id
 
     switch (stepId) {
       case 'data':
-        // console.log('Rendering DynamicFieldsForm with fields:', contract?.userFields)
         return (
-          <DynamicFieldsForm
-            fields={allFormFields}
-            values={dynamicFieldValues}
-            onValuesChange={(values) => {
-              // console.log('DynamicFieldsForm values changed:', values)
-              setDynamicFieldValues(values)
-              // Also update userFieldValues for compatibility
-              const newUserFieldValues = userFieldValues.map(field => ({
-                ...field,
-                value: values[field.name] || field.value
-              }))
-              setUserFieldValues(newUserFieldValues)
-            }}
-            onSubmit={() => {
-              // console.log('DynamicFieldsForm submitted')
-              handleDynamicFieldsSubmit()
-            }}
-            contractName={contract?.name}
-            mode="inline"
-          />
+          <Card padding="md">
+            <DynamicFieldsForm
+              fields={allFormFields}
+              values={dynamicFieldValues as any}
+              onValuesChange={(values) => {
+                setDynamicFieldValues(values)
+                setUserFieldValues(userFieldValues.map(field => ({ ...field, value: values[field.name] || field.value })))
+              }}
+              onSubmit={handleDynamicFieldsSubmit}
+              contractName={contract?.name}
+              mode="inline"
+            />
+          </Card>
         )
 
       case 'review':
         return (
-          <Stack gap="lg">
-            {/* Header */}
-            <Box ta="center">
-              <Title size={rem(24)} fw={700} mb="xs">
-                {contract?.name || "Vista Previa del Contrato"}
-              </Title>
-              <Text c="dimmed" size="sm">
-                Así es como lo verá el cliente al firmar
-              </Text>
-            </Box>
-
-            {/* Unconfigured Account Variables Warning */}
+          <Stack gap="md">
             {unconfiguredVars.length > 0 && (
-              <Alert
-                icon={<IconAlertTriangle size={16} />}
-                title="Variables de cuenta sin configurar"
-                color="orange"
-                variant="light"
-              >
+              <Alert icon={<IconAlertTriangle size={16} />} title="Variables de cuenta sin configurar" color="orange" variant="light">
                 <Text size="sm" mb="xs">
-                  Las siguientes variables de tu cuenta no tienen valor configurado y se mostrarán como marcadores en el contrato:
+                  Estas variables de tu cuenta no tienen valor y se mostrarán como marcadores en el contrato:
                 </Text>
-                <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>
+                <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
                   {unconfiguredVars.map((varName) => (
-                    <li key={varName} style={{ fontSize: '14px' }}>
+                    <li key={varName} style={{ fontSize: 14 }}>
                       <strong>{getAccountVariableLabel(varName)}</strong> ({varName})
                     </li>
                   ))}
                 </ul>
-                <Button
-                  variant="light"
-                  color="orange"
-                  size="xs"
-                  mt="xs"
-                  leftSection={<IconSettings size={14} />}
-                  onClick={() => router.push('/settings')}
-                >
+                <Button variant="light" color="orange" mt="xs" leftSection={<IconSettings size={16} />} onClick={() => router.push('/settings')}>
                   Configurar en Ajustes
                 </Button>
               </Alert>
             )}
 
-            {/* Contract Content - uses existing processed content from getProcessedContent() which handles account-owned contract data */}
-            <Box
-              p="lg"
-              style={{
-                border: '1px solid var(--mantine-color-gray-3)',
-                borderRadius: 'var(--mantine-radius-md)',
-                backgroundColor: 'var(--mantine-color-gray-0)',
-              }}
-            >
-              <Box
-                dangerouslySetInnerHTML={{
-                  __html: getProcessedContent()
-                }}
-                style={{
-                  lineHeight: 1.6,
-                  fontSize: rem(16),
-                }}
-              />
-            </Box>
+            <article className="os-doc-surface" data-testid="contract-document" dangerouslySetInnerHTML={{ __html: getProcessedContent() }} />
 
-            {/* Navigation */}
-            <Group justify="space-between">
+            <Stack gap="xs" maw={760} mx="auto" w="100%">
+              <Button variant="light" onClick={handleContinueToSign} leftSection={<IconSignature size={18} />}>
+                Probar la firma
+              </Button>
               {needsDynamicFields && (
-                <Button
-                  variant="subtle"
-                  onClick={handleBackToFields}
-                  leftSection={<IconArrowLeft size={16} />}
-                >
-                  Editar datos
+                <Button variant="subtle" color="gray" onClick={handleBackToFields} leftSection={<IconArrowLeft size={18} />}>
+                  Editar datos de prueba
                 </Button>
               )}
-
-              <Button
-                onClick={handleContinueToSign}
-                rightSection={<IconSignature size={16} />}
-                style={{ marginLeft: needsDynamicFields ? undefined : 'auto' }}
-              >
-                Continuar a firmar
-              </Button>
-            </Group>
+            </Stack>
           </Stack>
         )
 
       case 'sign':
         return (
-          <Stack gap="lg">
-            {/* Header */}
-            <Box ta="center">
-              <Title size={rem(24)} fw={700} mb="xs">
-                Firma tu contrato (Vista Previa)
-              </Title>
-              <Text c="dimmed" size="sm">
-                Esta es una simulación del proceso de firma
-              </Text>
-            </Box>
-
-            {/* Signature Section */}
-            <Stack gap="md">
-              <Text c="dimmed">
-                Al firmar este documento, certificas que:
-              </Text>
-
-              <Box component="ul" style={{ paddingLeft: rem(20), margin: 0 }}>
-                <li>Has leído y comprendido el contenido completo del contrato</li>
-                <li>Aceptas los términos y condiciones establecidos</li>
-                <li>Esta firma tiene valor legal y es vinculante</li>
-              </Box>
-
-              {/* Signature Pad */}
-              <Box>
-                <Text size="sm" fw={500} mb="xs">Dibuja tu firma:</Text>
-                <SignaturePadComponent
-                  onSignatureChange={handleSignatureChange}
-                  width={undefined}
-                  height={150}
-                />
-              </Box>
-            </Stack>
-
-            {/* Navigation */}
-            <Group justify="space-between">
-              <Button
-                variant="subtle"
-                onClick={handleBackToReview}
-                leftSection={<IconArrowLeft size={16} />}
-              >
-                Volver a revisar
-              </Button>
-
-              <Button
-                onClick={handleSubmit}
-                disabled={!signatureDataUrl || !validateForm()}
-                loading={isSubmitting}
-                leftSection={<IconSignature size={16} />}
-                size="md"
-              >
-                Firmar Contrato (Simulación)
-              </Button>
-            </Group>
+          <Stack gap="md" maw={760} mx="auto" w="100%">
+            <Text c="dimmed" size="sm">
+              Simulación de la firma del cliente: dibuja una firma de prueba. No se guarda nada.
+            </Text>
+            <Card padding="md" data-testid="signature-test-area">
+              <Text size="sm" fw={500} mb="xs">Dibuja tu firma</Text>
+              <SignaturePadComponent onSignatureChange={handleSignatureChange} width={undefined} height={180} />
+            </Card>
+            <Button
+              onClick={handleSubmit}
+              disabled={!signatureDataUrl || !validateForm()}
+              loading={isSubmitting}
+              leftSection={<IconSignature size={18} />}
+            >
+              Firmar contrato (simulación)
+            </Button>
+            <Button variant="subtle" color="gray" onClick={handleBackToReview} leftSection={<IconArrowLeft size={18} />}>
+              Volver a revisar
+            </Button>
           </Stack>
         )
 
@@ -519,59 +385,39 @@ export default function ContractPreviewPage() {
     }
   }
 
+  const stepId = steps[currentStep]?.id
   return (
-    <Box style={{ minHeight: '100vh', backgroundColor: 'var(--mantine-color-gray-0)' }}>
-      {/* Header */}
-      <Box 
-        style={{
-          backgroundColor: 'white',
-          borderBottom: '1px solid var(--mantine-color-gray-2)',
-          padding: `${rem(16)} 0`,
-        }}
-      >
-        <Container size="lg">
-          <Group justify="space-between" align="center">
-            <Group>
-              <Button
-                variant="subtle"
-                leftSection={<IconArrowLeft size={16} />}
-                onClick={() => router.push(`/contracts/${contractId}/edit`)}
-              >
-                Volver al Editor
-              </Button>
-              <div>
-                <Title size="1.5rem" fw={700}>
-                  Vista Previa del Contrato
-                </Title>
-                <Text size="sm" c="dimmed">
-                  Simulación del proceso de firma
-                </Text>
-              </div>
-            </Group>
-          </Group>
-          
-          {/* Stepper */}
-          <Box mt="lg">
-            <SigningStepper 
-              currentStep={currentStep}
-              steps={steps}
-              completed={false}
-            />
-          </Box>
-        </Container>
-      </Box>
-
-      {/* Current Step Content */}
-      <Box
-        w={{ base: '100%', sm: '92%', md: '76%', lg: '70%', xl: '60%' }}
-        mx="auto"
-        py="xl"
-        px={{ base: 'sm', sm: 0 }}
-      >
-        <Card shadow="sm" padding={{ base: 'md', sm: 'lg', md: 'xl' }} radius="lg" withBorder>
+    <>
+      <PageHeader title={contract.name || 'Vista previa'} subtitle="Así lo verá el cliente al firmar" back={`/contracts/${contractId}/edit`} />
+      <Container size="md" data-testid="page-content" className="os-touch" pt="sm" pb="xl">
+        <Stack gap="md">
+          {steps.length > 1 && (
+            <Box>
+              <Text size="sm" c="dimmed" mb={4}>
+                Paso {currentStep + 1} de {steps.length} · {stepLabels[stepId] ?? ''}
+              </Text>
+              <Progress value={((currentStep + 1) / steps.length) * 100} size="sm" aria-label="Progreso de la vista previa" />
+            </Box>
+          )}
           {renderCurrentStep()}
-        </Card>
-      </Box>
-    </Box>
+        </Stack>
+        <StickyActionBar
+          caption={canRequest ? undefined : 'Activa el contrato para poder solicitar firmas.'}
+        >
+          <Button variant="default" leftSection={<IconEdit size={18} />} onClick={() => router.push(`/contracts/${contractId}/edit`)}>
+            Editar
+          </Button>
+          <Button leftSection={<IconSignature size={18} />} disabled={!canRequest} onClick={() => setWizardOpen(true)}>
+            Solicitar firma
+          </Button>
+        </StickyActionBar>
+      </Container>
+      <NewSignatureRequestWizard
+        mode="sheet"
+        opened={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        initialContractId={contractId}
+      />
+    </>
   )
 }

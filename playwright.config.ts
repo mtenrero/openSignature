@@ -10,26 +10,55 @@ const PORT = Number(process.env.E2E_PORT ?? 3100)
 const MIVET_DIR = process.env.MIVET_DIR ? path.resolve(process.env.MIVET_DIR) : path.resolve(__dirname, '../mivet-appfront')
 const hasMivet = fs.existsSync(path.join(MIVET_DIR, 'lib/osign-client.ts'))
 
+const baseIgnore = hasMivet ? ['**/stripe-real/**', '**/stack/**'] : ['**/stripe-real/**', '**/stack/**', '**/mivet-*.spec.ts']
+
 export default defineConfig({
   testDir: './e2e',
   // Always skip the real-Stripe checkout suite (own config + real keys); also skip the
   // cross-repo mivet specs when the sibling repo isn't available (e.g. CI).
   // e2e/stack/** needs the full local stack (mivet :3005 + oSign :3100): own config.
-  testIgnore: hasMivet ? ['**/stripe-real/**', '**/stack/**'] : ['**/stripe-real/**', '**/stack/**', '**/mivet-*.spec.ts'],
+  testIgnore: baseIgnore,
   fullyParallel: false, // shared DB state across tests
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: 1,
+  workers: 1, // one worker: tests share a single next dev server and DB
+  // Default 5s is shorter than a cold `next dev` compile of an API route under load.
+  expect: { timeout: 15_000 },
   reporter: process.env.CI ? 'github' : 'list',
   globalSetup: path.resolve(__dirname, './e2e/globalSetup.ts'),
   globalTeardown: path.resolve(__dirname, './e2e/globalTeardown.ts'),
   use: {
     baseURL: `http://localhost:${PORT}`,
+    navigationTimeout: 45_000,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Desktop functional specs (mobile layout specs live in e2e/mobile and run in the 3 projects below).
+    // A project-level testIgnore REPLACES the top-level one, so repeat the base list here.
+    { name: 'chromium', testIgnore: [...baseIgnore, '**/mobile/**'], use: { ...devices['Desktop Chrome'] } },
+    {
+      name: 'mobile',
+      testMatch: '**/mobile/**/*.spec.ts',
+      use: {
+        browserName: 'chromium',
+        viewport: { width: 390, height: 844 },
+        deviceScaleFactor: 3,
+        isMobile: true,
+        hasTouch: true,
+        userAgent: devices['iPhone 14'].userAgent,
+      },
+    },
+    {
+      name: 'tablet',
+      testMatch: '**/mobile/**/*.spec.ts',
+      use: { browserName: 'chromium', viewport: { width: 768, height: 1024 }, hasTouch: true },
+    },
+    {
+      name: 'desktop-responsive',
+      testMatch: '**/mobile/**/*.spec.ts',
+      use: { browserName: 'chromium', viewport: { width: 1440, height: 900 } },
+    },
   ],
   // Note: next dev is started by globalSetup (it needs MONGODB_TEST_URI + seeded
   // API key set BEFORE next dev boots, which a webServer block cannot provide).

@@ -1,0 +1,46 @@
+/* oSign Mobile design tokens. Light/dark through Mantine's color-scheme attribute. */
+:root {
+  --os-bg: #f5f6f8;
+  --os-surface: #ffffff;
+  --os-surface-2: #f0f2f5;
+  --os-border: #e3e6ea;
+  --os-text: #0f1720;
+  --os-text-dim: #5b6472;
+  --os-brand: var(--mantine-color-primary-7);
+  /* Text-safe on --os-bg / --os-surface (>= 4.5:1, see __tests__/unit/tokensContrast.test.ts). */
+  --os-success: #1e7a32;
+  --os-warning: #a84300;
+  --os-danger: #c92a2a;
+  --os-info: var(--mantine-color-primary-7);
+
+  --os-header-h: 56px;
+  --os-tabbar-h: 64px;
+  --os-touch: 44px;
+  --os-safe-top: env(safe-area-inset-top, 0px);
+  --os-safe-right: env(safe-area-inset-right, 0px);
+  --os-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --os-safe-left: env(safe-area-inset-left, 0px);
+  --os-gutter: 16px;
+}
+
+:root[data-mantine-color-scheme='dark'] {
+  --os-bg: #0e1116;
+  --os-surface: #171a21;
+  --os-surface-2: #1f232c;
+  --os-border: #2a2f3a;
+  --os-text: #e8eaee;
+  --os-text-dim: #9aa3b2;
+  --os-brand: var(--mantine-color-primary-4);
+  --os-success: var(--mantine-color-green-4);
+  --os-warning: var(--mantine-color-orange-4);
+  --os-danger: var(--mantine-color-red-4);
+  --os-info: var(--mantine-color-primary-4);
+  color-scheme: dark;
+}
+
+@media (min-width: 48em) {
+  :root { --os-gutter: 24px; }
+}
+@media (min-width: 75em) {
+  :root { --os-gutter: 32px; }
+}

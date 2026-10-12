@@ -32,56 +32,29 @@ export const theme = createTheme({
     secondary,
   },
   primaryColor: 'primary',
-  fontFamily: 'Inter, system-ui, Avenir, Helvetica, Arial, sans-serif',
+  primaryShade: { light: 7, dark: 6 },
+  fontFamily:
+    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+  headings: {
+    fontFamily:
+      "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+    fontWeight: '650',
+  },
+  fontSizes: { xs: '0.75rem', sm: '0.875rem', md: '1rem', lg: '1.125rem', xl: '1.25rem' },
   defaultRadius: 'md',
+  radius: { xs: '4px', sm: '8px', md: '12px', lg: '16px', xl: '24px' },
   components: {
-    Button: {
-      defaultProps: {
-        size: 'md',
-      },
-    },
-    TextInput: {
-      defaultProps: {
-        size: 'md',
-      },
-    },
-    Select: {
-      defaultProps: {
-        size: 'md',
-      },
-    },
-    Paper: {
-      defaultProps: {
-        shadow: 'sm',
-        radius: 'md',
-      },
-    },
-    Card: {
-      defaultProps: {
-        shadow: 'sm',
-        radius: 'md',
-      },
-    },
+    Button: { defaultProps: { size: 'md' } },
+    ActionIcon: { defaultProps: { size: 'lg' } },
+    TextInput: { defaultProps: { size: 'md' } },
+    Select: { defaultProps: { size: 'md' } },
+    Textarea: { defaultProps: { size: 'md' } },
+    PinInput: { defaultProps: { size: 'md' } },
+    Card: { defaultProps: { withBorder: true, shadow: 'xs', radius: 'lg' } },
+    Paper: { defaultProps: { withBorder: true, shadow: 'xs', radius: 'lg' } },
+    Modal: { defaultProps: { radius: 'lg', centered: true, overlayProps: { blur: 2 } } },
+    Drawer: { defaultProps: { radius: 'lg' } },
+    Menu: { defaultProps: { shadow: 'md' } },
+    Tooltip: { defaultProps: { events: { hover: true, focus: true, touch: true } } },
   },
-});
-
-export const darkTheme = createTheme({
-  ...theme,
-  colors: {
-    primary,
-    secondary,
-    dark: [
-      '#f8fafc',
-      '#f1f5f9',
-      '#e2e8f0',
-      '#cbd5e1',
-      '#94a3b8',
-      '#64748b',
-      '#475569',
-      '#334155',
-      '#1e293b',
-      '#0f172a',
-    ],
-  },
-  primaryColor: 'primary',
 });

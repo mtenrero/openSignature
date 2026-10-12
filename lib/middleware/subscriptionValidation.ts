@@ -50,9 +50,9 @@ export async function validateSubscription(
     const actionCheck = await UsageTracker.canPerformAction(customerId, limits, action)
     
     if (!actionCheck.allowed) {
-      const upgradeMessage = actionCheck.extraCost 
+      const upgradeMessage = actionCheck.extraCost
         ? `You've reached your limit. Each additional ${action} costs ${(actionCheck.extraCost / 100).toFixed(2)}€`
-        : 'You've reached your plan limit'
+        : 'You\'ve reached your plan limit'
 
       return {
         allowed: false,

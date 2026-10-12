@@ -3,9 +3,19 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { findTokenDeletionRange } from '../../lib/editor/tokenDeletion'
 
+export interface FieldTapInfo {
+  name: string
+  category: 'variable' | 'dynamic'
+  /** Document range of the whole {{...}} token. */
+  from: number
+  to: number
+}
+
 interface FieldStylingOptions {
   variables: Array<{ name: string; type: string }>;
   dynamicFields: Array<{ name: string; type: string; required?: boolean; label?: string }>;
+  /** Tap/click on a field badge (touch has no hover): lets the host open an edit/remove sheet. */
+  onFieldTap?: (info: FieldTapInfo) => void;
 }
 
 export const FieldStylingExtension = Extension.create<FieldStylingOptions>({
@@ -14,7 +24,8 @@ export const FieldStylingExtension = Extension.create<FieldStylingOptions>({
   addOptions() {
     return {
       variables: [],
-      dynamicFields: []
+      dynamicFields: [],
+      onFieldTap: undefined,
     }
   },
 
@@ -54,6 +65,32 @@ export const FieldStylingExtension = Extension.create<FieldStylingOptions>({
       new Plugin({
         key: new PluginKey('fieldStyling'),
         props: {
+          handleClick: (view, pos, event) => {
+            const onFieldTap = this.options.onFieldTap
+            const el = (event.target as HTMLElement | null)?.closest?.('[data-field-name]') as HTMLElement | null
+            if (!onFieldTap || !el) return false
+            const name = el.getAttribute('data-field-name') || ''
+            const category = el.getAttribute('data-category') === 'variable' ? 'variable' : 'dynamic'
+            const $pos = view.state.doc.resolve(pos)
+            const parent = $pos.parent
+            if (!parent.isTextblock) return false
+            // One char per leaf node keeps string offsets aligned with document positions.
+            const text = parent.textBetween(0, parent.content.size, undefined, '\ufffc')
+            const re = new RegExp(`\\{\\{${category}:\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\}\\}`, 'g')
+            const start = $pos.start()
+            let best: { from: number; to: number } | null = null
+            let bestDist = Infinity
+            let m: RegExpExecArray | null
+            while ((m = re.exec(text)) !== null) {
+              const from = start + m.index
+              const to = from + m[0].length
+              const dist = pos < from ? from - pos : pos > to ? pos - to : 0
+              if (dist < bestDist) { best = { from, to }; bestDist = dist }
+            }
+            if (!best) return false
+            onFieldTap({ name, category, from: best.from, to: best.to })
+            return true
+          },
           decorations: (state) => {
             const decorations: Decoration[] = []
             const doc = state.doc

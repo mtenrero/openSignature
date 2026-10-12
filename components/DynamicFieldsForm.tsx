@@ -41,6 +41,8 @@ interface DynamicFieldsFormProps {
   contractName?: string
   lockedFields?: string[]
   mode?: 'standalone' | 'modal' | 'inline' // standalone: full UI with container & button, modal: just fields, inline: full UI without container (for embedding in parent cards)
+  /** Pin the submit/back buttons to the bottom of the screen (signer flow). */
+  stickyActions?: boolean
   skipMandatoryValidation?: boolean // Skip mandatory field validation (e.g., when fields were collected in a previous step)
 }
 
@@ -54,7 +56,8 @@ export function DynamicFieldsForm({
   loading = false,
   contractName,
   lockedFields = [],
-  skipMandatoryValidation = false
+  skipMandatoryValidation = false,
+  stickyActions = false
 }: DynamicFieldsFormProps) {
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [mandatoryValidation, setMandatoryValidation] = useState<{
@@ -267,7 +270,7 @@ export function DynamicFieldsForm({
                   handleFieldChange(field.name, event.currentTarget.checked ? 'true' : 'false')
                 }
                 error={fieldError}
-                size="sm"
+                size="md"
                 disabled={isLocked}
               />
             ) : (
@@ -281,12 +284,12 @@ export function DynamicFieldsForm({
                   type={getFieldType(field.type)}
                   required={field.required}
                   error={fieldError}
-                  size="sm"
+                  size="md"
                   disabled={isLocked}
                   styles={{
                     input: {
                       fontSize: rem(16), // Prevent zoom on iOS
-                      backgroundColor: isLocked ? 'var(--mantine-color-gray-1)' : undefined,
+                      backgroundColor: isLocked ? 'var(--os-surface-2)' : undefined,
                       opacity: isLocked ? 0.8 : 1,
                     }
                   }}
@@ -408,29 +411,36 @@ export function DynamicFieldsForm({
       )}
 
       {/* Action Buttons */}
-      <Group justify="space-between" mt="lg">
-        {onBack && (
-          <Button
-            variant="subtle"
-            onClick={onBack}
-            disabled={loading}
-            size="sm"
-          >
-            Volver
-          </Button>
-        )}
-
-        <Button
-          onClick={handleSubmit}
-          loading={loading}
-          rightSection={<IconArrowRight size={16} />}
-          size="sm"
-          style={{ marginLeft: 'auto' }}
-          disabled={mandatoryValidation && !mandatoryValidation.isValid}
-        >
-          Continuar con el contrato
-        </Button>
-      </Group>
+      {(() => {
+        const buttons = (
+          <>
+            {onBack && (
+              <Button variant="default" onClick={onBack} disabled={loading} size="md" className="os-signer-bar__aux">
+                Volver
+              </Button>
+            )}
+            <Button
+              onClick={handleSubmit}
+              loading={loading}
+              rightSection={<IconArrowRight size={16} />}
+              size="md"
+              style={stickyActions ? undefined : { marginLeft: 'auto' }}
+              disabled={mandatoryValidation && !mandatoryValidation.isValid}
+            >
+              Continuar con el contrato
+            </Button>
+          </>
+        )
+        return stickyActions ? (
+          <div className="os-signer-bar" data-testid="signer-bar">
+            <div className="os-signer-bar__in">{buttons}</div>
+          </div>
+        ) : (
+          <Group justify="space-between" mt="lg">
+            {buttons}
+          </Group>
+        )
+      })()}
 
       {/* Help Text */}
       <Box ta="center">

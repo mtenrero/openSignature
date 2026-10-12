@@ -1,9 +1,9 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Container, Title, Button, Card, TextInput, Textarea, Stack, Group, Text, Checkbox, Select, ActionIcon, Modal, Box, Badge } from '@mantine/core'
-import { IconDeviceFloppy, IconPlus, IconTrash, IconArrowLeft, IconSettings } from '@tabler/icons-react'
-import { useRouter } from 'next/navigation'
+import { Container, Button, TextInput, Stack, Group, Text, Switch, Select, ActionIcon, Box, Badge, Skeleton } from '@mantine/core'
+import { IconDeviceFloppy, IconPlus, IconTrash } from '@tabler/icons-react'
+import { PageHeader, Section, AdaptiveSheet, StickyActionBar } from '../../components/ui'
 import { notifications } from '@mantine/notifications'
 import { DynamicField, UserDynamicFieldsConfig } from '../../components/dataTypes/Contract'
 
@@ -72,10 +72,10 @@ const defaultDynamicFields: LocalDynamicField[] = [
 ]
 
 export default function SettingsPage() {
-  const router = useRouter()
   const [dynamicFields, setDynamicFields] = useState<LocalDynamicField[]>(defaultDynamicFields)
   const [saving, setSaving] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
   const [newField, setNewField] = useState({
     name: '',
@@ -113,7 +113,7 @@ export default function SettingsPage() {
       }
     }
     
-    loadVariables()
+    loadVariables().finally(() => setLoaded(true))
   }, [])
 
   const handleSave = async () => {
@@ -240,164 +240,109 @@ export default function SettingsPage() {
     }
   }
 
+  const defaults = dynamicFields.filter(f => defaultDynamicFields.some(df => df.id === f.id))
+  const custom = dynamicFields.filter(f => !defaultDynamicFields.some(df => df.id === f.id))
+
+  const renderField = (field: LocalDynamicField, removable: boolean) => (
+    <div key={field.id} className="os-rt-card" data-testid={`variable-${field.name}`}>
+      <Group justify="space-between" align="center" wrap="nowrap" mih={44}>
+        <Switch
+          label={field.name}
+          description={getFieldTypeLabel(field.type)}
+          checked={field.enabled}
+          onChange={(event) => handleToggleField(field.id, event.currentTarget.checked)}
+          disabled={field.name === 'fecha'}
+          styles={{ label: { fontWeight: 600, overflowWrap: 'anywhere' } }}
+        />
+        {removable && (
+          <ActionIcon color="red" variant="subtle" size="lg" aria-label={`Eliminar variable ${field.name}`} onClick={() => handleRemoveField(field.id)}>
+            <IconTrash size={18} />
+          </ActionIcon>
+        )}
+      </Group>
+      {(field as any).autoDetected && (
+        <Badge color="grape" variant="light" size="sm" mt={4}>Usada en contratos · sin valor</Badge>
+      )}
+      {field.name === 'fecha' ? (
+        <Text size="sm" c="dimmed" mt="xs">Se completa automáticamente con la fecha actual.</Text>
+      ) : (
+        <TextInput
+          mt="sm"
+          label="Valor de la variable"
+          placeholder={`Ej: ${getDefaultPlaceholder(field.name)}`}
+          value={field.placeholder}
+          onChange={(event) => handleUpdateField(field.id, { placeholder: event.target.value })}
+          description="Aparecerá automáticamente en tus contratos"
+        />
+      )}
+    </div>
+  )
+
   return (
-    <Container size="xl" py="xl">
-      <Stack gap="lg">
-        {/* Header */}
-        <Group justify="space-between" align="center">
-          <Group>
-            <Button
-              variant="subtle"
-              leftSection={<IconArrowLeft size={16} />}
-              onClick={() => router.push('/contracts')}
-            >
-              Volver a Mis Contratos
+    <Container size="md" px="md" pb="xl" data-testid="page-content">
+      <PageHeader
+        title="Variables de la cuenta"
+        subtitle="Datos de tu empresa que se reutilizan en todos tus contratos"
+        back="/more"
+      />
+      <Stack gap="xl" mt="md">
+        <Section
+          title="Datos de tu empresa"
+        >
+          {!loaded ? (
+            <>
+              <Skeleton h={120} radius="lg" />
+              <Skeleton h={120} radius="lg" />
+            </>
+          ) : (
+            defaults.map(f => renderField(f, false))
+          )}
+        </Section>
+
+        <Section
+          title="Variables personalizadas"
+          action={
+            <Button variant="light" size="sm" leftSection={<IconPlus size={16} />} onClick={() => setModalOpen(true)}>
+              Añadir
             </Button>
-            <div>
-              <Title size="2rem" fw={700}>
-                Variables de la Cuenta
-              </Title>
-              <Text size="sm" c="dimmed">
-                Configura datos de tu empresa que se reutilizan automáticamente en todos tus contratos
-              </Text>
-            </div>
-          </Group>
+          }
+        >
+          {custom.length === 0 ? (
+            <Text size="sm" c="dimmed">
+              Aún no tienes variables personalizadas. Añade, por ejemplo, el nombre de tu empresa o tu CIF para no escribirlos en cada contrato.
+            </Text>
+          ) : (
+            custom.map(f => renderField(f, true))
+          )}
+        </Section>
 
-          <Button
-            leftSection={<IconDeviceFloppy size={16} />}
-            onClick={handleSave}
-            loading={saving}
-            size="lg"
-          >
-            Guardar Configuración
-          </Button>
-        </Group>
-
-        {/* Variables de la Cuenta */}
-        <Card shadow="sm" padding="lg" radius="md" withBorder>
-          <Group justify="space-between" mb="md">
-            <Box>
-              <Title size="1.2rem" fw={600}>
-                Variables Disponibles
-              </Title>
-              <Text size="sm" c="dimmed">
-                Datos de tu empresa que aparecerán automáticamente en tus contratos
-              </Text>
-            </Box>
-            <Button
-              leftSection={<IconPlus size={16} />}
-              onClick={() => setModalOpen(true)}
-              color="purple"
-            >
-              Agregar Variable Personalizada
-            </Button>
-          </Group>
-
-          <Stack gap="md">
-            {dynamicFields.map(field => (
-              <Card key={field.id} padding="md" withBorder>
-                <Group justify="space-between" align="flex-start">
-                  <Box flex={1}>
-                    <Group align="center" mb="xs">
-                      <Checkbox
-                        checked={field.enabled}
-                        onChange={(event) => handleToggleField(field.id, event.currentTarget.checked)}
-                        disabled={field.name === 'fecha'} // La fecha siempre está habilitada
-                      />
-                      <Text fw={500} size="lg">
-                        {field.name}
-                      </Text>
-                      <Text size="sm" c="dimmed">
-                        ({getFieldTypeLabel(field.type)})
-                      </Text>
-                      {(field as any).autoDetected && (
-                        <Badge color="grape" variant="light" size="sm">
-                          Usada en contratos · sin valor
-                        </Badge>
-                      )}
-                    </Group>
-
-                    {field.name === 'fecha' ? (
-                      <Text size="sm" c="dimmed" mb="xs">
-                        Valor: Se completa automáticamente con la fecha actual
-                      </Text>
-                    ) : (
-                      <TextInput
-                        label="Valor de la Variable"
-                        placeholder={`Ej: ${getDefaultPlaceholder(field.name)}`}
-                        value={field.placeholder}
-                        onChange={(event) => handleUpdateField(field.id, { placeholder: event.target.value })}
-                        size="sm"
-                        mb="xs"
-                        description="Este valor aparecerá automáticamente en tus contratos"
-                      />
-                    )}
-                  </Box>
-
-                  <Group>
-                    {/* Solo mostrar botón de eliminar para campos personalizados */}
-                    {!defaultDynamicFields.find(df => df.id === field.id) && (
-                      <ActionIcon
-                        color="red"
-                        variant="subtle"
-                        onClick={() => handleRemoveField(field.id)}
-                      >
-                        <IconTrash size={16} />
-                      </ActionIcon>
-                    )}
-                  </Group>
-                </Group>
-              </Card>
-            ))}
-          </Stack>
-        </Card>
-
-        {/* Información */}
-        <Card shadow="sm" padding="lg" radius="md" withBorder style={{ backgroundColor: 'light-dark(var(--mantine-color-purple-0), var(--mantine-color-dark-6))' }}>
-          <Title size="1.2rem" fw={600} mb="md" c="purple">
-            ¿Qué son las Variables de la Cuenta?
-          </Title>
-          <Stack gap="sm">
-            <Text size="sm">
-              <strong>📋 Información reutilizable:</strong> Son datos útiles de tu empresa como nombre, identificación fiscal, teléfono, dirección, etc. que se usan repetidamente en tus contratos.
-            </Text>
-            <Text size="sm">
-              <strong>🔄 Ahorra tiempo:</strong> Configúralos una vez y aparecerán automáticamente en todos tus contratos sin necesidad de escribirlos cada vez.
-            </Text>
-            <Text size="sm">
-              <strong>📅 Datos dinámicos:</strong> La fecha se completa automáticamente con la fecha actual cuando se crea o firma el contrato.
-            </Text>
-            <Text size="sm">
-              <strong>✏️ Fácil inserción:</strong> Las variables habilitadas aparecerán en el editor de contratos para insertarlas con un clic.
-            </Text>
-            <Text size="sm">
-              <strong>💾 Sincronización:</strong> Los cambios se guardan en tu cuenta y estarán disponibles desde cualquier dispositivo.
-            </Text>
-          </Stack>
-          
-          <Box mt="md" p="md" style={{ backgroundColor: 'light-dark(var(--mantine-color-blue-0), var(--mantine-color-dark-7))', borderRadius: '8px' }}>
-            <Text size="sm" fw={500} mb="xs" c="blue">
-              💡 Ejemplos de uso:
-            </Text>
-            <Text size="xs" c="dimmed">
-              • <strong>Nombre de la empresa:</strong> "Acme Solutions S.L." → Aparece automáticamente en todos los contratos
-            </Text>
-            <Text size="xs" c="dimmed">
-              • <strong>CIF/NIT:</strong> "B12345678" → Se inserta sin tener que recordarlo
-            </Text>
-            <Text size="xs" c="dimmed">
-              • <strong>Dirección:</strong> "Calle Mayor 123, Madrid" → Siempre actualizada y consistente
-            </Text>
-          </Box>
-        </Card>
+        <Section title="¿Qué son las variables?">
+          <div className="os-rt-card">
+            <Stack gap="xs">
+              <Text size="sm">Son datos de tu empresa (nombre, identificación fiscal, teléfono, dirección…) que se usan una y otra vez en tus contratos.</Text>
+              <Text size="sm">Configúralos una vez: las variables habilitadas aparecen en el editor para insertarlas con un toque y se sincronizan entre tus dispositivos.</Text>
+              <Text size="sm" c="dimmed">Ejemplo: «Acme Solutions S.L.», «B12345678» o «Calle Mayor 123, Madrid».</Text>
+            </Stack>
+          </div>
+        </Section>
       </Stack>
 
-      {/* Add Custom Field Modal */}
-      <Modal
+      <StickyActionBar aboveTabBar>
+        <Button fullWidth size="md" leftSection={<IconDeviceFloppy size={18} />} onClick={handleSave} loading={saving}>
+          Guardar
+        </Button>
+      </StickyActionBar>
+
+      <AdaptiveSheet
         opened={modalOpen}
         onClose={() => setModalOpen(false)}
-        title="Agregar Variable Personalizada"
-        centered
+        title="Agregar variable personalizada"
+        footer={
+          <Group grow>
+            <Button variant="default" onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <Button onClick={handleAddField} disabled={!newField.name.trim()}>Agregar variable</Button>
+          </Group>
+        }
       >
         <Stack gap="md">
           <TextInput
@@ -407,54 +352,37 @@ export default function SettingsPage() {
             onChange={(event) => setNewField({ ...newField, name: event.target.value })}
             description="Nombre técnico para usar en los contratos"
           />
-
           <TextInput
             label="Valor de la variable"
-            placeholder="ej: Acme Solutions S.L., B12345678, +34 900 123 456"
+            placeholder="ej: Acme Solutions S.L., B12345678"
             value={newField.placeholder}
             onChange={(event) => setNewField({ ...newField, placeholder: event.target.value })}
             description="El valor que aparecerá en tus contratos"
           />
-
-          <Group grow>
-            <Select
-              label="Tipo de campo"
-              data={[
-                { value: 'text', label: 'Texto' },
-                { value: 'email', label: 'Email' },
-                { value: 'number', label: 'Número' },
-                { value: 'date', label: 'Fecha' },
-                { value: 'name', label: 'Nombre' },
-                { value: 'address', label: 'Dirección' },
-                { value: 'phone', label: 'Teléfono' },
-                { value: 'taxId', label: 'ID Fiscal' }
-              ]}
-              value={newField.type}
-              onChange={(value) => setNewField({ ...newField, type: value as any })}
-            />
-
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                <input
-                  type="checkbox"
-                  checked={newField.required}
-                  onChange={(event) => setNewField({ ...newField, required: event.target.checked })}
-                />
-                Requerido
-              </label>
-            </div>
-          </Group>
-
-          <Group justify="flex-end">
-            <Button variant="light" onClick={() => setModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleAddField} disabled={!newField.name.trim()} color="purple">
-              Agregar Variable
-            </Button>
-          </Group>
+          <Select
+            label="Tipo de campo"
+            allowDeselect={false}
+            comboboxProps={{ withinPortal: true }}
+            data={[
+              { value: 'text', label: 'Texto' },
+              { value: 'email', label: 'Email' },
+              { value: 'number', label: 'Número' },
+              { value: 'date', label: 'Fecha' },
+              { value: 'name', label: 'Nombre' },
+              { value: 'address', label: 'Dirección' },
+              { value: 'phone', label: 'Teléfono' },
+              { value: 'taxId', label: 'ID Fiscal' },
+            ]}
+            value={newField.type}
+            onChange={(value) => setNewField({ ...newField, type: (value ?? 'text') as any })}
+          />
+          <Switch
+            label="Requerido"
+            checked={newField.required}
+            onChange={(event) => setNewField({ ...newField, required: event.currentTarget.checked })}
+          />
         </Stack>
-      </Modal>
+      </AdaptiveSheet>
     </Container>
   )
 }

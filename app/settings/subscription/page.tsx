@@ -1,44 +1,13 @@
 'use client'
 
 import React, { useState, useEffect, Suspense } from 'react'
-import { 
-  Container, 
-  Title, 
-  Text, 
-  Card, 
-  Stack, 
-  Group, 
-  Badge, 
-  Button, 
-  SimpleGrid, 
-  Progress, 
-  Alert,
-  Loader,
-  ActionIcon,
-  Tooltip,
-  Modal,
-  List,
-  ThemeIcon,
-  Divider
-} from '@mantine/core'
-import {
-  IconCrown,
-  IconCheck,
-  IconX,
-  IconTrendingUp,
-  IconUsers,
-  IconMail,
-  IconRobot,
-  IconInfoCircle,
-  IconArrowUp,
-  IconCreditCard,
-  IconPhone,
-  IconCalendar
-} from '@tabler/icons-react'
+import { Container, Text, Stack, Group, Badge, Button, Progress, Alert, ActionIcon, List, ThemeIcon, SimpleGrid } from '@mantine/core'
+import { IconCrown, IconCheck, IconX, IconArrowUp, IconCreditCard, IconCalendar } from '@tabler/icons-react'
 import { useSession } from 'next-auth/react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { notifications } from '@mantine/notifications'
 import Link from 'next/link'
+import { PageHeader, Section, AdaptiveSheet, ListSkeleton } from '../../../components/ui'
 
 interface SubscriptionData {
   user: {
@@ -229,6 +198,8 @@ function SubscriptionPageContent() {
     }
   }
 
+  const usageText = (c: string) => `var(--mantine-color-${c}-light-color)`
+
   const getUsageColor = (current: number, limit: number) => {
     if (limit === -1) return 'green' // Unlimited
     const percentage = (current / limit) * 100
@@ -246,310 +217,202 @@ function SubscriptionPageContent() {
     }).format(price / 100)
   }
 
+  const header = (
+    <PageHeader
+      title="Mi suscripción"
+      subtitle="Tu plan y tu uso"
+      back="/more"
+      actions={
+        <ActionIcon component={Link} href="/settings/billing" variant="subtle" color="gray" size="lg" aria-label="Facturación y monedero">
+          <IconCreditCard size={22} />
+        </ActionIcon>
+      }
+    />
+  )
+
   if (loading) {
     return (
-      <Container size="lg" py="xl">
-        <Stack align="center" gap="md">
-          <Loader size="lg" />
-          <Text>Cargando información de suscripción...</Text>
-        </Stack>
+      <Container size="md" px="md" data-testid="page-content">
+        {header}
+        <ListSkeleton rows={4} />
       </Container>
     )
   }
 
   if (!subscriptionData) {
     return (
-      <Container size="lg" py="xl">
-        <Alert color="red" icon={<IconX size={16} />}>
-          No se pudo cargar la información de suscripción
-        </Alert>
+      <Container size="md" px="md" data-testid="page-content">
+        {header}
+        <Alert color="red" icon={<IconX size={16} />}>No se pudo cargar la información de suscripción</Alert>
+        <Button mt="md" variant="light" onClick={fetchSubscriptionData}>Reintentar</Button>
       </Container>
     )
   }
 
+  const sd = subscriptionData
+  const renewal = (() => {
+    const iso = sd.subscriptionDates?.currentPeriodEnd
+    if (!iso) return null
+    const d = new Date(iso)
+    return d.getFullYear() > 1970 ? d.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Fecha no disponible'
+  })()
+
+  const UsageCard = ({ label, value, limit, extra }: { label: string; value: number; limit?: number; extra?: React.ReactNode }) => {
+    const color = limit === undefined ? 'blue' : getUsageColor(value, limit)
+    return (
+      <div className="os-rt-card" data-testid="usage-card">
+        <Text size="sm" c="dimmed">{label}</Text>
+        <Text fz={28} fw={700} lh={1.2} c={usageText(color)}>
+          {value}
+          {limit !== undefined && limit > 0 && <Text span c="dimmed" size="sm"> / {limit}</Text>}
+          {limit === -1 && <Text span c="dimmed" size="sm"> / ∞</Text>}
+        </Text>
+        {limit !== undefined && limit > 0 && (
+          <Progress value={Math.min(100, (value / limit) * 100)} color={color} size="sm" mt="xs" aria-label={`${label}: ${value} de ${limit}`} />
+        )}
+        {extra}
+      </div>
+    )
+  }
+
+  const exceeded = Array.isArray(sd.usageLimits) ? sd.usageLimits.filter((l) => l.exceeded) : []
+
   return (
-    <Container size="lg" py="xl">
-      <Stack gap="xl">
-        {/* Header */}
-        <Group justify="space-between" align="flex-start">
-          <div>
-            <Title size="2rem" mb="sm">Mi Suscripción</Title>
-            <Text c="dimmed">Gestiona tu plan y controla tu uso</Text>
-          </div>
-          <Link href="/settings/billing">
-            <Button leftSection={<IconCreditCard size={16} />} variant="light">
-              Facturación
-            </Button>
-          </Link>
-        </Group>
-
-        {/* Current Plan */}
-        <Card shadow="sm" padding="xl" radius="md" withBorder>
-          <Group justify="space-between" align="flex-start" mb="md">
-            <div>
-              <Group align="center" gap="sm" mb="xs">
-                <IconCrown size={24} color="var(--mantine-color-yellow-6)" />
-                <Title order={3}>{subscriptionData.plan.name}</Title>
-                <Badge 
-                  color={subscriptionData.user.subscriptionStatus === 'active' ? 'green' : 'red'}
-                  variant="light"
-                >
-                  {subscriptionData.user.subscriptionStatus === 'active' ? 'Activo' : 'Inactivo'}
-                </Badge>
-                {subscriptionData.user.isBarvetCustomer && (
-                  <Badge color="purple" variant="light">BARVET</Badge>
-                )}
+    <Container size="md" px="md" pb="xl" data-testid="page-content">
+      {header}
+      <Stack gap="xl" mt="md">
+        <div className="os-rt-card" style={{ padding: 16 }} data-testid="current-plan">
+          <Group justify="space-between" align="flex-start" wrap="nowrap" gap="sm">
+            <div style={{ minWidth: 0 }}>
+              <Group gap="xs" mb={4}>
+                <IconCrown size={22} color="var(--mantine-color-yellow-6)" aria-hidden="true" />
+                <Text fw={700} fz="xl">{sd.plan.name}</Text>
               </Group>
-              <Text size="xl" fw={700} c="blue">
-                {formatPrice(subscriptionData.plan.price, subscriptionData.plan.currency)}
-                {subscriptionData.plan.price > 0 && <Text span c="dimmed" size="sm"> /mes</Text>}
-              </Text>
-              {subscriptionData.subscriptionDates && subscriptionData.subscriptionDates.currentPeriodEnd && (
-                <Group gap="xs" mt="xs">
-                  <IconCalendar size={16} />
-                  <Text size="sm" c="dimmed">
-                    Renovación: {(() => {
-                      const endDate = new Date(subscriptionData.subscriptionDates.currentPeriodEnd)
-                      // Verificar si la fecha es válida y no es 1970
-                      if (endDate.getFullYear() > 1970) {
-                        return endDate.toLocaleDateString('es-ES', {
-                          day: 'numeric',
-                          month: 'long',
-                          year: 'numeric'
-                        })
-                      }
-                      return 'Fecha no disponible'
-                    })()}
-                  </Text>
-                </Group>
-              )}
+              <Group gap={6}>
+                <Badge tt="none" color={sd.user.subscriptionStatus === 'active' ? 'green' : 'red'} variant="light">
+                  {sd.user.subscriptionStatus === 'active' ? 'Activo' : 'Inactivo'}
+                </Badge>
+                {sd.user.isBarvetCustomer && <Badge color="grape" variant="light">BARVET</Badge>}
+              </Group>
             </div>
-            {subscriptionData.plan.id !== 'enterprise' && (
-              <Button
-                leftSection={<IconArrowUp size={16} />}
-                onClick={() => setUpgradeModalOpened(true)}
-                loading={upgradingPlan !== null}
-              >
-                {subscriptionData.plan.id === 'free' ? 'Mejorar Plan' : 'Cambiar Plan'}
-              </Button>
-            )}
+            <Text fz={24} fw={700} c="var(--os-brand)" style={{ whiteSpace: 'nowrap' }}>
+              {formatPrice(sd.plan.price, sd.plan.currency)}
+              {sd.plan.price > 0 && <Text span c="dimmed" size="sm"> /mes</Text>}
+            </Text>
           </Group>
-
-          <List spacing="xs" size="sm" icon={
-            <ThemeIcon color="green" size={18} radius="xl">
-              <IconCheck size={12} />
-            </ThemeIcon>
-          }>
-            {subscriptionData.plan.features.map((feature, index) => (
+          {renewal && (
+            <Group gap={6} mt="sm" wrap="nowrap">
+              <IconCalendar size={16} aria-hidden="true" />
+              <Text size="sm" c="dimmed">Renovación: {renewal}</Text>
+            </Group>
+          )}
+          <List spacing="xs" size="sm" mt="md" icon={<ThemeIcon color="green" size={18} radius="xl"><IconCheck size={12} /></ThemeIcon>}>
+            {sd.plan.features.map((feature, index) => (
               <List.Item key={index}>{feature}</List.Item>
             ))}
           </List>
-        </Card>
-
-        {/* Usage Stats */}
-        <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="md">
-          <Card shadow="sm" padding="lg" radius="md" withBorder>
-            <Group justify="space-between" mb="md">
-              <Text fw={500}>Contratos Creados</Text>
-              <IconUsers size={20} />
-            </Group>
-            <Text size="2rem" fw={700} c={getUsageColor(subscriptionData.usage.contractsCreated, subscriptionData.limits.contracts)}>
-              {subscriptionData.usage.contractsCreated}
-              {subscriptionData.limits.contracts > 0 && (
-                <Text span c="dimmed" size="sm"> / {subscriptionData.limits.contracts}</Text>
-              )}
-              {subscriptionData.limits.contracts === -1 && (
-                <Text span c="dimmed" size="sm"> / ∞</Text>
-              )}
-            </Text>
-            {subscriptionData.limits.contracts > 0 && (
-              <Progress 
-                value={(subscriptionData.usage.contractsCreated / subscriptionData.limits.contracts) * 100} 
-                color={getUsageColor(subscriptionData.usage.contractsCreated, subscriptionData.limits.contracts)}
-                size="sm" 
-                mt="xs"
-              />
-            )}
-          </Card>
-
-          <Card shadow="sm" padding="lg" radius="md" withBorder>
-            <Group justify="space-between" mb="md">
-              <Text fw={500}>Firmas por Email</Text>
-              <IconMail size={20} />
-            </Group>
-            <Text size="2rem" fw={700} c={getUsageColor(subscriptionData.usage.emailSignaturesSent, subscriptionData.limits.emailSignatures)}>
-              {subscriptionData.usage.emailSignaturesSent}
-              {subscriptionData.limits.emailSignatures > 0 && (
-                <Text span c="dimmed" size="sm"> / {subscriptionData.limits.emailSignatures}</Text>
-              )}
-              {subscriptionData.limits.emailSignatures === -1 && (
-                <Text span c="dimmed" size="sm"> / ∞</Text>
-              )}
-            </Text>
-            {subscriptionData.limits.emailSignatures > 0 && (
-              <Progress
-                value={(subscriptionData.usage.emailSignaturesSent / subscriptionData.limits.emailSignatures) * 100}
-                color={getUsageColor(subscriptionData.usage.emailSignaturesSent, subscriptionData.limits.emailSignatures)}
-                size="sm"
-                mt="xs"
-              />
-            )}
-            {subscriptionData.includedSignatures && (
-              <Text size="xs" c="dimmed" mt="xs" data-testid="included-signatures">
-                Incluidos{subscriptionData.includedSignatures.source === 'vetcontrol' ? ' con VetControl' : ''}:{' '}
-                quedan {subscriptionData.includedSignatures.remaining} de {subscriptionData.includedSignatures.quotaPerMonth} este mes
-              </Text>
-            )}
-          </Card>
-
-          <Card shadow="sm" padding="lg" radius="md" withBorder>
-            <Group justify="space-between" mb="md">
-              <Text fw={500}>Firmas por SMS</Text>
-              <IconPhone size={20} />
-            </Group>
-            <Text size="2rem" fw={700} c={subscriptionData.usage.smsSignaturesSent > 0 ? 'orange' : 'blue'}>
-              {subscriptionData.usage.smsSignaturesSent}
-              <Text span c="dimmed" size="sm"> / ∞</Text>
-            </Text>
-            <Text size="sm" c="dimmed">
-              SMS siempre con coste extra
-            </Text>
-          </Card>
-
-          <Card shadow="sm" padding="lg" radius="md" withBorder>
-            <Group justify="space-between" mb="md">
-              <Text fw={500}>Generaciones IA</Text>
-              <IconRobot size={20} />
-            </Group>
-            <Text size="2rem" fw={700} c={getUsageColor(subscriptionData.usage.aiGenerationsUsed, subscriptionData.limits.aiUsage)}>
-              {subscriptionData.usage.aiGenerationsUsed}
-              {subscriptionData.limits.aiUsage > 0 && (
-                <Text span c="dimmed" size="sm"> / {subscriptionData.limits.aiUsage}</Text>
-              )}
-              {subscriptionData.limits.aiUsage === -1 && (
-                <Text span c="dimmed" size="sm"> / ∞</Text>
-              )}
-            </Text>
-            {subscriptionData.limits.aiUsage > 0 && (
-              <Progress 
-                value={(subscriptionData.usage.aiGenerationsUsed / subscriptionData.limits.aiUsage) * 100} 
-                color={getUsageColor(subscriptionData.usage.aiGenerationsUsed, subscriptionData.limits.aiUsage)}
-                size="sm" 
-                mt="xs"
-              />
-            )}
-          </Card>
-
-          <Card shadow="sm" padding="lg" radius="md" withBorder>
-            <Group justify="space-between" mb="md">
-              <Text fw={500}>Facturación Extra</Text>
-              <IconTrendingUp size={20} />
-            </Group>
-            <Text size="2rem" fw={700} c={subscriptionData.billing.totalExtraCost > 0 ? 'orange' : 'green'}>
-              {formatPrice(subscriptionData.billing.totalExtraCost)}
-            </Text>
-            <Text size="sm" c="dimmed">Este mes</Text>
-          </Card>
-        </SimpleGrid>
-
-        {/* Limits Exceeded Alert */}
-        {Array.isArray(subscriptionData.usageLimits) && subscriptionData.usageLimits.some(l => l.exceeded) && (
-          <Alert color="orange" icon={<IconInfoCircle size={16} />}>
-            <Text fw={500} mb="xs">Límites alcanzados</Text>
-            <Stack gap="xs">
-              {Array.isArray(subscriptionData.usageLimits) && subscriptionData.usageLimits
-                .filter(l => l.exceeded)
-                .map((limit, index) => (
-                  <Text key={index} size="sm">
-                    • {limit.type}: {limit.current}/{limit.limit}
-                  </Text>
-                ))}
-            </Stack>
-            <Button size="xs" mt="xs" onClick={() => setUpgradeModalOpened(true)} loading={upgradingPlan !== null}>
-              Mejorar Plan
+          {sd.plan.id !== 'enterprise' && (
+            <Button fullWidth mt="md" leftSection={<IconArrowUp size={16} />} onClick={() => setUpgradeModalOpened(true)} loading={upgradingPlan !== null}>
+              {sd.plan.id === 'free' ? 'Mejorar plan' : 'Cambiar plan'}
             </Button>
+          )}
+        </div>
+
+        {exceeded.length > 0 && (
+          <Alert color="orange" title="Límites alcanzados">
+            <Stack gap={4}>
+              {exceeded.map((limit, index) => (
+                <Text key={index} size="sm">• {limit.type}: {limit.current}/{limit.limit}</Text>
+              ))}
+            </Stack>
+            <Button mt="sm" onClick={() => setUpgradeModalOpened(true)} loading={upgradingPlan !== null}>Mejorar plan</Button>
           </Alert>
         )}
 
-        {/* Upgrade Modal */}
-        <Modal 
-          opened={upgradeModalOpened} 
-          onClose={() => setUpgradeModalOpened(false)}
-          title="Cambiar Plan de Suscripción"
-          size="xl"
-        >
-          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-            {subscriptionData.availablePlans.map((plan) => (
-              <Card 
-                key={plan.id} 
-                shadow="sm" 
-                padding="lg" 
-                radius="md" 
-                withBorder
-                style={{ 
-                  border: plan.id === subscriptionData.plan.id 
-                    ? '2px solid var(--mantine-color-blue-6)' 
-                    : undefined 
-                }}
-              >
-                <Stack gap="md">
-                  <Group justify="space-between" align="flex-start">
+        <Section title="Uso este mes">
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+            <UsageCard label="Contratos creados" value={sd.usage.contractsCreated} limit={sd.limits.contracts} />
+            <UsageCard
+              label="Firmas por email"
+              value={sd.usage.emailSignaturesSent}
+              limit={sd.limits.emailSignatures}
+              extra={sd.includedSignatures && (
+                <Text size="xs" c="dimmed" data-testid="included-signatures">
+                  Incluidos{sd.includedSignatures.source === 'vetcontrol' ? ' con VetControl' : ''}:{' '}
+                  quedan {sd.includedSignatures.remaining} de {sd.includedSignatures.quotaPerMonth} este mes
+                </Text>
+              )}
+            />
+            <UsageCard label="Firmas por SMS" value={sd.usage.smsSignaturesSent} extra={<Text size="sm" c="dimmed">SMS siempre con coste extra</Text>} />
+            <UsageCard label="Generaciones IA" value={sd.usage.aiGenerationsUsed} limit={sd.limits.aiUsage} />
+          </SimpleGrid>
+          <div className="os-rt-card">
+            <Group justify="space-between" wrap="nowrap">
+              <div>
+                <Text fw={500}>Facturación extra</Text>
+                <Text size="sm" c="dimmed">Este mes</Text>
+              </div>
+              <Text fz={24} fw={700} c={sd.billing.totalExtraCost > 0 ? usageText('orange') : 'var(--os-success)'}>
+                {formatPrice(sd.billing.totalExtraCost)}
+              </Text>
+            </Group>
+          </div>
+          <Button component={Link} href="/settings/billing" variant="light" fullWidth leftSection={<IconCreditCard size={16} />}>
+            Facturación y monedero
+          </Button>
+        </Section>
+      </Stack>
+
+      <AdaptiveSheet opened={upgradeModalOpened} onClose={() => setUpgradeModalOpened(false)} title="Cambiar plan de suscripción" size="lg">
+        <Stack gap="md" data-testid="plan-options">
+          {sd.availablePlans.map((plan) => {
+            const current = plan.id === sd.plan.id
+            return (
+              <div key={plan.id} className="os-rt-card" style={{ borderColor: current ? 'var(--os-brand)' : undefined, borderWidth: current ? 2 : 1, padding: 16 }}>
+                <Stack gap="sm">
+                  <Group justify="space-between" align="flex-start" wrap="nowrap">
                     <div>
-                      <Text fw={600} size="lg">{plan.displayName}</Text>
-                      {plan.popular && (
-                        <Badge color="blue" variant="light" size="xs">Más Popular</Badge>
-                      )}
+                      <Text fw={650} fz="lg">{plan.displayName}</Text>
+                      {plan.popular && <Badge color="blue" variant="light" size="sm">Más popular</Badge>}
                     </div>
-                    <Text size="xl" fw={700} c="blue">
+                    <Text fz="xl" fw={700} c="var(--os-brand)" style={{ whiteSpace: 'nowrap' }}>
                       {formatPrice(plan.price, plan.currency)}
                       {plan.price > 0 && <Text span c="dimmed" size="sm"> /mes</Text>}
                     </Text>
                   </Group>
-
-                  <List spacing="xs" size="sm" icon={
-                    <ThemeIcon color="green" size={16} radius="xl">
-                      <IconCheck size={10} />
-                    </ThemeIcon>
-                  }>
+                  <List spacing="xs" size="sm" icon={<ThemeIcon color="green" size={16} radius="xl"><IconCheck size={10} /></ThemeIcon>}>
                     {plan.features.map((feature, index) => (
                       <List.Item key={index}>{feature}</List.Item>
                     ))}
                   </List>
-
                   <Button
                     fullWidth
-                    variant={plan.id === subscriptionData.plan.id ? 'light' : 'filled'}
-                    disabled={plan.id === subscriptionData.plan.id || upgradingPlan !== null}
+                    variant={current ? 'light' : 'filled'}
+                    disabled={current || upgradingPlan !== null}
                     onClick={() => handleUpgrade(plan.id)}
                     loading={upgradingPlan === plan.id}
                   >
-                    {plan.id === subscriptionData.plan.id 
-                      ? 'Plan Actual' 
-                      : plan.price === 0 
-                        ? 'Cambiar a pago por uso' 
-                        : 'Seleccionar Plan'
-                    }
+                    {current ? 'Plan actual' : plan.price === 0 ? 'Cambiar a pago por uso' : 'Seleccionar plan'}
                   </Button>
                 </Stack>
-              </Card>
-            ))}
-          </SimpleGrid>
-        </Modal>
-      </Stack>
+              </div>
+            )
+          })}
+        </Stack>
+      </AdaptiveSheet>
     </Container>
   )
 }
 
 export default function SubscriptionPage() {
   return (
-    <Suspense fallback={
-      <Container size="xl">
-        <Stack align="center" justify="center" style={{ minHeight: '400px' }}>
-          <Loader size="lg" />
-          <Text size="lg" c="dimmed">Cargando suscripción...</Text>
-        </Stack>
-      </Container>
-    }>
+    <Suspense
+      fallback={
+        <Container size="md" px="md" data-testid="page-content">
+          <ListSkeleton rows={4} />
+        </Container>
+      }
+    >
       <SubscriptionPageContent />
     </Suspense>
   )

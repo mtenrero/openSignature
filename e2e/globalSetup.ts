@@ -50,6 +50,39 @@ async function waitForUrl(url: string, timeoutMs = 60_000): Promise<void> {
   throw new Error(`Timeout waiting for ${url}`)
 }
 
+const ZERO_ID = '000000000000000000000000'
+const WARM_PAGES = [
+  '/', '/login', '/contracts', '/contracts/new', `/contracts/${ZERO_ID}/edit`, `/contracts/${ZERO_ID}/preview`,
+  '/signatures', '/signatures/new', `/signatures/${ZERO_ID}`, `/sign/warmup?a=warmup`, `/verify/${ZERO_ID}`,
+  '/tablet', '/more', '/profile', '/settings', '/settings/api-keys', '/settings/billing', '/settings/subscription',
+  '/settings/wallet', '/settings/wallet/transactions', '/settings/billing-wallet', '/pricing', '/features',
+  '/how-it-works', '/security', '/auth/signin', '/auth/signup', '/auth/error',
+]
+const WARM_API = [
+  '/api/auth/session', '/api/auth/providers', '/api/auth/csrf', '/api/contracts', '/api/contracts/library',
+  `/api/contracts/${ZERO_ID}`, '/api/signature-requests', `/api/signature-requests/${ZERO_ID}`, '/api/signatures',
+  '/api/sign-requests/warmup', '/api/wallet', '/api/wallet/transactions', '/api/wallet/billing', '/api/subscription',
+  '/api/variables', `/api/verify/${ZERO_ID}`, '/api/usage/metrics', '/api/settings/api-keys', '/api/session',
+]
+
+/**
+ * `next dev` compiles each route (and API route) on its FIRST request. With the default 5s expect timeout that
+ * first compile (2-7s, more under load) shows up as pages stuck on a skeleton / "Cargando solicitud..." in whichever
+ * test happens to hit a route first. Compile everything up front, sequentially, so tests only ever see warm routes.
+ * Failures are ignored: a warm-up request only has to trigger compilation, not succeed.
+ */
+async function warmUp(port: number) {
+  const base = `http://localhost:${port}`
+  const headers = { cookie: 'e2e_session=1', authorization: `Bearer ${TEST_API_KEY}` }
+  for (const p of [...WARM_PAGES, ...WARM_API]) {
+    try {
+      await fetch(base + p, { headers, redirect: 'manual', signal: AbortSignal.timeout(60_000) })
+    } catch {
+      // ignore
+    }
+  }
+}
+
 export default async function globalSetup() {
   const port = Number(process.env.E2E_PORT ?? 3100)
 
@@ -159,6 +192,7 @@ export default async function globalSetup() {
   child.stderr?.on('data', (d) => process.stderr.write(`[next-err] ${d}`))
 
   await waitForUrl(`http://localhost:${port}`, 120_000)
+  await warmUp(port)
 
   const state: E2EState = { idpUrl: idp.issuer, mongoUri: uri, serverPort: port, serverPid: child.pid }
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))

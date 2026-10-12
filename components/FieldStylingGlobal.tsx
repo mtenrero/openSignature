@@ -25,8 +25,10 @@ export function FieldStylingGlobal() {
         box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
         white-space: nowrap !important;
         position: relative !important;
-        cursor: text !important;
-        margin: 0 2px !important;
+        cursor: pointer !important;
+        margin: 2px !important;
+        min-height: 32px !important;
+        box-sizing: border-box !important;
       }
 
       .field-dynamic-styled {
@@ -42,8 +44,22 @@ export function FieldStylingGlobal() {
         box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
         white-space: nowrap !important;
         position: relative !important;
-        cursor: text !important;
-        margin: 0 2px !important;
+        cursor: pointer !important;
+        margin: 2px !important;
+        min-height: 32px !important;
+        box-sizing: border-box !important;
+      }
+
+      /* Dark mode: keep the badges readable on the dark surface */
+      [data-mantine-color-scheme='dark'] .field-variable-styled {
+        background-color: rgba(156, 39, 176, 0.25) !important;
+        border-color: #ce93d8 !important;
+        color: #e1bee7 !important;
+      }
+      [data-mantine-color-scheme='dark'] .field-dynamic-styled {
+        background-color: rgba(33, 150, 243, 0.22) !important;
+        border-color: #64b5f6 !important;
+        color: #bbdefb !important;
       }
 
       /* Icons */
@@ -89,11 +105,13 @@ export function FieldStylingGlobal() {
         margin-left: 2px;
       }
 
-      /* Hover effects */
-      .field-variable-styled:hover,
-      .field-dynamic-styled:hover {
-        transform: translateY(-1px) !important;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+      /* Hover effects only where hover exists (never the only affordance: badges open a sheet on tap) */
+      @media (hover: hover) {
+        .field-variable-styled:hover,
+        .field-dynamic-styled:hover {
+          transform: translateY(-1px) !important;
+          box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+        }
       }
     `
     

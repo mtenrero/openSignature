@@ -41,7 +41,7 @@ export default auth(async (req) => {
   }
   const isAuthPage = req.nextUrl.pathname.startsWith('/auth')
   const isApiRoute = req.nextUrl.pathname.startsWith('/api')
-  const isSignPage = req.nextUrl.pathname.startsWith('/sign')
+  const isSignPage = req.nextUrl.pathname === '/sign' || req.nextUrl.pathname.startsWith('/sign/')
   const isAuthCallback = req.nextUrl.pathname === '/api/auth/callback/auth0'
 
   // Public API routes that don't require authentication
@@ -123,8 +123,9 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - public folder
+     * - manifest.webmanifest and /icons (PWA assets must load signed-out)
+     * - robots.txt, public folder
      */
-    '/((?!_next/static|_next/image|favicon.ico|public/).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/|robots.txt|public/).*)',
   ],
 }

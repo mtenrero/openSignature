@@ -73,6 +73,9 @@ test.describe('login through the mock IdP', () => {
     await loginViaButton(page)
     await expect(page).toHaveURL(/\/contracts$/, { timeout: 60_000 })
     expect((await session(page)).customerId).toBeTruthy()
+    // Let the page's own in-flight /api/auth/session refreshes settle first: a late rolling-session Set-Cookie
+    // arriving after the signout would resurrect the session cookie (flaky `toBeNull`).
+    await page.waitForLoadState('networkidle')
 
     const { csrfToken } = await (await page.request.get('/api/auth/csrf')).json()
     const out = await page.request.post('/api/auth/signout', { form: { csrfToken, callbackUrl: '/' } })

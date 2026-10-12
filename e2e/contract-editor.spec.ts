@@ -15,14 +15,17 @@
  *   6. Responsive: no horizontal overflow at 375px; toolbar + tabs usable.
  */
 import { test, expect, seedContract, dropTestDb } from './fixtures'
+import { loginAsOwner } from './mobile/helpers'
 
 const EDITOR_TIMEOUT = 30_000
 
 test.describe('Contract editor', () => {
   test.beforeEach(async ({ page, db, baseURL }) => {
     await dropTestDb(db)
-    // Cookie-gated auth bypass for the protected editor pages.
-    await page.context().addCookies([{ name: 'e2e_session', value: '1', url: baseURL! }])
+    // Cookie-gated auth bypass + a mocked client session. Without the session mock, next-auth resolves to
+    // 'unauthenticated' a moment after hydration, AppFrame swaps the shell variant and REMOUNTS the page,
+    // wiping whatever the test typed in the meantime (flaky 'Crear Contrato' stays disabled).
+    await loginAsOwner(page, baseURL!)
     page.setDefaultTimeout(EDITOR_TIMEOUT)
   })
 
