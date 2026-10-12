@@ -1,39 +1,12 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import {
-  Container,
-  Title,
-  Text,
-  Button,
-  Card,
-  Stack,
-  Group,
-  Badge,
-  ActionIcon,
-  Table,
-  Modal,
-  TextInput,
-  Alert,
-  Loader,
-  Box,
-  CopyButton,
-  Tooltip,
-  Menu,
-  Code
-} from '@mantine/core'
-import {
-  IconKey,
-  IconPlus,
-  IconCopy,
-  IconTrash,
-  IconDots,
-  IconCheck,
-  IconAlertTriangle
-} from '@tabler/icons-react'
+import { Container, Text, Button, Stack, Group, Badge, Alert, Code, CopyButton, TextInput } from '@mantine/core'
+import { IconKey, IconPlus, IconCopy, IconTrash, IconCheck, IconAlertTriangle } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import { PageHeader, Section, AdaptiveSheet, ConfirmSheet, ResponsiveTable, EmptyState, ListSkeleton, StickyActionBar } from '../../../components/ui'
 
 interface ApiKey {
   id: string
@@ -206,13 +179,13 @@ export default function ApiKeysPage() {
     })
   }
 
+  const header = <PageHeader title="API Keys" subtitle="Acceso programático a tu cuenta" back="/more" />
+
   if (status === 'loading' || loading) {
     return (
-      <Container size="xl">
-        <Stack align="center" justify="center" style={{ minHeight: '400px' }}>
-          <Loader size="lg" />
-          <Text size="lg" c="dimmed">Cargando API Keys...</Text>
-        </Stack>
+      <Container size="md" px="md" data-testid="page-content">
+        {header}
+        <ListSkeleton rows={3} />
       </Container>
     )
   }
@@ -221,264 +194,153 @@ export default function ApiKeysPage() {
     return null // Will redirect
   }
 
-  return (
-    <Container size="xl">
-      <Stack gap="xl">
-        {/* Header */}
-        <Group justify="space-between" align="center">
-          <Box>
-            <Title size="2rem" fw={700}>API Keys</Title>
-            <Text c="dimmed" mt="xs">
-              Gestiona las claves de API para acceso programático a tu cuenta
-            </Text>
-          </Box>
-          <Button
-            size="lg"
-            leftSection={<IconPlus size={18} />}
-            onClick={() => setCreateModalOpened(true)}
-          >
-            Nueva API Key
-          </Button>
-        </Group>
+  const closeCreate = () => {
+    setCreateModalOpened(false)
+    setNewKeyName('')
+  }
 
-        {/* Info Alert */}
-        <Alert color="blue" variant="light" icon={<IconKey size={16} />}>
+  const deleteBtn = (key: ApiKey) => (
+    <Button
+      variant="light"
+      color="red"
+      size="sm"
+      leftSection={<IconTrash size={16} />}
+      aria-label={`Eliminar API Key ${key.name}`}
+      onClick={() => {
+        setKeyToDelete(key)
+        setDeleteModalOpened(true)
+      }}
+    >
+      Eliminar
+    </Button>
+  )
+
+  return (
+    <Container size="md" px="md" pb="xl" data-testid="page-content">
+      {header}
+      <Stack gap="xl" mt="md">
+        <Alert color="blue" variant="light" icon={<IconKey size={16} />} title="¿Qué son las API Keys?">
           <Stack gap="xs">
-            <Text size="sm" fw={500}>
-              ¿Qué son las API Keys?
-            </Text>
+            <Text size="sm">Te permiten acceder a la API de oSign.eu desde tus aplicaciones, scripts o integraciones.</Text>
             <Text size="sm">
-              Las API Keys te permiten acceder a la API de oSign.eu desde tus aplicaciones, scripts o integraciones.
+              • <strong>Permanentes:</strong> no expiran automáticamente<br />
+              • <strong>Seguras:</strong> puedes revocarlas en cualquier momento<br />
+              • <strong>Simples:</strong> usa la cabecera
             </Text>
-            <Text size="sm">
-              • <strong>Permanentes:</strong> No expiran automáticamente<br/>
-              • <strong>Seguras:</strong> Puedes revocarlas en cualquier momento<br/>
-              • <strong>Simples:</strong> Solo usa <Code>Authorization: Bearer TU_API_KEY</Code>
-            </Text>
+            <pre className="os-code" tabIndex={0} aria-label="Cabecera de autorización">Authorization: Bearer TU_API_KEY</pre>
           </Stack>
         </Alert>
 
-        {/* Show newly created key */}
         {newlyCreatedKey && (
-          <Alert color="green" variant="light" icon={<IconCheck size={16} />}>
+          <Alert color="green" variant="light" icon={<IconCheck size={16} />} title={`API Key «${newlyCreatedKey.name}» creada`} data-testid="new-key">
             <Stack gap="md">
-              <Text size="sm" fw={500}>
-                ✅ API Key "{newlyCreatedKey.name}" creada exitosamente
-              </Text>
-              <Text size="sm" c="orange" fw={500}>
-                ⚠️ Guarda esta clave ahora. No se volverá a mostrar por seguridad.
-              </Text>
-
-              <Box>
-                <Text size="sm" fw={500} mb="xs">Tu API Key:</Text>
-                <Group gap="xs">
-                  <Code style={{ flex: 1, padding: '12px', fontSize: '13px' }}>
-                    {newlyCreatedKey.apiKey}
-                  </Code>
-                  <CopyButton value={newlyCreatedKey.apiKey}>
-                    {({ copied, copy }) => (
-                      <Tooltip label={copied ? 'Copiado!' : 'Copiar'} withArrow>
-                        <ActionIcon color={copied ? 'teal' : 'gray'} onClick={copy} size="lg">
-                          {copied ? <IconCheck size={18} /> : <IconCopy size={18} />}
-                        </ActionIcon>
-                      </Tooltip>
-                    )}
-                  </CopyButton>
-                </Group>
-              </Box>
-
-              <Box>
-                <Text size="sm" fw={500} mb="xs">Ejemplo de uso:</Text>
-                <Code block style={{ fontSize: '12px' }}>
-                  {`curl -H "Authorization: Bearer ${newlyCreatedKey.apiKey}" \\
-  https://osign.eu/api/contracts`}
-                </Code>
-              </Box>
-
-              <Button
-                variant="light"
-                size="sm"
-                onClick={() => setNewlyCreatedKey(null)}
-              >
-                Entendido, cerrar
-              </Button>
+              <Text size="sm" fw={600}>Guarda esta clave ahora: no se volverá a mostrar por seguridad.</Text>
+              <div>
+                <Text size="sm" fw={500} mb={4}>Tu API Key</Text>
+                <pre className="os-code" tabIndex={0} aria-label="Tu API Key">{newlyCreatedKey.apiKey}</pre>
+              </div>
+              <CopyButton value={newlyCreatedKey.apiKey}>
+                {({ copied, copy }) => (
+                  <Button fullWidth color={copied ? 'teal' : undefined} leftSection={copied ? <IconCheck size={18} /> : <IconCopy size={18} />} onClick={copy}>
+                    {copied ? 'Copiada' : 'Copiar clave'}
+                  </Button>
+                )}
+              </CopyButton>
+              <div>
+                <Text size="sm" fw={500} mb={4}>Ejemplo de uso</Text>
+                <pre className="os-code" tabIndex={0} aria-label="Ejemplo con curl">{`curl -H "Authorization: Bearer ${newlyCreatedKey.apiKey}" \\
+  https://osign.eu/api/contracts`}</pre>
+              </div>
+              <Button variant="light" fullWidth onClick={() => setNewlyCreatedKey(null)}>Entendido, cerrar</Button>
             </Stack>
           </Alert>
         )}
 
-        {/* API Keys Table */}
-        <Card>
-          {apiKeys.length === 0 ? (
-            <Stack align="center" justify="center" py="xl">
-              <IconKey size={48} stroke={1.5} color="gray" />
-              <Text size="lg" fw={500} c="dimmed">
-                No tienes API Keys todavía
-              </Text>
-              <Text size="sm" c="dimmed">
-                Crea una API Key para empezar a usar la API
-              </Text>
-              <Button
-                mt="md"
-                leftSection={<IconPlus size={16} />}
-                onClick={() => setCreateModalOpened(true)}
-              >
-                Crear primera API Key
-              </Button>
-            </Stack>
-          ) : (
-            <Table>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Nombre</Table.Th>
-                  <Table.Th>API Key</Table.Th>
-                  <Table.Th>Creada</Table.Th>
-                  <Table.Th>Último uso</Table.Th>
-                  <Table.Th></Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {apiKeys.map((key) => (
-                  <Table.Tr key={key.id}>
-                    <Table.Td>
-                      <Text fw={500}>{key.name}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Code>{key.keyPreview}</Code>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm" c="dimmed">
-                        {formatDate(key.createdAt)}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      {key.lastUsedAt ? (
-                        <Text size="sm" c="dimmed">
-                          {formatDate(key.lastUsedAt)}
-                        </Text>
-                      ) : (
-                        <Badge size="sm" color="gray" variant="light">
-                          Nunca usada
-                        </Badge>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <Menu position="bottom-end">
-                        <Menu.Target>
-                          <ActionIcon variant="subtle" color="gray">
-                            <IconDots size={16} />
-                          </ActionIcon>
-                        </Menu.Target>
-                        <Menu.Dropdown>
-                          <Menu.Item
-                            leftSection={<IconTrash size={14} />}
-                            color="red"
-                            onClick={() => {
-                              setKeyToDelete(key)
-                              setDeleteModalOpened(true)
-                            }}
-                          >
-                            Eliminar
-                          </Menu.Item>
-                        </Menu.Dropdown>
-                      </Menu>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          )}
-        </Card>
-
-        {/* Create Modal */}
-        <Modal
-          opened={createModalOpened}
-          onClose={() => {
-            setCreateModalOpened(false)
-            setNewKeyName('')
-          }}
-          title="Crear nueva API Key"
-          size="md"
-        >
-          <Stack>
-            <TextInput
-              label="Nombre"
-              placeholder="Ej: Mi aplicación"
-              value={newKeyName}
-              onChange={(e) => setNewKeyName(e.target.value)}
-              required
-              description="Un nombre descriptivo para identificar esta API Key"
-            />
-
-            <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />}>
-              <Text size="sm">
-                La API Key se mostrará <strong>una sola vez</strong> después de crearla.
-                Asegúrate de copiarla y guardarla en un lugar seguro.
-              </Text>
-            </Alert>
-
-            <Group justify="flex-end" mt="md">
-              <Button
-                variant="subtle"
-                onClick={() => {
-                  setCreateModalOpened(false)
-                  setNewKeyName('')
-                }}
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleCreateApiKey}
-                loading={creating}
-                leftSection={<IconPlus size={16} />}
-              >
-                Crear API Key
-              </Button>
-            </Group>
-          </Stack>
-        </Modal>
-
-        {/* Delete Confirmation Modal */}
-        <Modal
-          opened={deleteModalOpened}
-          onClose={() => {
-            setDeleteModalOpened(false)
-            setKeyToDelete(null)
-          }}
-          title="Eliminar API Key"
-          size="md"
-        >
-          <Stack>
-            <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
-              <Text size="sm">
-                ¿Estás seguro que deseas eliminar la API Key <strong>"{keyToDelete?.name}"</strong>?
-              </Text>
-              <Text size="sm" mt="xs">
-                Esta acción no se puede deshacer. Cualquier aplicación que use esta clave dejará de funcionar.
-              </Text>
-            </Alert>
-
-            <Group justify="flex-end" mt="md">
-              <Button
-                variant="subtle"
-                onClick={() => {
-                  setDeleteModalOpened(false)
-                  setKeyToDelete(null)
-                }}
-              >
-                Cancelar
-              </Button>
-              <Button
-                color="red"
-                onClick={handleDeleteApiKey}
-                loading={deleting}
-                leftSection={<IconTrash size={16} />}
-              >
-                Eliminar
-              </Button>
-            </Group>
-          </Stack>
-        </Modal>
+        <Section title="Tus claves">
+          <ResponsiveTable
+            testId="api-keys"
+            rows={apiKeys}
+            rowKey={(k) => k.id}
+            caption="API Keys"
+            empty={
+              <EmptyState
+                icon={<IconKey size={32} />}
+                title="No tienes API Keys todavía"
+                description="Crea una API Key para empezar a usar la API."
+                action={<Button leftSection={<IconPlus size={16} />} onClick={() => setCreateModalOpened(true)}>Crear primera API Key</Button>}
+              />
+            }
+            columns={[
+              { key: 'name', header: 'Nombre', render: (k) => <Text fw={500}>{k.name}</Text> },
+              { key: 'key', header: 'API Key', render: (k) => <Code>{k.keyPreview}</Code> },
+              { key: 'created', header: 'Creada', render: (k) => <Text size="sm" c="dimmed">{formatDate(k.createdAt)}</Text> },
+              { key: 'used', header: 'Último uso', render: (k) => (k.lastUsedAt ? <Text size="sm" c="dimmed">{formatDate(k.lastUsedAt)}</Text> : <Badge size="sm" color="gray" variant="light">Nunca usada</Badge>) },
+              { key: 'actions', header: '', srLabel: 'Acciones', render: deleteBtn },
+            ]}
+            mobileRender={(k) => (
+              <Stack gap={6}>
+                <Group justify="space-between" wrap="nowrap" align="flex-start">
+                  <Text fw={600} style={{ minWidth: 0 }}>{k.name}</Text>
+                  {k.lastUsedAt ? null : <Badge size="sm" color="gray" variant="light">Nunca usada</Badge>}
+                </Group>
+                <div className="os-scroll-x"><Code>{k.keyPreview}</Code></div>
+                <Text size="sm" c="dimmed">Creada {formatDate(k.createdAt)}{k.lastUsedAt ? ` · Último uso ${formatDate(k.lastUsedAt)}` : ''}</Text>
+                <div>{deleteBtn(k)}</div>
+              </Stack>
+            )}
+          />
+        </Section>
       </Stack>
+
+      <StickyActionBar aboveTabBar>
+        <Button fullWidth leftSection={<IconPlus size={18} />} onClick={() => setCreateModalOpened(true)}>
+          Nueva API Key
+        </Button>
+      </StickyActionBar>
+
+      <AdaptiveSheet
+        opened={createModalOpened}
+        onClose={closeCreate}
+        title="Crear nueva API Key"
+        footer={
+          <Group grow>
+            <Button variant="default" onClick={closeCreate}>Cancelar</Button>
+            <Button onClick={handleCreateApiKey} loading={creating} leftSection={<IconPlus size={16} />}>Crear API Key</Button>
+          </Group>
+        }
+      >
+        <Stack>
+          <TextInput
+            label="Nombre"
+            placeholder="Ej: Mi aplicación"
+            value={newKeyName}
+            onChange={(e) => setNewKeyName(e.target.value)}
+            required
+            description="Un nombre descriptivo para identificar esta API Key"
+          />
+          <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />}>
+            <Text size="sm">La API Key se mostrará <strong>una sola vez</strong> después de crearla. Cópiala y guárdala en un lugar seguro.</Text>
+          </Alert>
+        </Stack>
+      </AdaptiveSheet>
+
+      <ConfirmSheet
+        opened={deleteModalOpened}
+        onClose={() => {
+          setDeleteModalOpened(false)
+          setKeyToDelete(null)
+        }}
+        title="Eliminar API Key"
+        message={
+          <>
+            ¿Seguro que quieres eliminar la API Key <strong>«{keyToDelete?.name}»</strong>? Esta acción no se puede deshacer y cualquier aplicación que use esta clave dejará de funcionar.
+          </>
+        }
+        confirmLabel="Eliminar"
+        destructive
+        loading={deleting}
+        onConfirm={handleDeleteApiKey}
+      />
     </Container>
   )
 }

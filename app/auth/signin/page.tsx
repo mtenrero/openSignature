@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect, useRef, Suspense } from 'react'
-import { Container, Title, Text, Stack, Center, Loader, Alert, Button, Group, Divider, TextInput, PasswordInput } from '@mantine/core'
-import { IconLogin, IconAlertTriangle, IconKey, IconArrowLeft, IconBrandGoogle, IconBrandWindows, IconMail, IconLock } from '@tabler/icons-react'
+import { Text, Stack, Center, Loader, Alert, Button } from '@mantine/core'
+import { IconLogin, IconAlertTriangle, IconArrowLeft } from '@tabler/icons-react'
 import Link from 'next/link'
 import { signIn, useSession, getProviders } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { isSwitchAccount, safeCallbackUrl } from '@/lib/auth/customerId'
+import { AuthShell } from '../../../components/auth/AuthShell'
 
 function SignInPageContent() {
   const [loading, setLoading] = useState(false)
@@ -165,164 +166,87 @@ function SignInPageContent() {
 
   if (loading) {
     return (
-      <Container size="sm" py="xl">
-        <Center>
-          <Stack align="center" gap="md">
-            <Loader size="lg" />
-            <Title size="1.5rem">
-              Iniciando sesión...
-            </Title>
-            <Text size="sm" c="dimmed" ta="center">
-              Redirigiendo automáticamente para iniciar sesión
-            </Text>
-          </Stack>
+      <AuthShell title="Iniciando sesión..." subtitle="Redirigiendo automáticamente para iniciar sesión">
+        <Center py="md" role="status" aria-live="polite">
+          <Loader size="lg" />
         </Center>
-      </Container>
+      </AuthShell>
+    )
+  }
+
+  const errorAlert = error ? (
+    <Alert icon={<IconAlertTriangle size={16} />} title="Error" color="red" variant="light" role="alert">
+      {error}
+      <Text size="sm" mt="xs">
+        Si el problema persiste, contacta al administrador del sistema.
+      </Text>
+    </Alert>
+  ) : null
+
+  if (isSignup) {
+    // Registro social OAuth desactivado temporalmente
+    return (
+      <AuthShell title="Registro con formulario" subtitle="Firma digital segura y confiable">
+        {errorAlert}
+        <Text size="sm" c="dimmed" ta="center">
+          El registro social OAuth está temporalmente desactivado. Por favor, usa el formulario de registro tradicional.
+        </Text>
+        <Button component={Link} href="/auth/signup" size="lg" fullWidth leftSection={<IconArrowLeft size={18} />}>
+          Volver al formulario de registro
+        </Button>
+        <Text size="xs" c="dimmed" ta="center">
+          El registro OAuth estará disponible próximamente.
+        </Text>
+      </AuthShell>
     )
   }
 
   return (
-    <Container size="sm" py="xl">
-      <Center>
-        <Stack align="center" gap="xl" style={{ maxWidth: 400 }}>
-          <div style={{ textAlign: 'center' }}>
-            <Title size="2.5rem" fw={700} mb="sm">
-              oSign.eu
-            </Title>
-            <Text size="lg" c="dimmed">
-              Firma digital segura y confiable
-            </Text>
-          </div>
+    <AuthShell
+      title="Iniciar sesión"
+      subtitle="Firma digital segura y confiable"
+      footer={
+        <>
+          ¿No tienes cuenta?{' '}
+          <Link href="/auth/signup" style={{ color: 'var(--os-brand)', fontWeight: 600 }}>
+            Créala aquí
+          </Link>
+        </>
+      }
+    >
+      {errorAlert}
+      <Text size="sm" c="dimmed" ta="center">
+        Inicia sesión de forma segura con tu cuenta de Auth0.
+      </Text>
 
-          {/* Error Alert */}
-          {error && (
-            <Alert icon={<IconAlertTriangle size={16} />} title="Error" color="red" variant="light">
-              {error}
-              <br />
-              <Text size="sm" mt="xs">
-                Si el problema persiste, contacta al administrador del sistema.
-              </Text>
-            </Alert>
-          )}
+      <Button size="lg" onClick={handleOAuthSignIn} loading={loading} leftSection={<IconLogin size={20} />} fullWidth>
+        Iniciar Sesión con Barvet Empresas
+      </Button>
 
-          {isSignup ? (
-            // Vista para registro - OAuth desactivado temporalmente
-            <div style={{
-              padding: '2rem',
-              border: '1px solid var(--mantine-color-gray-3)',
-              borderRadius: '8px',
-              backgroundColor: 'var(--mantine-color-gray-0)',
-              width: '100%'
-            }}>
-              <Stack align="center" gap="md">
-                <IconKey size={48} color="#0066CC" />
+      {authentikEnabled && (
+        <Button size="lg" variant="default" onClick={handleAuthentikSignIn} loading={loading} leftSection={<IconLogin size={20} />} fullWidth>
+          Entrar con VetControl
+        </Button>
+      )}
 
-                <Title size="1.5rem" ta="center">
-                  Registro con Formulario
-                </Title>
-
-                <Text size="sm" c="dimmed" ta="center">
-                  El registro social OAuth está temporalmente desactivado.
-                  Por favor, usa el formulario de registro tradicional.
-                </Text>
-
-                <Group gap="xs" mt="md">
-                  <Link href="/auth/signup">
-                    <Button variant="filled" leftSection={<IconArrowLeft size={16} />}>
-                      Volver al formulario de registro
-                    </Button>
-                  </Link>
-                </Group>
-
-                <Text size="xs" c="dimmed" ta="center">
-                  El registro OAuth estará disponible próximamente.
-                </Text>
-              </Stack>
-            </div>
-          ) : (
-            // Vista normal de login
-            <div style={{
-              padding: '2rem',
-              border: '1px solid var(--mantine-color-gray-3)',
-              borderRadius: '8px',
-              backgroundColor: 'var(--mantine-color-gray-0)',
-              width: '100%'
-            }}>
-              <Stack align="center" gap="md">
-                <IconKey size={48} color="#0066CC" />
-
-                <Title size="1.5rem" ta="center">
-                  Iniciar Sesión
-                </Title>
-
-                <Text size="sm" c="dimmed" ta="center">
-                  Inicia sesión de forma segura con tu cuenta de Auth0.
-                </Text>
-
-                <Button
-                  size="lg"
-                  onClick={handleOAuthSignIn}
-                  loading={loading}
-                  leftSection={<IconLogin size={20} />}
-                  style={{
-                    backgroundColor: '#0066CC',
-                    color: 'white'
-                  }}
-                  fullWidth
-                >
-                  Iniciar Sesión con Barvet Empresas
-                </Button>
-
-                {authentikEnabled && (
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    onClick={handleAuthentikSignIn}
-                    loading={loading}
-                    leftSection={<IconLogin size={20} />}
-                    fullWidth
-                  >
-                    Entrar con VetControl
-                  </Button>
-                )}
-
-                <Text size="xs" c="dimmed" ta="center">
-                  OAuth 2.0 proporciona autenticación segura adicional.
-                </Text>
-              </Stack>
-            </div>
-          )}
-
-          {!isSignup && (
-            <Center>
-              <Text size="sm" c="dimmed">
-                ¿No tienes cuenta?{' '}
-                <Link href="/auth/signup" style={{ color: 'var(--mantine-color-blue-6)', textDecoration: 'none' }}>
-                  Créala aquí
-                </Link>
-              </Text>
-            </Center>
-          )}
-        </Stack>
-      </Center>
-    </Container>
+      <Text size="xs" c="dimmed" ta="center">
+        OAuth 2.0 proporciona autenticación segura adicional.
+      </Text>
+    </AuthShell>
   )
 }
 
 export default function SignInPage() {
   return (
-    <Suspense fallback={
-      <Container size="sm" py="xl">
-        <Center>
-          <Stack align="center" gap="md">
+    <Suspense
+      fallback={
+        <AuthShell title="Cargando...">
+          <Center py="md">
             <Loader size="lg" />
-            <Title size="1.5rem">
-              Cargando...
-            </Title>
-          </Stack>
-        </Center>
-      </Container>
-    }>
+          </Center>
+        </AuthShell>
+      }
+    >
       <SignInPageContent />
     </Suspense>
   )

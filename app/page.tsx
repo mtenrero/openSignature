@@ -1,202 +1,111 @@
 'use client'
 
 import React from 'react'
-import { Container, Title, Text, Button, Group, Stack, Center, Box, Card, SimpleGrid } from '@mantine/core'
-import { IconFileText, IconSignature, IconShield, IconUsers, IconRocket } from '@tabler/icons-react'
 import Link from 'next/link'
+import { Button, Group, SimpleGrid, Stack, Text, Title, ThemeIcon } from '@mantine/core'
+import { IconFileText, IconSignature, IconShield, IconUsers, IconRocket, IconArrowRight } from '@tabler/icons-react'
+import { useSession } from 'next-auth/react'
+import { MarketingHero, MarketingBody, SectionTitle, FeatureCard, CtaBlock } from '../components/marketing/Marketing'
+
+const FEATURES = [
+  { icon: IconFileText, title: 'Editor avanzado', description: 'Crea plantillas de contratos con nuestro editor HTML avanzado. Inserta campos dinámicos en cualquier posición del texto.', color: 'blue' },
+  { icon: IconSignature, title: 'Firma digital', description: 'Proceso de firma digital seguro y legalmente válido. Compatible con dispositivos móviles y de escritorio.', color: 'green' },
+  { icon: IconShield, title: 'Gestión completa', description: 'Gestiona todas tus plantillas y firmas desde un panel intuitivo. Seguimiento en tiempo real del estado de los contratos.', color: 'violet' },
+]
+
+const AUDIENCES = [
+  {
+    title: 'Para empresas',
+    items: [
+      { icon: IconUsers, text: 'Gestión eficiente de contratos con múltiples firmantes' },
+      { icon: IconShield, text: 'Seguridad y cumplimiento legal garantizado' },
+      { icon: IconRocket, text: 'Automatización del proceso de firma' },
+    ],
+    cta: { label: 'Crear plantilla', href: '/auth/signin', primary: true },
+  },
+  {
+    title: 'Para firmantes',
+    items: [
+      { icon: IconSignature, text: 'Firma digital rápida y sencilla' },
+      { icon: IconFileText, text: 'Visualización clara del contrato' },
+      { icon: IconShield, text: 'Seguridad y privacidad protegidas' },
+    ],
+    cta: { label: 'Acceder a firmas', href: '/auth/signin', primary: false },
+  },
+]
 
 export default function WelcomePage() {
+  const { status } = useSession()
+  const authed = status === 'authenticated'
+
   return (
-    <Box>
-      {/* Hero Section */}
-      <Box
-        style={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          color: 'white',
-          padding: '80px 0',
-        }}
-      >
-        <Container size="lg">
-          <Center>
-            <Stack align="center" gap="xl" style={{ textAlign: 'center' }}>
-              <div>
-                <Title size="3rem" fw={900} mb="md">
-                  Firma Digital Simplificada
-                </Title>
-                <Text size="xl" mb="xl" style={{ maxWidth: 600 }}>
-                  Crea plantillas de contratos profesionales, envíalas para firma digital y
-                  gestiona todo el proceso de manera eficiente y segura.
-                </Text>
-              </div>
-
-              <Group>
-                <Link href="/auth/signin">
-                  <Button 
-                    size="lg" 
-                    color="white" 
-                    c="var(--mantine-color-blue-8)"
-                    fw={600}
-                    style={{
-                      backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                      border: '2px solid rgba(255, 255, 255, 0.8)',
-                      '&:hover': {
-                        backgroundColor: 'rgba(255, 255, 255, 1)',
-                        transform: 'translateY(-2px)',
-                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)'
-                      }
-                    }}
-                  >
-                    Comenzar Ahora
-                  </Button>
-                </Link>
-                <Link href="/auth/signin">
-                  <Button 
-                    size="lg" 
-                    variant="outline"
-                    color="white"
-                    c="white"
-                    fw={600}
-                    style={{
-                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                      borderColor: 'rgba(255, 255, 255, 0.7)',
-                      border: '2px solid rgba(255, 255, 255, 0.7)',
-                      '&:hover': {
-                        backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                        transform: 'translateY(-2px)',
-                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)'
-                      }
-                    }}
-                  >
-                    Iniciar Sesión
-                  </Button>
-                </Link>
-              </Group>
-            </Stack>
-          </Center>
-        </Container>
-      </Box>
-
-      {/* Features Section */}
-      <Container size="lg" py={80}>
-        <Title size="2.5rem" ta="center" mb="xl" fw={700}>
-          Características Principales
-        </Title>
-
-        <SimpleGrid cols={{ base: 1, md: 3 }} spacing="xl">
-          <Card shadow="sm" padding="lg" radius="md" withBorder>
-            <Group justify="space-between" mb="sm">
-              <Text fw={500}>Editor Avanzado</Text>
-              <IconFileText size={24} />
-            </Group>
-            <Text size="sm" c="dimmed">
-              Crea plantillas de contratos con nuestro editor HTML avanzado.
-              Inserta campos dinámicos en cualquier posición del texto.
-            </Text>
-          </Card>
-
-          <Card shadow="sm" padding="lg" radius="md" withBorder>
-            <Group justify="space-between" mb="sm">
-              <Text fw={500}>Firma Digital</Text>
-              <IconSignature size={24} />
-            </Group>
-            <Text size="sm" c="dimmed">
-              Proceso de firma digital seguro y legalmente válido.
-              Compatible con dispositivos móviles y de escritorio.
-            </Text>
-          </Card>
-
-          <Card shadow="sm" padding="lg" radius="md" withBorder>
-            <Group justify="space-between" mb="sm">
-              <Text fw={500}>Gestión Completa</Text>
-              <IconShield size={24} />
-            </Group>
-            <Text size="sm" c="dimmed">
-              Gestiona todas tus plantillas y firmas desde un panel intuitivo.
-              Seguimiento en tiempo real del estado de los contratos.
-            </Text>
-          </Card>
-        </SimpleGrid>
-      </Container>
-
-      {/* Benefits Section */}
-      <Box style={{ 
-        backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))', 
-        padding: '80px 0' 
-      }}>
-        <Container size="lg">
-          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl">
-            <Box>
-              <Title size="2rem" mb="md" fw={700}>
-                Para Empresas
-              </Title>
-              <Stack gap="md">
-                <Group>
-                  <IconUsers size={20} style={{ color: 'var(--mantine-color-blue-6)' }} />
-                  <Text>Gestión eficiente de contratos con múltiples firmantes</Text>
-                </Group>
-                <Group>
-                  <IconShield size={20} style={{ color: 'var(--mantine-color-green-6)' }} />
-                  <Text>Seguridad y cumplimiento legal garantizado</Text>
-                </Group>
-                <Group>
-                  <IconRocket size={20} style={{ color: 'var(--mantine-color-purple-6)' }} />
-                  <Text>Automatización del proceso de firma</Text>
-                </Group>
-              </Stack>
-              <Link href="/auth/signin">
-                <Button 
-                  mt="xl" 
-                  size="lg"
-                  style={{
-                    backgroundColor: 'var(--mantine-color-blue-6)',
-                    '&:hover': {
-                      backgroundColor: 'var(--mantine-color-blue-7)',
-                    }
-                  }}
-                >
-                  Crear Plantilla
+    <>
+      <MarketingHero
+        badge="Firma electrónica con validez legal"
+        title="Firma digital simplificada"
+        subtitle="Crea plantillas de contratos profesionales, envíalas para firma digital y gestiona todo el proceso de manera eficiente y segura."
+        actions={
+          <Stack gap="sm" w="100%" maw={360} mt="xs" data-testid="hero-actions">
+            {authed ? (
+              <Button component={Link} href="/signatures" size="lg" fullWidth rightSection={<IconArrowRight size={18} />}>
+                Ir a la app
+              </Button>
+            ) : (
+              <>
+                <Button component={Link} href="/auth/signup" size="lg" fullWidth>
+                  Comenzar ahora
                 </Button>
-              </Link>
-            </Box>
-
-            <Box>
-              <Title size="2rem" mb="md" fw={700}>
-                Para Firmantes
-              </Title>
-              <Stack gap="md">
-                <Group>
-                  <IconSignature size={20} style={{ color: 'var(--mantine-color-blue-6)' }} />
-                  <Text>Firma digital rápida y sencilla</Text>
-                </Group>
-                <Group>
-                  <IconFileText size={20} style={{ color: 'var(--mantine-color-green-6)' }} />
-                  <Text>Visualización clara del contrato</Text>
-                </Group>
-                <Group>
-                  <IconShield size={20} style={{ color: 'var(--mantine-color-purple-6)' }} />
-                  <Text>Seguridad y privacidad protegidas</Text>
-                </Group>
-              </Stack>
-              <Link href="/auth/signin">
-                <Button 
-                  mt="xl" 
-                  size="lg" 
-                  variant="outline"
-                  style={{
-                    borderColor: 'var(--mantine-color-blue-6)',
-                    color: 'var(--mantine-color-blue-6)',
-                    '&:hover': {
-                      backgroundColor: 'var(--mantine-color-blue-0)',
-                    }
-                  }}
-                >
-                  Acceder a Firmas
+                <Button component={Link} href="/auth/signin" size="lg" variant="default" fullWidth>
+                  Iniciar sesión
                 </Button>
-              </Link>
-            </Box>
+              </>
+            )}
+          </Stack>
+        }
+      />
+
+      <MarketingBody>
+        <section>
+          <SectionTitle>Características principales</SectionTitle>
+          <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="md">
+            {FEATURES.map((f) => (
+              <FeatureCard key={f.title} {...f} />
+            ))}
           </SimpleGrid>
-        </Container>
-      </Box>
-    </Box>
+        </section>
+
+        <section>
+          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+            {AUDIENCES.map((a) => (
+              <div key={a.title} className="os-rt-card" style={{ padding: 20 }}>
+                <Title order={2} fz={22} mb="md">
+                  {a.title}
+                </Title>
+                <Stack gap="sm" mb="md">
+                  {a.items.map((i) => (
+                    <Group key={i.text} gap="sm" wrap="nowrap" align="flex-start">
+                      <ThemeIcon variant="light" size={28} radius="xl" style={{ flex: '0 0 auto' }}>
+                        <i.icon size={16} />
+                      </ThemeIcon>
+                      <Text>{i.text}</Text>
+                    </Group>
+                  ))}
+                </Stack>
+                <Button component={Link} href={a.cta.href} size="md" variant={a.cta.primary ? 'filled' : 'default'} fullWidth>
+                  {a.cta.label}
+                </Button>
+              </div>
+            ))}
+          </SimpleGrid>
+        </section>
+
+        <CtaBlock
+          title="¿Listo para empezar?"
+          text="Empieza gratis, sin permanencia y sin tarjeta de crédito."
+          primary={authed ? { label: 'Ir a la app', href: '/signatures' } : { label: 'Crear cuenta gratis', href: '/auth/signup' }}
+          secondary={{ label: 'Ver precios', href: '/pricing' }}
+        />
+      </MarketingBody>
+    </>
   )
 }

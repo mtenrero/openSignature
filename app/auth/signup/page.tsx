@@ -1,39 +1,12 @@
 'use client'
 
 import React, { useState } from 'react'
-import {
-  Container,
-  Title,
-  Text,
-  Card,
-  Stack,
-  Group,
-  Button,
-  TextInput,
-  PasswordInput,
-  Checkbox,
-  Alert,
-  Box,
-  Divider,
-  Center,
-  Notification
-} from '@mantine/core'
-import {
-  IconMail,
-  IconLock,
-  IconUser,
-  IconAlertCircle,
-  IconCheck,
-  IconBuildingBank,
-  IconArrowLeft,
-  IconBrandGoogle,
-  IconBrandWindows,
-  IconMailForward,
-  IconX
-} from '@tabler/icons-react'
+import { Text, Stack, Group, Button, TextInput, PasswordInput, Checkbox, Alert, ThemeIcon } from '@mantine/core'
+import { IconMail, IconLock, IconUser, IconAlertCircle, IconCheck, IconBuildingBank, IconArrowLeft, IconMailForward } from '@tabler/icons-react'
 import Link from 'next/link'
 import { signIn } from 'next-auth/react'
 import { validateRegistration, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/registration'
+import { AuthShell } from '../../../components/auth/AuthShell'
 
 export default function SignUpPage() {
   const [loading, setLoading] = useState(false)
@@ -121,274 +94,110 @@ export default function SignUpPage() {
     }
   }
 
-  const handleOAuthSignUp = (provider: string) => {
-    // Redirigir a la página de login con parámetro de registro
-    window.location.href = `/auth/signin?signup=true&provider=${provider}`
+  if (success) {
+    return (
+      <AuthShell title="¡Cuenta creada!" subtitle="Tu cuenta ha sido creada correctamente" wide>
+        <Stack align="center" gap="md">
+          <ThemeIcon size={56} radius="xl" color="green" variant="light">
+            <IconMailForward size={30} aria-hidden="true" />
+          </ThemeIcon>
+        </Stack>
+        <Alert color="blue" icon={<IconMail size={16} />} title="Verifica tu email">
+          <Text size="sm">
+            Si <strong style={{ overflowWrap: 'anywhere' }}>{registeredEmail}</strong> puede usarse, te hemos enviado un enlace de verificación. Si ya tienes una cuenta, simplemente inicia sesión.
+          </Text>
+          <Text size="sm" mt="xs">
+            Revisa tu bandeja de entrada y haz clic en el enlace para activar tu cuenta. También revisa la carpeta de spam.
+          </Text>
+        </Alert>
+        <Text size="sm" c="dimmed" ta="center">
+          Si no recibes el email en unos minutos, revisa tu carpeta de spam. El enlace de verificación expira en 24 horas.
+        </Text>
+        <Button component={Link} href="/auth/signin" size="lg" fullWidth>
+          Ir a iniciar sesión
+        </Button>
+      </AuthShell>
+    )
   }
 
   return (
-    <Box>
-      {/* Hero Section */}
-      <Box bg="blue.0" py="xl">
-        <Container size="sm" py="xl">
-          <Stack align="center" gap="xl">
-            <Group gap="xs">
-              <Link href="/auth/signin">
-                <Button variant="subtle" leftSection={<IconArrowLeft size={16} />}>
-                  Volver al inicio de sesión
-                </Button>
-              </Link>
-            </Group>
-            <Title size="2.5rem" ta="center" fw={900}>
-              Crear cuenta gratuita
-            </Title>
-            <Text size="lg" ta="center" c="dimmed" maw={500}>
-              Únete a miles de empresas que ya digitalizan sus procesos de firma.
-              Comienza gratis, sin tarjeta de crédito.
-            </Text>
-          </Stack>
-        </Container>
-      </Box>
+    <AuthShell
+      title="Crear cuenta gratuita"
+      subtitle="Comienza gratis, sin tarjeta de crédito"
+      wide
+      footer={
+        <>
+          ¿Ya tienes cuenta?{' '}
+          <Link href="/auth/signin" style={{ color: 'var(--os-brand)', fontWeight: 600 }}>
+            Inicia sesión aquí
+          </Link>
+        </>
+      }
+    >
+      {errors.general && (
+        <Alert color={errors.type === 'existing_account' ? 'blue' : 'red'} icon={<IconAlertCircle size={16} />} role="alert">
+          {errors.general}
+          {errors.type === 'existing_account' && (
+            <Button component={Link} href="/auth/signin" mt="sm" leftSection={<IconArrowLeft size={16} />}>
+              Iniciar sesión
+            </Button>
+          )}
+        </Alert>
+      )}
 
-      <Container size="sm" py="xl">
-        <Card shadow="md" padding="xl" radius="lg" withBorder>
-          <Stack gap="md">
-            {success ? (
-              // Vista de éxito
-              <>
-                <div style={{ textAlign: 'center' }}>
-                  <IconMailForward size={64} color="green" style={{ marginBottom: '1rem' }} />
-                  <Title order={2} mb="xs" c="green">¡Cuenta creada exitosamente!</Title>
-                  <Text size="sm" c="dimmed">
-                    Tu cuenta ha sido creada correctamente
-                  </Text>
-                </div>
+      <form onSubmit={handleSubmit} noValidate>
+        <Stack gap="md">
+          <TextInput label="Nombre completo" placeholder="Tu nombre completo" autoComplete="name" leftSection={<IconUser size={16} />} value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} error={errors.name} required />
+          <TextInput label="Nombre de usuario" placeholder="usuario123" autoComplete="username" autoCapitalize="none" leftSection={<IconUser size={16} />} value={formData.username} onChange={(e) => setFormData({ ...formData, username: e.target.value.toLowerCase() })} error={errors.username} description="Solo letras, números y guiones bajos. Mínimo 3 caracteres." required />
+          <TextInput label="Email corporativo" type="email" inputMode="email" autoComplete="email" placeholder="tu@empresa.com" leftSection={<IconMail size={16} />} value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} error={errors.email} required />
 
-                <Alert color="blue" icon={<IconMail size={16} />}>
-                  <Text fw={500} mb="xs">Verifica tu email</Text>
-                  <Text size="sm">
-                    Si <strong>{registeredEmail}</strong> puede usarse, te hemos enviado un enlace de verificación. Si ya tienes una cuenta, simplemente inicia sesión.
-                  </Text>
-                  <Text size="sm" mt="xs">
-                    Revisa tu bandeja de entrada y haz clic en el enlace para activar tu cuenta.
-                    También revisa la carpeta de spam.
-                  </Text>
-                </Alert>
+          {/* Honeypot: off-screen and not focusable; people never fill it */}
+          <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }}>
+            <label>
+              Website
+              <input type="text" name="website" tabIndex={-1} autoComplete="off" value={formData.website} onChange={(e) => setFormData({ ...formData, website: e.target.value })} />
+            </label>
+          </div>
 
-                <Stack gap="sm">
-                  <Text size="sm" c="dimmed" ta="center">
-                    Si no recibes el email en unos minutos, revisa tu carpeta de spam.
-                    El enlace de verificación expira en 24 horas.
-                  </Text>
+          <TextInput label="Empresa" placeholder="Nombre de tu empresa" autoComplete="organization" leftSection={<IconBuildingBank size={16} />} value={formData.company} onChange={(e) => setFormData({ ...formData, company: e.target.value })} />
+          <PasswordInput label="Contraseña" placeholder="Mínimo 8 caracteres, 3 de 4 tipos" autoComplete="new-password" description={PASSWORD_POLICY_MESSAGE} leftSection={<IconLock size={16} />} value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} error={errors.password} required />
+          <PasswordInput label="Confirmar contraseña" placeholder="Repite tu contraseña" autoComplete="new-password" leftSection={<IconLock size={16} />} value={formData.confirmPassword} onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })} error={errors.confirmPassword} required />
 
-                  <Link href="/auth/signin">
-                    <Button variant="filled" fullWidth>
-                      Ir a iniciar sesión
-                    </Button>
-                  </Link>
-                </Stack>
-              </>
-            ) : (
-              // Vista de formulario
-              <>
-                <div>
-                  <Title order={2} mb="xs">Crea tu cuenta</Title>
-                  <Text size="sm" c="dimmed">
-                    Completa los siguientes datos para crear tu cuenta gratuita
-                  </Text>
-                </div>
+          <Checkbox
+            size="md"
+            label={
+              <Text size="sm">
+                Acepto los{' '}
+                <Link href="/legal/terms" style={{ textDecoration: 'underline' }}>términos y condiciones</Link>{' '}
+                y la{' '}
+                <Link href="/legal/privacy" style={{ textDecoration: 'underline' }}>política de privacidad</Link>
+              </Text>
+            }
+            checked={formData.acceptTerms}
+            onChange={(e) => setFormData({ ...formData, acceptTerms: e.currentTarget.checked })}
+            error={errors.acceptTerms}
+          />
 
-                {errors.general && (
-                  <Alert color={errors.type === 'existing_account' ? 'blue' : 'red'} icon={<IconAlertCircle size={16} />}>
-                    {errors.general}
-                    {errors.type === 'existing_account' && (
-                      <Group mt="sm">
-                        <Link href="/auth/signin">
-                          <Button variant="filled" size="sm" leftSection={<IconArrowLeft size={16} />}>
-                            Iniciar sesión
-                          </Button>
-                        </Link>
-                      </Group>
-                    )}
-                  </Alert>
-                )}
+          <Button type="submit" size="lg" loading={loading} leftSection={<IconCheck size={20} />} fullWidth>
+            Crear cuenta gratuita
+          </Button>
+        </Stack>
+      </form>
 
-            <form onSubmit={handleSubmit}>
-              <Stack gap="md">
-                <TextInput
-                  label="Nombre completo"
-                  placeholder="Tu nombre completo"
-                  leftSection={<IconUser size={16} />}
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  error={errors.name}
-                  required
-                />
-
-                <TextInput
-                  label="Nombre de usuario"
-                  placeholder="usuario123"
-                  leftSection={<IconUser size={16} />}
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value.toLowerCase() })}
-                  error={errors.username}
-                  description="Solo letras, números y guiones bajos. Mínimo 3 caracteres."
-                  required
-                />
-
-                <TextInput
-                  label="Email corporativo"
-                  placeholder="tu@empresa.com"
-                  leftSection={<IconMail size={16} />}
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  error={errors.email}
-                  required
-                />
-
-                {/* Honeypot: off-screen and not focusable; people never fill it */}
-                <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }}>
-                  <label>
-                    Website
-                    <input
-                      type="text"
-                      name="website"
-                      tabIndex={-1}
-                      autoComplete="off"
-                      value={formData.website}
-                      onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                    />
-                  </label>
-                </div>
-
-                <TextInput
-                  label="Empresa"
-                  placeholder="Nombre de tu empresa"
-                  leftSection={<IconBuildingBank size={16} />}
-                  value={formData.company}
-                  onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                />
-
-                <PasswordInput
-                  label="Contraseña"
-                  placeholder="Mínimo 8 caracteres, 3 de 4 tipos"
-                  description={PASSWORD_POLICY_MESSAGE}
-                  leftSection={<IconLock size={16} />}
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  error={errors.password}
-                  required
-                />
-
-                <PasswordInput
-                  label="Confirmar contraseña"
-                  placeholder="Repite tu contraseña"
-                  leftSection={<IconLock size={16} />}
-                  value={formData.confirmPassword}
-                  onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                  error={errors.confirmPassword}
-                  required
-                />
-
-                <Checkbox
-                  label={
-                    <Text size="sm">
-                      Acepto los{' '}
-                      <Link href="/legal/terms" style={{ textDecoration: 'underline' }}>
-                        términos y condiciones
-                      </Link>{' '}
-                      y la{' '}
-                      <Link href="/legal/privacy" style={{ textDecoration: 'underline' }}>
-                        política de privacidad
-                      </Link>
-                    </Text>
-                  }
-                  checked={formData.acceptTerms}
-                  onChange={(e) => setFormData({ ...formData, acceptTerms: e.currentTarget.checked })}
-                  error={errors.acceptTerms}
-                />
-
-                <Button
-                  type="submit"
-                  size="lg"
-                  loading={loading}
-                  leftSection={<IconCheck size={20} />}
-                  fullWidth
-                >
-                  Crear cuenta gratuita
-                </Button>
-              </Stack>
-            </form>
-
-            {/* OAuth desactivado temporalmente */}
-            {false && (
-              <>
-                <Divider label="O continúa con" labelPosition="center" />
-
-                <Stack gap="sm">
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    fullWidth
-                    leftSection={<IconBrandGoogle size={20} />}
-                    onClick={() => handleOAuthSignUp('google')}
-                  >
-                    Continuar con Google
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    fullWidth
-                    leftSection={<IconBrandWindows size={20} />}
-                    onClick={() => handleOAuthSignUp('azure-ad')}
-                  >
-                    Continuar con Microsoft
-                  </Button>
-                </Stack>
-              </>
-            )}
-
-                <Center>
-                  <Text size="sm" c="dimmed">
-                    ¿Ya tienes cuenta?{' '}
-                    <Link href="/auth/signin" style={{ color: 'var(--mantine-color-blue-6)', textDecoration: 'none' }}>
-                      Inicia sesión aquí
-                    </Link>
-                  </Text>
-                </Center>
-              </>
-            )}
-          </Stack>
-        </Card>
-
-        {/* Benefits Section */}
-        <Card shadow="sm" padding="lg" radius="md" withBorder mt="xl" bg="green.0">
-          <Title order={3} mb="md" ta="center">¿Por qué elegir oSign.EU?</Title>
-          <Stack gap="sm">
-            <Group gap="xs">
-              <IconCheck color="green" size={16} />
-              <Text size="sm">Plan gratuito para siempre con 5 contratos mensuales</Text>
-            </Group>
-            <Group gap="xs">
-              <IconCheck color="green" size={16} />
-              <Text size="sm">Validez legal completa en España y la UE</Text>
-            </Group>
-            <Group gap="xs">
-              <IconCheck color="green" size={16} />
-              <Text size="sm">API REST para integrar con tu software</Text>
-            </Group>
-            <Group gap="xs">
-              <IconCheck color="green" size={16} />
-              <Text size="sm">Soporte técnico en español</Text>
-            </Group>
-            <Group gap="xs">
-              <IconCheck color="green" size={16} />
-              <Text size="sm">Sin permanencia, cancela cuando quieras</Text>
-            </Group>
-          </Stack>
-        </Card>
-      </Container>
-    </Box>
+      <Stack gap={6} mt="xs" aria-label="Ventajas de oSign.EU">
+        {[
+          'Plan gratuito para siempre con 5 contratos mensuales',
+          'Validez legal completa en España y la UE',
+          'API REST para integrar con tu software',
+          'Soporte técnico en español',
+          'Sin permanencia, cancela cuando quieras',
+        ].map((t) => (
+          <Group key={t} gap="xs" wrap="nowrap" align="flex-start">
+            <IconCheck size={16} color="var(--os-success)" style={{ flex: '0 0 auto', marginTop: 3 }} aria-hidden="true" />
+            <Text size="sm">{t}</Text>
+          </Group>
+        ))}
+      </Stack>
+    </AuthShell>
   )
 }

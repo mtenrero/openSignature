@@ -454,9 +454,19 @@ button.os-tile { cursor: pointer; }
 .os-rt-card { background: var(--os-surface); border: 1px solid var(--os-border); border-radius: var(--mantine-radius-lg); padding: 12px 16px; min-width: 0; overflow-wrap: anywhere; }
 .os-scroll-x { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
 .os-code { margin: 0; padding: 12px; border: 1px solid var(--os-border); border-radius: var(--mantine-radius-md); background: var(--os-surface-2); color: var(--os-text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.5; overflow-x: auto; max-width: 100%; white-space: pre; }
-.os-auth { min-height: 100dvh; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: max(24px, var(--os-safe-top)) max(16px, var(--os-safe-right)) max(24px, var(--os-safe-bottom)) max(16px, var(--os-safe-left)); }
+.os-auth { min-height: calc(100dvh - var(--os-header-h) - var(--os-safe-top)); display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 24px max(16px, var(--os-safe-right)) max(24px, var(--os-safe-bottom)) max(16px, var(--os-safe-left)); }
 .os-auth__card { width: 100%; max-width: 440px; }
 .os-hero-title { font-size: clamp(1.9rem, 7vw, 3.4rem); line-height: 1.1; }
 .os-snap { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; margin: 0 calc(-1 * var(--os-gutter)); padding-inline: var(--os-gutter); scroll-padding-inline: var(--os-gutter); }
 .os-snap > * { flex: 0 0 min(84%, 340px); scroll-snap-align: start; }
 @media (min-width: 62em) { .os-snap { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); overflow: visible; margin: 0; padding: 0; } .os-snap > * { flex: initial; } }
+.os-tabs-scroll { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+.os-tabs-scroll::-webkit-scrollbar { display: none; }
+.os-tabs-scroll .mantine-Tabs-tab { flex: 0 0 auto; min-height: var(--os-touch); white-space: nowrap; }
+.os-hero { background: var(--os-surface-2); border-bottom: 1px solid var(--os-border); }
+.os-feature { height: 100%; }
+@media (max-width: 47.99em) { .os-cta-actions { flex-direction: column; } .os-cta-actions > * { width: 100%; } }
+/* Pricing cards: the featured one carries a brand border instead of a scale transform (no overflow). */
+.os-plan { display: flex; flex-direction: column; gap: 12px; padding: 20px; position: relative; }
+.os-plan--popular { border: 2px solid var(--os-brand); }
+.os-plan__badge { position: absolute; top: -12px; left: 16px; }
