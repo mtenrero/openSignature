@@ -133,7 +133,7 @@ test.describe('sent requests review', () => {
     await expect(page.getByTestId('audit-timeline')).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Seguimiento' })).toBeVisible()
     await expect(page.getByTestId('request-progress')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Reenviar solicitud' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Recordar' })).toBeVisible()
     await checkLayout(page)
     await shot(page, testInfo, 'detail-pending')
 

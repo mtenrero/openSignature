@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Menu, Text } from '@mantine/core'
 import { AdaptiveSheet } from './AdaptiveSheet'
 import { useIsMobile } from '../../lib/ui/useIsMobile'
@@ -30,8 +30,14 @@ export interface ActionSheetProps {
 
 /** List of 56px action rows in a sheet (bottom sheet on mobile, small modal on desktop). */
 export function ActionSheet({ opened, onClose, title = 'Acciones', items }: ActionSheetProps) {
+  // When an item opens another sheet, this one must not hand the focus back to its trigger afterwards
+  // (Mantine does it 10ms after closing, which would steal it from the sheet that just opened).
+  const [chosen, setChosen] = useState(false)
+  useEffect(() => {
+    if (opened) setChosen(false)
+  }, [opened])
   return (
-    <AdaptiveSheet opened={opened} onClose={onClose} title={title} size="sm">
+    <AdaptiveSheet opened={opened} onClose={onClose} title={title} size="sm" returnFocus={!chosen}>
       <div role="menu" aria-label={title} style={{ margin: '0 -8px' }}>
         {ordered(items).map((it) => (
           <button
@@ -51,6 +57,7 @@ export function ActionSheet({ opened, onClose, title = 'Acciones', items }: Acti
             }}
             onClick={() => {
               if (it.disabled) return
+              setChosen(true)
               onClose()
               it.onClick()
             }}

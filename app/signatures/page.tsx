@@ -3,7 +3,7 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { ActionIcon, Button, Container, Group, Indicator, Stack } from '@mantine/core'
 import {
-  IconAdjustmentsHorizontal, IconDots, IconDownload, IconEye, IconFileText, IconMail, IconMessage, IconPlus, IconRefresh, IconSignature, IconX,
+  IconAdjustmentsHorizontal, IconFileText, IconMail, IconMessage, IconPlus, IconRefresh, IconSignature, IconX,
 } from '@tabler/icons-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { notifications } from '@mantine/notifications'
@@ -11,8 +11,10 @@ import { useSession } from 'next-auth/react'
 import { isSMSEnabledClient } from '@/lib/utils/smsConfig'
 import { NewSignatureRequestWizard } from '@/components/signature-request/NewSignatureRequestWizard'
 import {
-  ActionMenu, EmptyState, ListSkeleton, PageHeader, SearchField, StatTiles, type ActionSheetItem,
+  EmptyState, ListSkeleton, PageHeader, SearchField, StatTiles, type ActionSheetItem,
 } from '@/components/ui'
+import { RowActionMenu } from '@/components/signatures/actions/RowActionMenu'
+import type { ActionResult } from '@/components/signatures/actions/useRequestActions'
 import { SignatureRow } from '@/components/signatures/SignatureRow'
 import {
   RANGE_OPTIONS, STATUS_OPTIONS, SignaturesFilterSheet, type AppliedFilters,
@@ -22,7 +24,6 @@ import {
   contractOptions, counts, filterRows, mergeRows, paginate, rowStatus,
   type DateRange, type SignatureRow as Row, type StatusFilter,
 } from '@/lib/signatures/listModel'
-import { downloadOrShare, fetchSignedPdf } from '@/lib/signatures/download'
 
 const PAGE_SIZE = 20
 
@@ -103,28 +104,21 @@ function FirmasPageContent() {
   }
   const clearAll = () => apply({ status: 'all', contractId: null, dateRange: 'all' })
 
-  const download = async (row: Row) => {
-    try {
-      const { blob, filename } = await fetchSignedPdf(row as any)
-      const r = await downloadOrShare(blob, filename)
-      if (r !== 'cancelled') notifications.show({ title: 'PDF listo', message: 'El contrato firmado se ha descargado', color: 'green' })
-    } catch (e) {
-      notifications.show({ title: 'Error de descarga', message: e instanceof Error ? e.message : 'No se pudo descargar el PDF', color: 'red' })
-    }
-  }
-
-  const rowActions = (row: Row): ActionSheetItem[] => {
-    const st = rowStatus(row)
+  const requestAgainItems = (row: Row): ActionSheetItem[] => {
     const items: ActionSheetItem[] = [
-      { key: 'view', label: 'Ver detalles', icon: <IconEye size={18} />, onClick: () => router.push(`/signatures/${row.id}`) },
       { key: 'contract', label: 'Ver contrato original', icon: <IconFileText size={18} />, onClick: () => router.push(`/contracts/${row.contractId}/edit`) },
     ]
-    if (st === 'pending' && row.signatureUrl) {
+    if (rowStatus(row) === 'pending' && row.signatureUrl) {
       items.push({ key: 'email', label: 'Solicitar por Email', icon: <IconMail size={18} />, onClick: () => requestAgain(row, 'email') })
       if (smsEnabled) items.push({ key: 'sms', label: 'Solicitar por SMS', icon: <IconMessage size={18} />, onClick: () => requestAgain(row, 'sms') })
     }
-    if (st === 'signed') items.push({ key: 'pdf', label: 'Descargar PDF', icon: <IconDownload size={18} />, onClick: () => download(row) })
     return items
+  }
+
+  // Optimistic update of the row, then a silent re-read of the list.
+  const onChanged = (row: Row, r: ActionResult) => {
+    setRows((cur) => (r.kind === 'discard' ? cur.filter((x) => x.id !== row.id) : cur.map((x) => (x.id === row.id ? { ...x, ...r.patch } : x))))
+    load(true)
   }
 
   const activeCount = (status !== 'all' ? 1 : 0) + (dateRange !== 'all' ? 1 : 0) + (contractId ? 1 : 0)
@@ -193,11 +187,7 @@ function FirmasPageContent() {
                   key={row.id}
                   row={row}
                   trailing={
-                    <ActionMenu
-                      title="Acciones de la firma"
-                      items={rowActions(row)}
-                      target={<ActionIcon variant="subtle" color="gray" size="lg" aria-label="Más acciones de la firma"><IconDots size={22} /></ActionIcon>}
-                    />
+                    <RowActionMenu row={row as any} extraItems={requestAgainItems(row)} onChanged={(r) => onChanged(row, r)} />
                   }
                 />
               ))}

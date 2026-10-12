@@ -61,8 +61,8 @@ describe('SignatureDetailsPage', () => {
     expect(screen.getByText('Motivo:', { exact: false })).toBeInTheDocument()
     // progress reflects the access event
     expect(screen.getByTestId('request-progress').querySelectorAll('li.is-done')).toHaveLength(2)
-    // primary action is the resend slot, not a PDF
-    expect(screen.getByRole('button', { name: /Reenviar solicitud/ })).toBeInTheDocument()
+    // primary action is Recordar (a resend), not a PDF
+    expect(screen.getByRole('button', { name: /Recordar/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Descargar PDF' })).toBeNull()
   })
 
@@ -151,11 +151,11 @@ describe('SignatureDetailsPage', () => {
   it('resend opens a sheet with a sticky footer (no centred modal)', async () => {
     mockApi(base)
     renderWithMantine(<SignatureDetailsPage />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Reenviar solicitud' }))
-    const sheet = await screen.findByTestId('adaptive-sheet')
-    expect(within(sheet).getByTestId('sheet-footer')).toBeInTheDocument()
-    expect(within(sheet).getByRole('button', { name: 'Reenviar' })).toBeDisabled()
-    fireEvent.change(within(sheet).getByLabelText(/Tipo de firma/), { target: { value: 'email' } })
-    expect(within(sheet).getByRole('button', { name: 'Reenviar' })).toBeEnabled()
+    fireEvent.click(await screen.findByRole('button', { name: 'Más acciones' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Reenviar solicitud/ }))
+    const sheet = await screen.findByTestId('resend-sheet')
+    const sheetRoot = sheet.closest('[data-testid=adaptive-sheet]') as HTMLElement
+    expect(within(sheetRoot).getByTestId('sheet-footer')).toBeInTheDocument()
+    expect(within(sheetRoot).getByRole('button', { name: 'Reenviar' })).toBeEnabled()
   })
 })

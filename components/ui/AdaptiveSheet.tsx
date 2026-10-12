@@ -13,6 +13,8 @@ export interface AdaptiveSheetProps {
   footer?: React.ReactNode
   size?: 'sm' | 'md' | 'lg' | 'full'
   fullScreenOnMobile?: boolean
+  /** Give the focus back to the element that opened the sheet on close (default true). */
+  returnFocus?: boolean
 }
 
 // Mantine wraps Drawer content in a 100vh scroll area, which made every bottom sheet full height.
@@ -30,6 +32,7 @@ export function AdaptiveSheet({
   footer,
   size = 'md',
   fullScreenOnMobile,
+  returnFocus = true,
 }: AdaptiveSheetProps) {
   // undefined until the media query resolved: render nothing rather than flash a Modal on phones.
   const isMobile = useMediaQuery('(max-width: 47.99em)', undefined, { getInitialValueInEffect: true })
@@ -39,7 +42,7 @@ export function AdaptiveSheet({
 
   if (isMobile) {
     return (
-      <Drawer.Root opened={opened} onClose={onClose} position="bottom" zIndex={250} radius="lg" trapFocus scrollAreaComponent={NoScrollWrapper}>
+      <Drawer.Root opened={opened} onClose={onClose} position="bottom" zIndex={250} radius="lg" trapFocus returnFocus={returnFocus} scrollAreaComponent={NoScrollWrapper}>
         <Drawer.Overlay />
         <Drawer.Content
           className="os-sheet-content"
@@ -81,6 +84,7 @@ export function AdaptiveSheet({
       title={title}
       size={MODAL_WIDTH[size]}
       zIndex={250}
+      returnFocus={returnFocus}
       closeButtonProps={{ 'aria-label': 'Cerrar' }}
       styles={{ title: { fontWeight: 650, fontSize: '1.125rem' } }}
     >

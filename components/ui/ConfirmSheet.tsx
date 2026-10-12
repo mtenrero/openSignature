@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Button, Text, Textarea } from '@mantine/core'
+import { Alert, Button, Text, Textarea } from '@mantine/core'
 import { AdaptiveSheet } from './AdaptiveSheet'
 
 export interface ConfirmSheetProps {
@@ -13,6 +13,8 @@ export interface ConfirmSheetProps {
   cancelLabel?: string
   destructive?: boolean
   loading?: boolean
+  /** Server/validation error shown inside the sheet (role=alert). */
+  error?: string | null
   requireReason?: { label: string; placeholder?: string; minLength?: number }
   onConfirm: (reason: string) => void | Promise<void>
 }
@@ -26,6 +28,7 @@ export function ConfirmSheet({
   cancelLabel = 'Cancelar',
   destructive,
   loading,
+  error,
   requireReason,
   onConfirm,
 }: ConfirmSheetProps) {
@@ -58,6 +61,11 @@ export function ConfirmSheet({
       }
     >
       {typeof message === 'string' ? <Text>{message}</Text> : message}
+      {error ? (
+        <Alert color="red" mt="md" role="alert" data-testid="sheet-error">
+          {error}
+        </Alert>
+      ) : null}
       {requireReason ? (
         <Textarea
           mt="md"

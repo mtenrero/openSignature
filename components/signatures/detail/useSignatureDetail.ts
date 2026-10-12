@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 
 export interface SignatureDetails {
@@ -32,6 +32,8 @@ export function useSignatureDetail(id: string) {
   const [details, setDetails] = useState<SignatureDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [tick, setTick] = useState(0)
+  const silent = useRef(false)
   const userId = session?.user?.id
   const customerId = (session as any)?.customerId
 
@@ -81,7 +83,8 @@ export function useSignatureDetail(id: string) {
     }
     const run = async () => {
       try {
-        setLoading(true)
+        if (!silent.current) setLoading(true)
+        silent.current = false
         // Fast path: GET /api/signature-requests/{id} renders the screen without waiting for the (up to 100
         // row, audit-trail-merging) list. The list then upgrades the details with the combined audit trail.
         let fast: any = null
@@ -127,7 +130,14 @@ export function useSignatureDetail(id: string) {
     return () => {
       cancelled = true
     }
-  }, [id, userId, customerId, sessionStatus])
+  }, [id, userId, customerId, sessionStatus, tick])
 
-  return { details, loading: loading || sessionStatus === 'loading', error }
+  /** Merge fields optimistically, then re-read the request without showing the skeleton. */
+  const update = useCallback((patch?: Record<string, any>) => {
+    if (patch) setDetails((cur) => (cur ? { ...cur, ...patch } : cur))
+    silent.current = true
+    setTick((t) => t + 1)
+  }, [])
+
+  return { details, loading: loading || sessionStatus === 'loading', error, update }
 }

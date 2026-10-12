@@ -44,7 +44,8 @@ for (const variant of [
 
     test('resend is a bottom sheet with a visible footer; action sheet fits its content', async ({ page }, testInfo) => {
       await page.goto(`/signatures/${id}`)
-      await page.getByRole('button', { name: 'Reenviar solicitud' }).click()
+      await page.getByRole('button', { name: 'Más acciones' }).click()
+      await page.getByRole('menuitem', { name: /Reenviar solicitud/ }).click()
       const sheet = page.getByTestId('adaptive-sheet')
       await expect(sheet.getByTestId('resend-sheet')).toBeVisible()
       const vh = page.viewportSize()!.height
