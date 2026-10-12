@@ -31,7 +31,7 @@ describe('getShellVariant', () => {
 })
 
 describe('shouldHideTabBar', () => {
-  it.each(['/signatures/new', '/contracts/new', '/contracts/abc/edit'])('hides on %s', (p) => {
+  it.each(['/signatures/new', '/contracts/new', '/contracts/abc/edit', '/contracts/abc/preview'])('hides on %s', (p) => {
     expect(shouldHideTabBar(p)).toBe(true)
   })
   it.each(['/signatures', '/contracts', '/contracts/abc', '/more'])('shows on %s', (p) => {

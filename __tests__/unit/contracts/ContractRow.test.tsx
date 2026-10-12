@@ -68,4 +68,10 @@ describe('ContractRow', () => {
     fireEvent.click(items.at(-1)!)
     expect(h.onArchive).toHaveBeenCalledWith(c)
   })
+
+  test('status badge sits in the meta row so it never squeezes the title', () => {
+    const { container } = renderWithMantine(<ContractRow contract={{ id: 'l1', name: 'LOPD de la clínica', status: 'active', usageCount: 1 }} {...handlers()} />)
+    expect(container.querySelector('.os-li__meta')?.textContent).toMatch(/Activo/)
+    expect(container.querySelector('.os-li__main > .mantine-Badge-root')).toBeNull()
+  })
 })

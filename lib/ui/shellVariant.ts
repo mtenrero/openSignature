@@ -9,7 +9,7 @@ const PUBLIC_PREFIX = ['/welcome', '/auth', '/login', '/verify', '/docs']
 export function shouldHideTabBar(pathname: string): boolean {
   const p = splitPath(pathname).path
   if (p === '/signatures/new' || p === '/contracts/new') return true
-  return /^\/contracts\/[^/]+\/edit(\/|$)/.test(p)
+  return /^\/contracts\/[^/]+\/(edit|preview)(\/|$)/.test(p)
 }
 
 function splitPath(input: string): { path: string; query: URLSearchParams } {

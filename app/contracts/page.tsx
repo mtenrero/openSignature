@@ -78,11 +78,11 @@ export default function ContractsPage() {
     if (!toArchive) return;
     setArchiving(true);
     try {
-      // DELETE only accepts drafts; the status endpoint archives any contract.
-      const res = await fetch(`/api/contracts/${toArchive.id}/status`, {
-        method: "PUT",
+      // The dedicated endpoint keeps the audit fields and the usage refund of unsigned active contracts.
+      const res = await fetch(`/api/contracts/${toArchive.id}/archive`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "archived" }),
+        body: JSON.stringify({ reason: "manual_archive" }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Error al archivar el contrato");
       setContracts((cur) => cur.filter((c) => c.id !== toArchive.id));

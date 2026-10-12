@@ -51,8 +51,10 @@ export function ContractRow({ contract: c, onRequest, onArchive, onActivated }: 
         href={`/contracts/${c.id}/edit`}
         title={c.name || 'Sin título'}
         subtitle={c.description || undefined}
-        meta={[`${uses} ${uses === 1 ? 'uso' : 'usos'}`]}
-        status={<StatusBadge kind="contract" status={c.pendingActivation ? 'pendingActivation' : c.status} />}
+        meta={[
+          <StatusBadge key="status" kind="contract" status={c.pendingActivation ? 'pendingActivation' : c.status} />,
+          `${uses} ${uses === 1 ? 'uso' : 'usos'}`,
+        ]}
         trailing={
           <ActionMenu
             title={c.name || 'Contrato'}
