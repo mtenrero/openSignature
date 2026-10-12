@@ -7,6 +7,7 @@ import { getDatabase, getContractsCollection, getSignatureRequestsCollection } f
 import { ObjectId } from 'mongodb'
 import { VirtualWallet } from '@/lib/wallet/wallet'
 import { UsageAuditService } from '@/lib/usage/usageAudit'
+import { EXCLUDE_PENDING_LIBRARY } from '@/lib/contractLibrary'
 
 export interface UsageRecord {
   _id?: ObjectId
@@ -97,6 +98,7 @@ export class UsageTracker {
       const contractsCreated = await contractsCollection.countDocuments({
         customerId: customerId,
         status: { $in: ['draft', 'active'] }, // Only count non-archived contracts
+        ...EXCLUDE_PENDING_LIBRARY, // partner-seeded library contracts not yet activated are free
         createdAt: {
           $gte: startOfMonth,
           $lte: endOfMonth

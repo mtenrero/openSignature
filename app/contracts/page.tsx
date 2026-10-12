@@ -234,7 +234,10 @@ export default function DashboardPage() {
       contrato.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       contrato.description?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus =
-      statusFilter === "todos" || contrato.status === statusFilter;
+      statusFilter === "todos" ||
+      (statusFilter === "pending"
+        ? contrato.pendingActivation === true
+        : contrato.status === statusFilter);
     return matchesSearch && matchesStatus;
   });
 
@@ -249,6 +252,64 @@ export default function DashboardPage() {
       statusConfig[status as keyof typeof statusConfig] || statusConfig.draft
     );
   };
+
+  // Library contracts seeded by a partner (VetControl...) start as draft and
+  // "pending activation": they cannot be sent for signature until activated.
+  const getContractBadge = (contrato: any) =>
+    contrato.pendingActivation
+      ? { label: "Pendiente de activación", color: "orange" }
+      : getStatusBadge(contrato.status);
+
+  const [activatingId, setActivatingId] = useState<string | null>(null);
+  const handleActivate = async (contrato: any) => {
+    setActivatingId(contrato.id);
+    try {
+      const response = await fetch(`/api/contracts/${contrato.id}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "active" }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || "No se pudo activar el contrato");
+      }
+      setContratos((prev) =>
+        prev.map((c) =>
+          c.id === contrato.id
+            ? { ...c, status: "active", pendingActivation: false }
+            : c,
+        ),
+      );
+      notifications.show({
+        title: "Contrato activado",
+        message: `«${contrato.name}» ya se puede enviar a firmar.`,
+        color: "green",
+      });
+    } catch (err: any) {
+      notifications.show({
+        title: "No se pudo activar",
+        message: err.message || "Error al activar el contrato",
+        color: "red",
+      });
+    } finally {
+      setActivatingId(null);
+    }
+  };
+
+  const activateButton = (contrato: any) =>
+    contrato.pendingActivation ? (
+      <Button
+        variant="filled"
+        color="green"
+        size="xs"
+        leftSection={<IconFileCheck size={14} />}
+        loading={activatingId === contrato.id}
+        onClick={() => handleActivate(contrato)}
+        data-testid={`activate-${contrato.id}`}
+      >
+        Activar
+      </Button>
+    ) : null;
 
   const handleNewContract = () => {
     // Check if subscription data is available and limits are exceeded
@@ -1068,6 +1129,7 @@ export default function DashboardPage() {
               placeholder="Estado"
               data={[
                 { value: "todos", label: "Todos" },
+                { value: "pending", label: "Pendientes de activación" },
                 { value: "draft", label: "Borradores" },
                 { value: "active", label: "Activos" },
                 { value: "signed", label: "Firmados" },
@@ -1122,10 +1184,10 @@ export default function DashboardPage() {
                       Contrato
                     </Text>
                     <Badge
-                      color={getStatusBadge(contrato.status).color}
+                      color={getContractBadge(contrato).color}
                       variant="light"
                     >
-                      {getStatusBadge(contrato.status).label}
+                      {getContractBadge(contrato).label}
                     </Badge>
                   </Group>
                 </Card.Section>
@@ -1171,6 +1233,7 @@ export default function DashboardPage() {
                       </Button>
                     </Link>
 
+                    {activateButton(contrato)}
                     {/* Signature Request Button for Active Contracts */}
                     {contrato.status === "active" && (
                       <Menu shadow="md" width={250}>
@@ -1307,11 +1370,11 @@ export default function DashboardPage() {
                   <Group align="center" gap="md" flex={1}>
                     <Box>
                       <Badge
-                        color={getStatusBadge(contrato.status).color}
+                        color={getContractBadge(contrato).color}
                         variant="light"
                         size="sm"
                       >
-                        {getStatusBadge(contrato.status).label}
+                        {getContractBadge(contrato).label}
                       </Badge>
                     </Box>
 
@@ -1371,6 +1434,7 @@ export default function DashboardPage() {
                       </Button>
                     </Link>
 
+                    {activateButton(contrato)}
                     {/* Signature Request Button for Active Contracts */}
                     {contrato.status === "active" && (
                       <Menu shadow="md" width={250}>
