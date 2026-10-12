@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useEffect, use } from 'react'
-import { Container, Title, Text, Card, Stack, Badge, Group, Loader, Alert, Box, Divider, Progress, List, ThemeIcon, Tabs, Timeline, Code, Button, Collapse, Table, ScrollArea } from '@mantine/core'
+import { Container, Title, Text, Card, Stack, Badge, Group, Loader, Alert, Box, Divider, Progress, List, ThemeIcon, Tabs, Timeline, Code, Button, Collapse, ScrollArea } from '@mantine/core'
 import { IconCheck, IconX, IconFileDescription, IconCalendar, IconUser, IconFingerprint, IconShieldCheck, IconAlertTriangle, IconHash, IconLock, IconClock, IconInfoCircle, IconDownload, IconEye, IconCircleCheck, IconCircleX } from '@tabler/icons-react'
 import { useDisclosure } from '@mantine/hooks'
 import axios from 'axios'
+import { notifications } from '@mantine/notifications'
+import { KeyValueList } from '../../../components/ui'
 
 export default function VerifySignature({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -94,7 +96,7 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
       window.URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Error downloading signed contract:', error)
-      alert('Error al descargar el contrato firmado')
+      notifications.show({ message: 'Error al descargar el contrato firmado', color: 'red' })
     }
   }
 
@@ -116,16 +118,16 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
       window.URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Error downloading integrity report:', error)
-      alert('Error al descargar el informe de integridad')
+      notifications.show({ message: 'Error al descargar el informe de integridad', color: 'red' })
     }
   }
 
   return (
-    <Container size="lg" py="xl">
-      <Stack gap="xl">
+    <Container size="lg" py="md" px="md" style={{ paddingBottom: 'calc(var(--mantine-spacing-xl) + var(--os-safe-bottom))' }} data-testid="page-content">
+      <Stack gap="lg">
         {/* Header with Integrity Status */}
         <Box ta="center">
-          <Badge size="xl" color={getIntegrityColor()} variant="filled" mb="md">
+          <Badge size="xl" color={getIntegrityColor()} variant="filled" mb="md" className="os-wrap-badge">
             <Group gap="xs">
               {getIntegrityIcon()}
               {integrityData?.overallIntegrity?.level === 'HIGH' ? 'INTEGRIDAD VERIFICADA' : 
@@ -133,7 +135,7 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
                'VERIFICACIÓN REQUERIDA'}
             </Group>
           </Badge>
-          <Title order={1}>Verificación de Firma Electrónica</Title>
+          <Title order={1} fz={{ base: 24, sm: 32 }}>Verificación de Firma Electrónica</Title>
           <Text c="dimmed" mt="xs">
             Análisis completo de integridad y validez legal del documento
           </Text>
@@ -141,7 +143,7 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
 
         {/* Integrity Score */}
         {integrityData && (
-          <Card shadow="sm" padding="lg" withBorder>
+          <Card padding="md">
             <Stack gap="md">
               <Group justify="space-between">
                 <Text fw={600} size="lg">Puntuación de Integridad</Text>
@@ -183,12 +185,11 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
         )}
 
         {/* Download Actions */}
-        <Group justify="center" gap="md">
+        <Stack gap="sm" align="stretch" maw={420} mx="auto" w="100%" data-testid="verify-downloads">
           <Button
             leftSection={<IconDownload size={16} />}
             onClick={downloadSignedPDF}
             variant="filled"
-            color="blue"
             size="md"
           >
             Descargar Contrato Firmado
@@ -201,11 +202,11 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
           >
             Descargar Reporte de Integridad
           </Button>
-        </Group>
+        </Stack>
 
         {/* Tabs for Different Views */}
         <Tabs value={activeTab} onChange={setActiveTab}>
-          <Tabs.List>
+          <Tabs.List className="os-tabs-scroll">
             <Tabs.Tab value="overview" leftSection={<IconInfoCircle size={16} />}>
               Resumen
             </Tabs.Tab>
@@ -224,59 +225,36 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
           <Tabs.Panel value="overview" pt="md">
             <Stack gap="lg">
               {/* Contract Information */}
-              <Card shadow="sm" padding="lg" withBorder>
+              <Card padding="md">
                 <Group mb="md">
                   <IconFileDescription size={24} />
                   <Title order={3}>Información del Contrato</Title>
                 </Group>
-                <Stack gap="xs">
-                  <Group justify="space-between">
-                    <Text fw={500}>Nombre:</Text>
-                    <Text>{integrityData?.document?.name || 'Contrato'}</Text>
-                  </Group>
-                  <Group justify="space-between">
-                    <Text fw={500}>ID de firma:</Text>
-                    <Text size="sm" ff="monospace">{integrityData?.signatureId}</Text>
-                  </Group>
-                  <Group justify="space-between">
-                    <Text fw={500}>Fecha de firma:</Text>
-                    <Text>{integrityData?.document?.signedAt ? new Date(integrityData.document.signedAt).toLocaleString('es-ES') : 'No disponible'}</Text>
-                  </Group>
-                  <Group justify="space-between">
-                    <Text fw={500}>Estado:</Text>
-                    <Badge color="green">FIRMADO</Badge>
-                  </Group>
-                </Stack>
+                <KeyValueList
+                  items={[
+                    { label: 'Nombre', value: integrityData?.document?.name || 'Contrato' },
+                    { label: 'ID de firma', value: integrityData?.signatureId ?? 'No disponible', mono: true, copyable: typeof integrityData?.signatureId === 'string' },
+                    { label: 'Fecha de firma', value: integrityData?.document?.signedAt ? new Date(integrityData.document.signedAt).toLocaleString('es-ES') : 'No disponible' },
+                    { label: 'Estado', value: <Badge color="green">FIRMADO</Badge> },
+                  ]}
+                />
               </Card>
 
               {/* Signer Information */}
-              <Card shadow="sm" padding="lg" withBorder>
+              <Card padding="md">
                 <Group mb="md">
                   <IconUser size={24} />
                   <Title order={3}>Información del Firmante</Title>
                 </Group>
-                <Stack gap="xs">
-                  <Group justify="space-between">
-                    <Text fw={500}>Nombre:</Text>
-                    <Text>{integrityData?.signer?.name || 'No disponible'}</Text>
-                  </Group>
-                  <Group justify="space-between">
-                    <Text fw={500}>NIF/DNI:</Text>
-                    <Text>{integrityData?.signer?.taxId || 'No disponible'}</Text>
-                  </Group>
-                  <Group justify="space-between">
-                    <Text fw={500}>Email:</Text>
-                    <Text>{integrityData?.signer?.email || 'No disponible'}</Text>
-                  </Group>
-                  <Group justify="space-between">
-                    <Text fw={500}>Método de firma:</Text>
-                    <Text>{integrityData?.signer?.method || 'ELECTRONIC'}</Text>
-                  </Group>
-                  <Group justify="space-between">
-                    <Text fw={500}>Dirección IP:</Text>
-                    <Text ff="monospace">{integrityData?.signer?.ipAddress || 'No disponible'}</Text>
-                  </Group>
-                </Stack>
+                <KeyValueList
+                  items={[
+                    { label: 'Nombre', value: integrityData?.signer?.name || 'No disponible' },
+                    { label: 'NIF/DNI', value: integrityData?.signer?.taxId || 'No disponible' },
+                    { label: 'Email', value: integrityData?.signer?.email || 'No disponible' },
+                    { label: 'Método de firma', value: integrityData?.signer?.method || 'ELECTRONIC' },
+                    { label: 'Dirección IP', value: integrityData?.signer?.ipAddress || 'No disponible', mono: true },
+                  ]}
+                />
               </Card>
             </Stack>
           </Tabs.Panel>
@@ -285,7 +263,7 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
           <Tabs.Panel value="integrity" pt="md">
             <Stack gap="lg">
               {/* Hash Verification */}
-              <Card shadow="sm" padding="lg" withBorder>
+              <Card padding="md">
                 <Group mb="md">
                   <IconHash size={24} />
                   <Title order={3}>Verificación de Hash SHA-256</Title>
@@ -300,20 +278,21 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
                   
                   <Box>
                     <Text size="sm" fw={500} mb="xs">Hash Original (almacenado):</Text>
-                    <Code block style={{ wordBreak: 'break-all' }}>
+                    <Code block style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
                       {integrityData?.hashVerification?.originalHash || 'No disponible'}
                     </Code>
                   </Box>
                   
                   <Box>
                     <Text size="sm" fw={500} mb="xs">Hash Recalculado (actual):</Text>
-                    <Code block style={{ wordBreak: 'break-all' }}>
+                    <Code block style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
                       {integrityData?.hashVerification?.recalculatedHash || 'No disponible'}
                     </Code>
                   </Box>
                   
-                  <Badge 
-                    size="lg" 
+                  <Badge
+                    size="lg"
+                    className="os-wrap-badge"
                     color={integrityData?.hashVerification?.isValid ? 'green' : 'red'}
                   >
                     {integrityData?.hashVerification?.isValid ? 
@@ -324,18 +303,24 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
               </Card>
 
               {/* Document Snapshot */}
-              <Card shadow="sm" padding="lg" withBorder>
+              <Card padding="md">
                 <Group mb="md">
                   <IconLock size={24} />
                   <Title order={3}>Snapshot del Documento</Title>
                 </Group>
                 <Stack gap="xs">
-                  <Group justify="space-between">
-                    <Text fw={500}>Estado del Snapshot:</Text>
-                    <Badge color={integrityData?.document?.hasSnapshot ? 'green' : 'orange'}>
-                      {integrityData?.document?.snapshotIntegrity || 'No disponible'}
-                    </Badge>
-                  </Group>
+                  <KeyValueList
+                    items={[
+                      {
+                        label: 'Estado del Snapshot',
+                        value: (
+                          <Badge color={integrityData?.document?.hasSnapshot ? 'green' : 'orange'} className="os-wrap-badge">
+                            {integrityData?.document?.snapshotIntegrity || 'No disponible'}
+                          </Badge>
+                        ),
+                      },
+                    ]}
+                  />
                   <Text size="sm" c="dimmed">
                     {integrityData?.document?.hasSnapshot ? 
                       'El contenido del documento fue preservado en el momento de la firma.' :
@@ -349,7 +334,7 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
           {/* Audit Tab */}
           <Tabs.Panel value="audit" pt="md">
             <Stack gap="lg">
-              <Card shadow="sm" padding="lg" withBorder>
+              <Card padding="md">
                 <Group mb="md">
                   <IconClock size={24} />
                   <Title order={3}>Rastro de Auditoría</Title>
@@ -362,30 +347,21 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
                     {integrityData?.auditTrail?.message}
                   </Alert>
                   
-                  <Group justify="space-between">
-                    <Text fw={500}>Estado:</Text>
-                    <Badge color={integrityData?.auditTrail?.isSealed ? 'green' : 'orange'}>
-                      {integrityData?.auditTrail?.isSealed ? 'SELLADO' : 'NO SELLADO'}
-                    </Badge>
-                  </Group>
-                  
-                  {integrityData?.auditTrail?.sealedAt && (
-                    <Group justify="space-between">
-                      <Text fw={500}>Sellado en:</Text>
-                      <Text>{new Date(integrityData.auditTrail.sealedAt).toLocaleString('es-ES')}</Text>
-                    </Group>
-                  )}
-                  
-                  <Group justify="space-between">
-                    <Text fw={500}>Eventos registrados:</Text>
-                    <Badge>{integrityData?.auditTrail?.recordsCount || 0} eventos</Badge>
-                  </Group>
+                  <KeyValueList
+                    items={[
+                      { label: 'Estado', value: <Badge color={integrityData?.auditTrail?.isSealed ? 'green' : 'orange'}>{integrityData?.auditTrail?.isSealed ? 'SELLADO' : 'NO SELLADO'}</Badge> },
+                      ...(integrityData?.auditTrail?.sealedAt
+                        ? [{ label: 'Sellado en', value: new Date(integrityData.auditTrail.sealedAt).toLocaleString('es-ES') }]
+                        : []),
+                      { label: 'Eventos registrados', value: <Badge>{integrityData?.auditTrail?.recordsCount || 0} eventos</Badge> },
+                    ]}
+                  />
                 </Stack>
               </Card>
               
               {/* Audit Events Timeline */}
               {integrityData?.auditTrail?.events && integrityData.auditTrail.events.length > 0 && (
-                <Card shadow="sm" padding="lg" withBorder>
+                <Card padding="md">
                   <Group mb="md">
                     <IconClock size={24} />
                     <Title order={3}>Línea de Tiempo de Eventos</Title>
@@ -552,27 +528,14 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
 
               {/* Dynamic Fields */}
               {integrityData?.dynamicFields && Object.keys(integrityData.dynamicFields).length > 0 && (
-                <Card shadow="sm" padding="lg" withBorder>
+                <Card padding="md">
                   <Group mb="md">
                     <IconFingerprint size={24} />
                     <Title order={3}>Campos Dinámicos Capturados</Title>
                   </Group>
-                  <Table>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th>Campo</Table.Th>
-                        <Table.Th>Valor</Table.Th>
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {Object.entries(integrityData.dynamicFields).map(([key, value]) => (
-                        <Table.Tr key={key}>
-                          <Table.Td fw={500}>{key}</Table.Td>
-                          <Table.Td>{String(value)}</Table.Td>
-                        </Table.Tr>
-                      ))}
-                    </Table.Tbody>
-                  </Table>
+                  <KeyValueList
+                    items={Object.entries(integrityData.dynamicFields).map(([key, value]) => ({ label: key, value: String(value) }))}
+                  />
                 </Card>
               )}
             </Stack>
@@ -581,12 +544,12 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
           {/* Technical Tab */}
           <Tabs.Panel value="technical" pt="md">
             <Stack gap="lg">
-              <Card shadow="sm" padding="lg" withBorder>
+              <Card padding="md">
                 <Group mb="md">
                   <IconHash size={24} />
                   <Title order={3}>Datos Técnicos Completos</Title>
                 </Group>
-                <ScrollArea h={400}>
+                <ScrollArea h={400} type="auto">
                   <Code block>
                     {JSON.stringify(integrityData, null, 2)}
                   </Code>

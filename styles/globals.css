@@ -5,6 +5,7 @@
 @import '@mantine/tiptap/styles.css';
 @import './tokens.css';
 @import './ui.css';
+@import './signer.css';
 @import './editor.css';
 
 html,

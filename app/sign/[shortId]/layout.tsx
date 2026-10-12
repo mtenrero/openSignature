@@ -59,9 +59,7 @@ function SignLayoutContent({ children }: SignLayoutProps) {
         }
 
         const data = await response.json()
-        console.log('[DEBUG] data.authorized:', data.authorized)
         setSignData(data)
-        console.log('[DEBUG] Setting loading to false')
         setLoading(false)
         
       } catch (err) {
@@ -77,7 +75,7 @@ function SignLayoutContent({ children }: SignLayoutProps) {
 
   if (loading) {
     return (
-      <Container size="sm" py="xl">
+      <Container size="sm" py="xl" px="md" data-testid="signer-state">
         <Center>
           <Stack align="center" gap="md">
             <Loader size="lg" />
@@ -93,15 +91,13 @@ function SignLayoutContent({ children }: SignLayoutProps) {
     )
   }
 
-  console.log('[DEBUG] Checking authorization:', { error, authorized: signData?.authorized })
-  
   if (error || !signData?.authorized) {
     return (
-      <Container size="sm" py="xl">
+      <Container size="sm" py="xl" px="md" data-testid="signer-state">
         <Center>
           <Stack align="center" gap="md" ta="center">
-            <IconAlertTriangle size={48} color="var(--mantine-color-red-6)" />
-            <Title size="1.5rem" c="red">
+            <IconAlertTriangle size={48} color="var(--os-danger)" />
+            <Title order={1} size="1.5rem" c="red">
               Acceso no autorizado
             </Title>
             <Text c="dimmed" maw={400}>

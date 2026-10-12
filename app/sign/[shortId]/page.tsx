@@ -1,12 +1,13 @@
 'use client'
 
 import React, { useEffect, useState } from "react"
-import { Box, Container, Title, Text, Button, Card, Stack, Group, Alert, Checkbox, Center, Loader, rem, PinInput, Modal } from '@mantine/core'
-import { IconAlertTriangle, IconCheck, IconSignature, IconArrowLeft, IconEye, IconDownload } from '@tabler/icons-react'
-import { useRouter } from "next/navigation"
+import { Box, Container, Title, Text, Button, Stack, Alert, Checkbox, Center, Loader } from '@mantine/core'
+import { IconAlertTriangle, IconCheck, IconSignature, IconDownload, IconPencil } from '@tabler/icons-react'
 import axios from "axios"
 import axiosRetry from 'axios-retry'
-import { SignaturePadComponent } from '../../../components/SignaturePad'
+import { SignatureCaptureSheet } from '../../../components/signer/SignatureCaptureSheet'
+import { OtpStep } from '../../../components/signer/OtpStep'
+import { KeyValueList } from '../../../components/ui'
 import { DynamicField } from '../../../components/dataTypes/Contract'
 import { SigningStepper, defaultSigningSteps } from '../../../components/SigningStepper'
 import { DynamicFieldsForm } from '../../../components/DynamicFieldsForm'
@@ -21,8 +22,6 @@ import {
 import { useSignData } from './layout'
 
 export default function SignDocument() {
-    console.log('[DEBUG] SignDocument component rendered')
-    
     // Get data from context (passed from layout) — read BEFORE useState so the
     // lazy initializer below can seed dynamicFieldValues from the API on first
     // render. Doing this in a useEffect (the old behavior) caused the steps
@@ -63,7 +62,7 @@ export default function SignDocument() {
     const [requiresOtp, setRequiresOtp] = useState(false)
     const [otpMethod, setOtpMethod] = useState<'email' | 'sms'>('email')
     const [availableOtpMethods, setAvailableOtpMethods] = useState({ email: false, sms: false })
-    const router = useRouter()
+    const [captureOpen, setCaptureOpen] = useState(false)
 
     // Merge userFields with any fields detected in content but missing from userFields
     const accountVariableNames = Object.keys(accountVariableValues)
@@ -166,7 +165,7 @@ export default function SignDocument() {
             if (response.data.availableMethods) {
                 setAvailableOtpMethods(response.data.availableMethods)
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('Error requesting OTP:', err)
             const errorMessage = err.response?.data?.error || 'Error al enviar el código de verificación'
             setError(errorMessage)
@@ -206,7 +205,7 @@ export default function SignDocument() {
                 setCompleted(true)
                 setRequiresOtp(false) // Close OTP modal
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('Error verifying OTP or signing:', err)
             const errorMessage = err.response?.data?.error || 'Error al verificar el código. Por favor, inténtalo de nuevo.'
             setError(errorMessage)
@@ -245,7 +244,7 @@ export default function SignDocument() {
 
             // Success
             setCompleted(true)
-        } catch (err) {
+        } catch (err: any) {
             console.error('Error signing contract:', err)
 
             // Check if OTP is required
@@ -270,7 +269,7 @@ export default function SignDocument() {
                 <Center>
                     <Stack align="center" gap="md">
                         <Loader size="lg" />
-                        <Title size="1.2rem">
+                        <Title order={2} size="1.2rem">
                             Cargando solicitud de firma...
                         </Title>
                     </Stack>
@@ -285,7 +284,7 @@ export default function SignDocument() {
                 <Center>
                     <Stack align="center" gap="md">
                         <Loader size="lg" />
-                        <Title size="1.2rem">
+                        <Title order={2} size="1.2rem">
                             Procesando firma...
                         </Title>
                         <Text ta="center" c="dimmed">
@@ -297,44 +296,33 @@ export default function SignDocument() {
         )
     }
 
-    const handleDownloadPDF = async () => {
-        try {
-            // Create download URL for the signed contract PDF
-            const downloadUrl = `/api/sign-requests/${shortId}/pdf?a=${accessKey}`
-            
-            // Open in new tab to trigger download
-            window.open(downloadUrl, '_blank')
-        } catch (error) {
-            console.error('Error downloading PDF:', error)
-            setError('No se pudo descargar el PDF. Por favor, intenta nuevamente.')
-        }
-    }
-
     if (completed) {
+        // Same-tab download link (no window.open after an await: blocked by iOS Safari / opens the system browser in a native shell).
+        const canDownload = Boolean(shortId && accessKey)
         return (
-            <Container size="sm" py="xl">
+            <Container size="sm" py="xl" px="md" data-testid="sign-completed">
                 <Center>
-                    <Stack align="center" gap="xl">
-                        <IconCheck size={64} color="var(--mantine-color-green-6)" />
-                        <Title size="1.8rem" c="green" ta="center">
+                    <Stack align="center" gap="lg">
+                        <IconCheck size={64} color="var(--os-success)" aria-hidden="true" />
+                        <Title order={1} size="1.6rem" c="green" ta="center">
                             ¡Contrato firmado exitosamente!
                         </Title>
                         <Text ta="center" c="dimmed" size="lg">
                             Tu firma digital ha sido registrada correctamente.
                         </Text>
-                        
-                        {/* Actions */}
-                        <Stack gap="md" style={{ width: '100%', maxWidth: '300px' }}>
-                            <Button
-                                leftSection={<IconDownload size={20} />}
-                                onClick={handleDownloadPDF}
-                                size="lg"
-                                variant="filled"
-                                fullWidth
-                            >
-                                Descargar PDF del contrato
-                            </Button>
-                            
+                        <Stack gap="md" w="100%" maw={320}>
+                            {canDownload && (
+                                <Button
+                                    component="a"
+                                    href={`/api/sign-requests/${shortId}/pdf?a=${accessKey}`}
+                                    download
+                                    leftSection={<IconDownload size={20} />}
+                                    size="lg"
+                                    fullWidth
+                                >
+                                    Descargar copia
+                                </Button>
+                            )}
                             <Text size="sm" c="dimmed" ta="center">
                                 Puedes cerrar esta ventana. El proceso de firma se ha completado.
                             </Text>
@@ -351,12 +339,13 @@ export default function SignDocument() {
         return processContractContent(contract.content, accountVariableValues, dynamicFieldValues)
     }
 
+    const stepId = steps[currentStep]?.id
+    const canEditData = needsDynamicFields && !allFieldsFilled
+
     // Render based on current step
     const renderCurrentStep = () => {
-        const stepId = steps[currentStep]?.id
-
         switch (stepId) {
-            case 'data':
+            case 'data': {
                 // Determine which fields should be locked (pre-provided from API or email request)
                 const lockedFields: string[] = []
 
@@ -372,45 +361,38 @@ export default function SignDocument() {
 
                 // Also lock basic signer fields if they came from the signature request
                 if (signRequest) {
-                    if (signRequest.signerName && !lockedFields.includes('clientName')) {
-                        lockedFields.push('clientName')
-                    }
-                    if (signRequest.signerEmail && !lockedFields.includes('clientEmail')) {
-                        lockedFields.push('clientEmail')
-                    }
-                    if (signRequest.signerPhone && !lockedFields.includes('clientPhone')) {
-                        lockedFields.push('clientPhone')
-                    }
+                    if (signRequest.signerName && !lockedFields.includes('clientName')) lockedFields.push('clientName')
+                    if (signRequest.signerEmail && !lockedFields.includes('clientEmail')) lockedFields.push('clientEmail')
+                    if (signRequest.signerPhone && !lockedFields.includes('clientPhone')) lockedFields.push('clientPhone')
                 }
 
-
-                // Skip template-level mandatory validation when the partner
-                // already supplied dynamicFieldValues via API — those values
-                // implicitly satisfy the form contract for this signer flow.
                 // Only skip mandatory validation when the partner pre-filled values
                 // AND there are no still-empty content fields to collect.
                 const hasApiPrefill = Object.keys(signData?.signRequest?.dynamicFieldValues || {}).length > 0
                     && unfilledContentFields.length === 0
 
                 return (
-                    <DynamicFieldsForm
-                        fields={allFormFields}
-                        values={dynamicFieldValues}
-                        onValuesChange={setDynamicFieldValues}
-                        onSubmit={handleDynamicFieldsSubmit}
-                        contractName={contract?.name}
-                        lockedFields={lockedFields}
-                        skipMandatoryValidation={hasApiPrefill}
-                        mode="inline"
-                    />
+                    <div className="os-signer-pad-x">
+                        <DynamicFieldsForm
+                            fields={allFormFields}
+                            values={dynamicFieldValues}
+                            onValuesChange={setDynamicFieldValues}
+                            onSubmit={handleDynamicFieldsSubmit}
+                            contractName={contract?.name}
+                            lockedFields={lockedFields}
+                            skipMandatoryValidation={hasApiPrefill}
+                            mode="inline"
+                            stickyActions
+                        />
+                    </div>
                 )
+            }
 
             case 'review':
                 return (
-                    <Stack gap="lg">
-                        {/* Header */}
-                        <Box ta="center">
-                            <Title size={rem(24)} fw={700} mb="xs">
+                    <Stack gap="md">
+                        <Box ta="center" className="os-signer-pad-x">
+                            <Title order={1} size="1.5rem" fw={700} mb={4}>
                                 {contract?.name || "Revisa tu contrato"}
                             </Title>
                             <Text c="dimmed" size="sm">
@@ -418,57 +400,31 @@ export default function SignDocument() {
                             </Text>
                         </Box>
 
-                        {/* Contract Content - renders account-owned contract data processed by processContractContent */}
-                        <Box
-                            p="lg"
-                            style={{
-                                border: '1px solid var(--mantine-color-gray-3)',
-                                borderRadius: 'var(--mantine-radius-md)',
-                                backgroundColor: 'var(--mantine-color-gray-0)',
-                            }}
-                        >
-                                <Box
-                                    dangerouslySetInnerHTML={{
-                                        __html: getProcessedContent()
-                                    }}
-                                    style={{
-                                        lineHeight: 1.6,
-                                        fontSize: rem(16),
-                                    }}
-                                />
-                        </Box>
+                        {/* Contract Content - account-owned contract data processed by processContractContent */}
+                        <div className="os-doc" data-testid="contract-document">
+                            <div className="os-doc__body" dangerouslySetInnerHTML={{ __html: getProcessedContent() }} />
+                        </div>
 
-                        {/* Navigation */}
-                        <Group justify="space-between">
-                            {needsDynamicFields && !allFieldsFilled && (
-                                <Button
-                                    variant="subtle"
-                                    onClick={handleBackToFields}
-                                    leftSection={<IconArrowLeft size={16} />}
-                                >
-                                    Editar datos
+                        <div className="os-signer-bar" data-testid="signer-bar">
+                            <div className="os-signer-bar__in">
+                                {canEditData && (
+                                    <Button variant="default" size="md" onClick={handleBackToFields} className="os-signer-bar__aux">
+                                        Editar datos
+                                    </Button>
+                                )}
+                                <Button onClick={handleContinueToSign} rightSection={<IconSignature size={18} />} size="md">
+                                    Continuar a firmar
                                 </Button>
-                            )}
-
-                            <Button
-                                onClick={handleContinueToSign}
-                                rightSection={<IconSignature size={16} />}
-                                style={{ marginLeft: needsDynamicFields && !allFieldsFilled ? undefined : 'auto' }}
-                            >
-                                Continuar a firmar
-                            </Button>
-                        </Group>
+                            </div>
+                        </div>
                     </Stack>
                 )
 
             case 'sign':
-                // Debug: Log dynamic field values at signing step
-                
                 return (
-                    <Stack gap="lg">
-                        {/* Header */}
+                    <Stack gap="lg" className="os-signer-pad-x">
                         <Box ta="center">
-                            <Title size={rem(24)} fw={700} mb="xs">
+                            <Title order={1} size="1.5rem" fw={700} mb={4}>
                                 Firma tu contrato
                             </Title>
                             <Text c="dimmed" size="sm">
@@ -476,163 +432,97 @@ export default function SignDocument() {
                             </Text>
                         </Box>
 
-                        {/* Signature Section */}
-                        <Stack gap="md">
-                            <Text c="dimmed">
-                                Al firmar este documento, certificas que:
+                        <KeyValueList
+                            items={[
+                                { label: 'Nombre', value: dynamicFieldValues.clientName || contract.templateData?.name || 'No proporcionado' },
+                                { label: 'ID', value: dynamicFieldValues.clientTaxId || contract.templateData?.idnum || 'No proporcionado' },
+                                { label: 'Teléfono', value: dynamicFieldValues.clientPhone || contract.templateData?.phone || 'No proporcionado' },
+                                { label: 'Email', value: dynamicFieldValues.clientEmail || contract.templateData?.mail || 'No proporcionado' },
+                            ]}
+                        />
+
+                        <Box>
+                            <Text size="sm" fw={600} mb="xs" id="signature-label">
+                                Tu firma
                             </Text>
+                            {signatureData ? (
+                                <Stack gap="xs">
+                                    <div className="os-signature-preview" data-testid="signature-preview">
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img src={signatureData} alt="Tu firma dibujada" />
+                                    </div>
+                                    <Button variant="default" size="md" leftSection={<IconPencil size={18} />} onClick={() => setCaptureOpen(true)}>
+                                        Cambiar firma
+                                    </Button>
+                                </Stack>
+                            ) : (
+                                <button type="button" className="os-signature-slot" aria-labelledby="signature-label" onClick={() => setCaptureOpen(true)}>
+                                    <IconSignature size={32} aria-hidden="true" />
+                                    <span>Toca para dibujar tu firma</span>
+                                </button>
+                            )}
+                        </Box>
 
-                            <Box component="ul" style={{ paddingLeft: rem(20), margin: 0 }}>
-                                <li>Has leído y comprendido el contenido completo del contrato</li>
-                                <li>Aceptas los términos y condiciones establecidos</li>
-                                <li>Esta firma tiene valor legal y es vinculante</li>
-                            </Box>
+                        <Checkbox
+                            size="md"
+                            label={<Text fw={600} component="span">He leído y acepto los términos y condiciones del contrato</Text>}
+                            checked={acceptChecked}
+                            onChange={(event) => setAcceptChecked(event.currentTarget.checked)}
+                            styles={{ root: { minHeight: 44, display: 'flex', alignItems: 'center' } }}
+                        />
 
-                            {/* Signer Info */}
-                            <Box
-                                style={{
-                                    padding: rem(16),
-                                    border: '1px solid var(--mantine-color-gray-3)',
-                                    borderRadius: rem(8),
-                                    backgroundColor: 'var(--mantine-color-gray-0)',
-                                }}
-                            >
-                                <Text fw={500} mb="xs" size="sm">
-                                    Información del firmante:
-                                </Text>
-                                <Text size="sm" c="dimmed">
-                                    <strong>Nombre:</strong> {dynamicFieldValues.clientName || contract.templateData?.name || 'No proporcionado'}
-                                    <br />
-                                    <strong>ID:</strong> {dynamicFieldValues.clientTaxId || contract.templateData?.idnum || 'No proporcionado'}
-                                    <br />
-                                    <strong>Teléfono:</strong> {dynamicFieldValues.clientPhone || contract.templateData?.phone || 'No proporcionado'}
-                                    <br />
-                                    <strong>Email:</strong> {dynamicFieldValues.clientEmail || contract.templateData?.mail || 'No proporcionado'}
-                                </Text>
-                            </Box>
-
-                            {/* Signature Pad */}
-                            <Box>
-                                <Text size="sm" fw={500} mb="xs">Dibuja tu firma:</Text>
-                                <SignaturePadComponent
-                                    onSignatureChange={handleSignatureChange}
-                                    width={undefined}
-                                    height={150}
-                                />
-                            </Box>
-
-                            {/* Accept Checkbox */}
-                            <Checkbox
-                                label={<Text fw="bold">He leído y acepto los términos y condiciones del contrato</Text>}
-                                checked={acceptChecked}
-                                onChange={(event) => setAcceptChecked(event.currentTarget.checked)}
-                                size="sm"
-                            />
-                        </Stack>
-
-                        {/* Navigation */}
-                        <Group justify="space-between">
-                            <Button
-                                variant="subtle"
-                                onClick={handleBackToReview}
-                                leftSection={<IconArrowLeft size={16} />}
-                            >
-                                Volver a revisar
-                            </Button>
-
-                            <Button
-                                onClick={handleSign}
-                                disabled={!acceptChecked || !signatureData}
-                                loading={signing || sendingOtp}
-                                leftSection={<IconSignature size={16} />}
-                                size="md"
-                            >
-                                Firmar Contrato
-                            </Button>
-                        </Group>
-
-                        {/* OTP Verification Modal */}
-                        <Modal
-                            opened={requiresOtp && !otpVerified}
-                            onClose={() => {}}
-                            title="Verificación de seguridad"
-                            closeOnClickOutside={false}
-                            closeOnEscape={false}
-                            withCloseButton={false}
-                            centered
-                        >
-                            <Stack gap="md">
-                                {otpSent ? (
-                                    <>
-                                        <Alert color="blue" variant="light">
-                                            <Text size="sm">
-                                                Hemos enviado un código de 6 dígitos a tu {otpMethod === 'email' ? 'correo electrónico' : 'teléfono'}.
-                                                Por favor, introdúcelo a continuación para completar la firma.
-                                            </Text>
-                                        </Alert>
-
-                                        <Box>
-                                            <Text size="sm" fw={500} mb="xs">Código de verificación:</Text>
-                                            <Center>
-                                                <PinInput
-                                                    length={6}
-                                                    type="number"
-                                                    value={otpCode}
-                                                    onChange={setOtpCode}
-                                                    size="lg"
-                                                    placeholder="0"
-                                                />
-                                            </Center>
-                                        </Box>
-
-                                        <Button
-                                            onClick={handleVerifyOtp}
-                                            disabled={otpCode.length !== 6}
-                                            loading={verifyingOtp}
-                                            fullWidth
-                                        >
-                                            Verificar y Firmar
-                                        </Button>
-
-                                        <Group grow>
-                                            <Button
-                                                variant="subtle"
-                                                onClick={() => handleRequestOtp(otpMethod)}
-                                                loading={sendingOtp}
-                                            >
-                                                Reenviar por {otpMethod === 'email' ? 'Email' : 'SMS'}
-                                            </Button>
-                                            {availableOtpMethods.email && availableOtpMethods.sms && (
-                                                <Button
-                                                    variant="outline"
-                                                    onClick={() => handleRequestOtp(otpMethod === 'email' ? 'sms' : 'email')}
-                                                    loading={sendingOtp}
-                                                >
-                                                    Enviar por {otpMethod === 'email' ? 'SMS' : 'Email'}
-                                                </Button>
-                                            )}
-                                        </Group>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Alert color="blue" variant="light">
-                                            <Text size="sm">
-                                                Para completar la firma, necesitamos verificar tu identidad.
-                                                Te enviaremos un código de seguridad.
-                                            </Text>
-                                        </Alert>
-
-                                        <Button
-                                            onClick={() => handleRequestOtp()}
-                                            loading={sendingOtp}
-                                            fullWidth
-                                        >
-                                            Enviar código de verificación
-                                        </Button>
-                                    </>
+                        <div className="os-signer-bar" data-testid="signer-bar">
+                            <div className="os-signer-bar__in">
+                                {signatureData && !acceptChecked && (
+                                    <p className="os-signer-bar__caption" id="sign-caption">Acepta los términos para firmar</p>
                                 )}
-                            </Stack>
-                        </Modal>
+                                <Button variant="default" size="md" onClick={handleBackToReview} className="os-signer-bar__aux" aria-label="Volver a revisar">
+                                    Atrás
+                                </Button>
+                                {signatureData ? (
+                                    <Button
+                                        onClick={handleSign}
+                                        disabled={!acceptChecked}
+                                        loading={signing || sendingOtp}
+                                        leftSection={<IconSignature size={18} />}
+                                        size="md"
+                                        aria-describedby={!acceptChecked ? 'sign-caption' : undefined}
+                                    >
+                                        Firmar contrato
+                                    </Button>
+                                ) : (
+                                    <Button onClick={() => setCaptureOpen(true)} leftSection={<IconSignature size={18} />} size="md">
+                                        Firmar
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+
+                        <SignatureCaptureSheet
+                            opened={captureOpen}
+                            onClose={() => setCaptureOpen(false)}
+                            onConfirm={(dataUrl) => {
+                                handleSignatureChange(dataUrl)
+                                setCaptureOpen(false)
+                                setError('')
+                            }}
+                        />
+
+                        {requiresOtp && !otpVerified && (
+                            <OtpStep
+                                opened
+                                onClose={() => setRequiresOtp(false)}
+                                otpSent={otpSent}
+                                method={otpMethod}
+                                availableMethods={availableOtpMethods}
+                                code={otpCode}
+                                onCodeChange={setOtpCode}
+                                onSend={handleRequestOtp}
+                                onVerify={handleVerifyOtp}
+                                sending={sendingOtp}
+                                verifying={verifyingOtp}
+                            />
+                        )}
                     </Stack>
                 )
 
@@ -642,49 +532,23 @@ export default function SignDocument() {
     }
 
     return (
-        <Box style={{ minHeight: '100vh', backgroundColor: 'var(--mantine-color-gray-0)' }}>
-            {/* Stepper Header */}
-            <Box 
-                style={{
-                    backgroundColor: 'white',
-                    borderBottom: '1px solid var(--mantine-color-gray-2)',
-                    padding: `${rem(16)} 0`,
-                }}
-            >
-                <Container size="lg">
-                    <SigningStepper 
-                        currentStep={currentStep}
-                        steps={steps}
-                        completed={completed}
-                    />
-                </Container>
-            </Box>
+        <div className="os-signer-page" data-testid="signer-page">
+            <div className="os-signer-progress">
+                <div className="os-signer-progress__inner">
+                    <SigningStepper currentStep={currentStep} steps={steps} completed={completed} />
+                </div>
+            </div>
 
-            {/* Content Area */}
-            <Box
-                w={{ base: '100%', sm: '92%', md: '76%', lg: '70%', xl: '60%' }}
-                mx="auto"
-                py="xl"
-                px={{ base: 'sm', sm: 0 }}
-            >
-                <Card shadow="sm" padding={{ base: 'md', sm: 'lg', md: 'xl' }} radius="lg" withBorder>
-                    {/* Error Alert */}
-                    {error && (
-                        <Alert
-                            icon={<IconAlertTriangle size={16} />}
-                            title="Error"
-                            color="red"
-                            variant="light"
-                            mb="lg"
-                        >
+            <div className="os-signer-body">
+                {error && (
+                    <div className="os-signer-pad-x" style={{ marginBottom: 12 }}>
+                        <Alert icon={<IconAlertTriangle size={16} />} title="Error" color="red" variant="light" role="alert">
                             {error}
                         </Alert>
-                    )}
-
-                    {/* Current Step Content */}
-                    {renderCurrentStep()}
-                </Card>
-            </Box>
-        </Box>
+                    </div>
+                )}
+                {renderCurrentStep()}
+            </div>
+        </div>
     )
 }
