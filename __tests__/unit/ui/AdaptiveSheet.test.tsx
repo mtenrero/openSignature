@@ -29,4 +29,12 @@ describe('AdaptiveSheet', () => {
     expect(document.querySelector('.mantine-Drawer-content')).toBeNull()
     expect(screen.getByTestId('sheet-footer')).toHaveTextContent('Enviar')
   })
+
+  it('mobile sheet content does not override Mantine full width (no flex:none)', async () => {
+    setMobile(true)
+    renderWithMantine(sheet())
+    const el = (await screen.findByTestId('adaptive-sheet')) as HTMLElement
+    expect(el.style.flex).toBe('')
+    expect(el.style.width).toBe('100%')
+  })
 })

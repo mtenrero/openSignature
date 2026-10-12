@@ -52,6 +52,7 @@ const STEP_LABEL: Record<WizardStepKey, string> = {
   result: 'Listo',
 }
 
+const PAGE_SIZE = 100
 const METHODS: Method[] = ['email', 'sms', 'local', 'tablet', 'qr']
 
 export function NewSignatureRequestWizard({
@@ -110,25 +111,46 @@ export function NewSignatureRequestWizard({
     let cancelled = false
     setLoading(true)
     setLoadError(null)
-    const url = initialContractId ? `/api/contracts/${initialContractId}` : '/api/contracts?status=active&limit=100'
-    fetch(url)
-      .then(async (r) => {
-        if (!r.ok) throw new Error('No se pudieron cargar los contratos')
+    const fail = () => new Error('No se pudieron cargar los contratos')
+    const load = async (): Promise<WizardContract[] | WizardContract | null> => {
+      if (initialContractId) {
+        const r = await fetch(`/api/contracts/${initialContractId}`)
+        if (!r.ok) {
+          // A resend does not need the contract (PATCH only): keep going with a stub.
+          if (resend) return null
+          throw fail()
+        }
         return r.json()
-      })
+      }
+      // Page through the active contracts so accounts with >100 can still pick any of them.
+      const all: WizardContract[] = []
+      for (let skip = 0, i = 0; i < 50; i++, skip += PAGE_SIZE) {
+        const r = await fetch(`/api/contracts?status=active&limit=${PAGE_SIZE}&skip=${skip}`)
+        if (!r.ok) throw fail()
+        const data = await r.json()
+        const batch: WizardContract[] = data.contracts ?? []
+        all.push(...batch)
+        if (!data.hasMore || batch.length === 0) break
+      }
+      return all
+    }
+    load()
       .then((data) => {
         if (cancelled) return
-        if (initialContractId) setContract(data)
-        else setContracts((data.contracts ?? []).filter(isSendable))
+        if (initialContractId) {
+          setContract(data ? (data as WizardContract) : ({ id: initialContractId, status: 'active', name: '' } as WizardContract))
+        } else setContracts((data as WizardContract[]).filter(isSendable))
       })
       .catch((e) => !cancelled && setLoadError(e.message || 'No se pudieron cargar los contratos'))
       .finally(() => !cancelled && setLoading(false))
     return () => {
       cancelled = true
     }
-  }, [opened, initialContractId])
+  }, [opened, initialContractId, resend])
 
-  const methods = availableMethods({ smsEnabled: isSMSEnabledClient(), contract })
+  // A resend only PATCHes the existing request, so the contract's current state is irrelevant.
+  const resendContract = resend && contract ? { ...contract, status: 'active', pendingActivation: false } : contract
+  const methods = availableMethods({ smsEnabled: isSMSEnabledClient(), contract: resendContract })
   const signerErrors = attempted && method ? validateSigner(method, values) : {}
   const steps = visibleSteps(ctx)
   const active = Math.max(0, steps.indexOf(step))
@@ -137,7 +159,7 @@ export function NewSignatureRequestWizard({
     if (contractPreselected && !contract) return false
     if (step === 'contract') return !!contract
     if (step === 'method') return !!method && methods.includes(method)
-    if (step === 'review') return !(method === 'qr' && !resend && !qrAck) && isSendable(contract)
+    if (step === 'review') return !(method === 'qr' && !resend && !qrAck) && (resend || isSendable(contract))
     return true
   })()
 

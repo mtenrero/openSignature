@@ -136,8 +136,10 @@ describe('NewSignatureRequestWizard', () => {
     expect(screen.getByLabelText(/^Email/)).toHaveAttribute('readonly')
     fireEvent.change(name, { target: { value: 'Otro' } })
     expect(name).toHaveValue('Ada')
-    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Continuar' }))
+    for (let i = 0; i < 3 && !screen.queryByRole('button', { name: 'Reenviar' }); i++) {
+      fireEvent.click(await screen.findByRole('button', { name: 'Continuar' }))
+      await waitFor(() => expect(screen.queryByRole('button', { name: /Continuar|Reenviar/ })).toBeTruthy())
+    }
     fireEvent.click(await screen.findByRole('button', { name: 'Reenviar' }))
     expect(await screen.findByText('Solicitud enviada')).toBeInTheDocument()
     const patch = calls.find((c) => c.init?.method === 'PATCH')!
@@ -158,5 +160,53 @@ describe('NewSignatureRequestWizard', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /se tarifica como una firma por email/ }))
     fireEvent.click(send)
     expect(await screen.findByRole('button', { name: /Copiar enlace/ })).toBeInTheDocument()
+  })
+
+  const resendPrefill = { values: { clientName: 'Ada', clientEmail: 'ada@x.com' }, lockedFields: ['clientName', 'clientEmail'], signatureRequestId: 'r9' }
+  async function runResend() {
+    await screen.findByLabelText('Nombre completo')
+    for (let i = 0; i < 3 && !screen.queryByRole('button', { name: 'Reenviar' }); i++) {
+      fireEvent.click(await screen.findByRole('button', { name: 'Continuar' }))
+      await waitFor(() => expect(screen.queryByRole('button', { name: /Continuar|Reenviar/ })).toBeTruthy())
+    }
+    fireEvent.click(await screen.findByRole('button', { name: 'Reenviar' }))
+    expect(await screen.findByText('Solicitud enviada')).toBeInTheDocument()
+  }
+
+  it('resend still works when the contract was archived since', async () => {
+    const calls = mockFetch(() => ({ body: {} }))
+    const base = global.fetch as jest.Mock
+    global.fetch = jest.fn(async (url: any, init?: RequestInit) =>
+      String(url).startsWith('/api/contracts/c1')
+        ? ({ ok: true, status: 200, json: async () => ({ ...contract, status: 'archived' }) } as Response)
+        : base(url, init)) as unknown as typeof fetch
+    renderWithMantine(<NewSignatureRequestWizard mode="page" onClose={jest.fn()} initialContractId="c1" initialMethod="email" prefill={resendPrefill} />)
+    await runResend()
+    expect(calls.some((c) => c.init?.method === 'PATCH')).toBe(true)
+  })
+
+  it('resend still works when the contract can no longer be loaded (deleted)', async () => {
+    const calls = mockFetch(() => ({ body: {} }))
+    const base = global.fetch as jest.Mock
+    global.fetch = jest.fn(async (url: any, init?: RequestInit) =>
+      String(url).startsWith('/api/contracts/c1')
+        ? ({ ok: false, status: 404, json: async () => ({}) } as Response)
+        : base(url, init)) as unknown as typeof fetch
+    renderWithMantine(<NewSignatureRequestWizard mode="page" onClose={jest.fn()} initialContractId="c1" initialMethod="email" prefill={resendPrefill} />)
+    await runResend()
+    expect(calls.some((c) => c.init?.method === 'PATCH')).toBe(true)
+  })
+
+  it('pages through all active contracts (more than 100)', async () => {
+    const urls: string[] = []
+    global.fetch = jest.fn(async (url: any) => {
+      urls.push(String(url))
+      const second = String(url).includes('skip=100')
+      const contracts = second ? [{ id: 'z', name: 'Contrato 101', status: 'active' }] : [{ id: 'a', name: 'Contrato 1', status: 'active' }]
+      return { ok: true, status: 200, json: async () => ({ contracts, hasMore: !second }) } as Response
+    }) as unknown as typeof fetch
+    renderWithMantine(<NewSignatureRequestWizard mode="page" onClose={jest.fn()} />)
+    expect(await screen.findByText('Contrato 101')).toBeInTheDocument()
+    expect(urls).toHaveLength(2)
   })
 })

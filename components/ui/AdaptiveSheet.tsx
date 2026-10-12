@@ -3,7 +3,7 @@
 import React from 'react'
 import { Drawer, Modal } from '@mantine/core'
 import { IconX } from '@tabler/icons-react'
-import { useIsMobile } from '../../lib/ui/useIsMobile'
+import { useMediaQuery } from '@mantine/hooks'
 
 export interface AdaptiveSheetProps {
   opened: boolean
@@ -27,8 +27,11 @@ export function AdaptiveSheet({
   size = 'md',
   fullScreenOnMobile,
 }: AdaptiveSheetProps) {
-  const isMobile = useIsMobile()
+  // undefined until the media query resolved: render nothing rather than flash a Modal on phones.
+  const isMobile = useMediaQuery('(max-width: 47.99em)', undefined, { getInitialValueInEffect: true })
   const full = size === 'full' || fullScreenOnMobile
+
+  if (isMobile === undefined) return null
 
   if (isMobile) {
     return (
@@ -40,7 +43,8 @@ export function AdaptiveSheet({
           style={{
             height: full ? '100dvh' : 'auto',
             maxHeight: full ? '100dvh' : '92dvh',
-            flex: 'none',
+            width: '100%',
+            maxWidth: '100%',
             borderRadius: full ? 0 : '16px 16px 0 0',
           }}
         >

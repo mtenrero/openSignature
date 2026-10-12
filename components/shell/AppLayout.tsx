@@ -28,9 +28,11 @@ export function AppLayout({ children, loading = false }: { children: React.React
       <AppShell.Main className="os-main">
         <div className="os-content">{children}</div>
       </AppShell.Main>
-      <AppShell.Footer hiddenFrom="sm" withBorder={false} style={{ background: 'transparent' }}>
-        <BottomTabBar />
-      </AppShell.Footer>
+      {hideTabBar ? null : (
+        <AppShell.Footer hiddenFrom="sm" withBorder={false} style={{ background: 'transparent' }}>
+          <BottomTabBar />
+        </AppShell.Footer>
+      )}
     </AppShell>
   )
 }
