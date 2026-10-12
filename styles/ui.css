@@ -449,3 +449,14 @@ button.os-tile { cursor: pointer; }
 .os-doc-surface img, .os-doc-surface table { max-width: 100%; }
 .os-touch .mantine-CloseButton-root { min-width: var(--os-touch); min-height: var(--os-touch); }
 .os-ph .mantine-Button-root { min-height: var(--os-touch); }
+
+/* ---------- Account / ResponsiveTable cards (S7) ---------- */
+.os-rt-card { background: var(--os-surface); border: 1px solid var(--os-border); border-radius: var(--mantine-radius-lg); padding: 12px 16px; min-width: 0; overflow-wrap: anywhere; }
+.os-scroll-x { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
+.os-code { margin: 0; padding: 12px; border: 1px solid var(--os-border); border-radius: var(--mantine-radius-md); background: var(--os-surface-2); color: var(--os-text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.5; overflow-x: auto; max-width: 100%; white-space: pre; }
+.os-auth { min-height: 100dvh; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: max(24px, var(--os-safe-top)) max(16px, var(--os-safe-right)) max(24px, var(--os-safe-bottom)) max(16px, var(--os-safe-left)); }
+.os-auth__card { width: 100%; max-width: 440px; }
+.os-hero-title { font-size: clamp(1.9rem, 7vw, 3.4rem); line-height: 1.1; }
+.os-snap { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; margin: 0 calc(-1 * var(--os-gutter)); padding-inline: var(--os-gutter); scroll-padding-inline: var(--os-gutter); }
+.os-snap > * { flex: 0 0 min(84%, 340px); scroll-snap-align: start; }
+@media (min-width: 62em) { .os-snap { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); overflow: visible; margin: 0; padding: 0; } .os-snap > * { flex: initial; } }
