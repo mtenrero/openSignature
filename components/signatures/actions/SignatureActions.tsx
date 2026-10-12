@@ -1,14 +1,14 @@
 'use client'
 
-import React from 'react'
+import React, { useId } from 'react'
 import { Button } from '@mantine/core'
-import { IconBellRinging, IconDownload, IconDots } from '@tabler/icons-react'
+import { IconBellRinging, IconDownload, IconDots, IconRefresh } from '@tabler/icons-react'
 import { useRouter } from 'next/navigation'
 import { ActionMenu, StickyActionBar } from '../../ui'
 import { useRequestActions, type ActionableRow, type ActionResult } from './useRequestActions'
 
 /**
- * Detail-page actions: the primary action (pending: Recordar, signed: Descargar PDF) in the sticky bar plus an
+ * Detail-page actions: rendered at the top of the content column (sticky on >= sm) and fixed above the tab bar on mobile. The primary action (pending: Recordar, signed: Descargar PDF) in the sticky bar plus an
  * overflow sheet/menu with the rest. Archive and discard take the user back to the list.
  */
 export function SignatureActions({ row, onChanged }: { row: ActionableRow; onChanged?: (r: ActionResult) => void }) {
@@ -17,20 +17,29 @@ export function SignatureActions({ row, onChanged }: { row: ActionableRow; onCha
     onChanged?.(r)
     if (r.kind === 'archive' || r.kind === 'discard') router.push('/signatures')
   })
-  const primary = all.find((a) => a.key === 'remind' || a.key === 'download')
+  const captionId = useId()
+  // Local / tablet / QR requests have no "Recordar" (nothing to deliver): their primary is Reenviar.
+  const primary = all.find((a) => a.key === 'remind' || a.key === 'download') ?? all.find((a) => a.key === 'resend')
   const overflow = all.filter((a) => a !== primary)
   if (!primary && !overflow.length) return null
 
   return (
     <>
-      <StickyActionBar aboveTabBar>
+      <StickyActionBar
+        aboveTabBar
+        spacer={false}
+        captionId={captionId}
+        caption={primary?.disabled ? primary.disabledReason : undefined}
+      >
         {primary ? (
           <Button
-            leftSection={primary.key === 'remind' ? <IconBellRinging size={18} /> : <IconDownload size={18} />}
+            leftSection={
+              primary.key === 'remind' ? <IconBellRinging size={18} /> : primary.key === 'resend' ? <IconRefresh size={18} /> : <IconDownload size={18} />
+            }
             onClick={handlers[primary.key]}
             loading={pending === primary.key}
             disabled={primary.disabled}
-            title={primary.disabled ? primary.disabledReason : undefined}
+            aria-describedby={primary.disabled && primary.disabledReason ? captionId : undefined}
           >
             {primary.label}
           </Button>

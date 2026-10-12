@@ -4,6 +4,8 @@ import { renderWithMantine, setMobile } from '../../helpers/renderWithMantine'
 import { SignatureActions } from '@/components/signatures/actions/SignatureActions'
 
 const push = jest.fn()
+const toast = jest.fn()
+jest.mock('@mantine/notifications', () => ({ notifications: { show: (...a: any[]) => toast(...a) } }))
 jest.mock('next/navigation', () => ({ useRouter: () => ({ push, back: jest.fn() }) }))
 
 const row = (extra: any = {}) => ({
@@ -17,6 +19,7 @@ const respond = (ok: boolean, body: any = {}) => fetchMock.mockResolvedValueOnce
 beforeEach(() => {
   setMobile(true)
   push.mockClear()
+  toast.mockClear()
   fetchMock = jest.fn()
   ;(global as any).fetch = fetchMock
 })
@@ -28,7 +31,7 @@ const openMore = async (name: RegExp) => {
 
 describe('SignatureActions', () => {
   it('pending: primary is Recordar and sends a resend with the same method and default reason', async () => {
-    respond(true)
+    respond(true, { auditEntry: { details: { emailSent: true } } })
     const onChanged = jest.fn()
     renderWithMantine(<SignatureActions row={row()} onChanged={onChanged} />)
     fireEvent.click(await screen.findByRole('button', { name: /Recordar/ }))
@@ -39,9 +42,71 @@ describe('SignatureActions', () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalledWith(expect.objectContaining({ kind: 'remind' })))
   })
 
-  it('Recordar is disabled at the email limit', async () => {
+  it('Recordar is disabled at the email limit and the reason is VISIBLE text wired with aria-describedby', async () => {
     renderWithMantine(<SignatureActions row={row({ emailTracking: { emailsSent: 5 } })} />)
-    expect(await screen.findByRole('button', { name: /Recordar/ })).toBeDisabled()
+    const btn = await screen.findByRole('button', { name: /Recordar/ })
+    expect(btn).toBeDisabled()
+    const reason = screen.getByTestId('sticky-action-caption')
+    expect(reason).toBeVisible()
+    expect(reason).toHaveTextContent('Límite de 5 envíos alcanzado')
+    expect(btn.getAttribute('aria-describedby')).toBe(reason.id)
+    expect(btn).not.toHaveAttribute('title')
+  })
+
+  it('no caption when Recordar is enabled', async () => {
+    renderWithMantine(<SignatureActions row={row()} />)
+    await screen.findByRole('button', { name: /Recordar/ })
+    expect(screen.queryByTestId('sticky-action-caption')).toBeNull()
+  })
+
+  it.each(['local', 'tablet', 'qr'])('%s request: no Recordar (it would deliver nothing); primary is Reenviar', async (t) => {
+    renderWithMantine(<SignatureActions row={row({ signatureType: t })} />)
+    expect(await screen.findByRole('button', { name: /Reenviar solicitud/ })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: /Recordar/ })).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  const pickMethod = async (re: RegExp) => {
+    fireEvent.click(await screen.findByRole('button', { name: /Reenviar solicitud/ }))
+    const dialog = await screen.findByRole('dialog', { name: /Reenviar solicitud/ })
+    fireEvent.click(within(dialog).getByRole('radio', { name: re }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reenviar' }))
+  }
+
+  it('local resend opens the NEW signing url in the same tab', async () => {
+    respond(true, { request: { signatureUrl: `${window.location.origin}/sign/NEW123?a=k` }, auditEntry: { details: {} } })
+    renderWithMantine(<SignatureActions row={row({ signatureType: 'qr' })} />)
+    await pickMethod(/En este dispositivo/)
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/sign/NEW123?a=k'))
+  })
+
+  it('QR resend shows the new url and a QR code', async () => {
+    respond(true, { request: { signatureUrl: 'https://osign.test/sign/QR999?a=k' }, auditEntry: { details: {} } })
+    renderWithMantine(<SignatureActions row={row({ signatureType: 'local' })} />)
+    await pickMethod(/QR/)
+    const qr = await screen.findByTestId('resend-qr')
+    expect(qr).toHaveTextContent('https://osign.test/sign/QR999?a=k')
+    expect(push).not.toHaveBeenCalled()
+  })
+
+  it('email resend that the provider did not deliver does NOT claim success and does not bump the counter', async () => {
+    respond(true, { request: { emailTracking: { emailsSent: 2 } }, auditEntry: { details: { emailSent: false, emailError: 'boom' } } })
+    const onChanged = jest.fn()
+    renderWithMantine(<SignatureActions row={row()} onChanged={onChanged} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Recordar/ }))
+    await waitFor(() => expect(onChanged).toHaveBeenCalled())
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ color: 'orange', title: expect.stringMatching(/no se pudo enviar/) }))
+    expect(toast).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Recordatorio enviado' }))
+    expect(onChanged.mock.calls[0][0].patch.emailTracking.emailsSent).toBe(2)
+  })
+
+  it('email resend delivered says so, counter comes from the server', async () => {
+    respond(true, { request: { emailTracking: { emailsSent: 3 } }, auditEntry: { details: { emailSent: true } } })
+    const onChanged = jest.fn()
+    renderWithMantine(<SignatureActions row={row()} onChanged={onChanged} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Recordar/ }))
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Recordatorio enviado', color: 'green' })))
+    await waitFor(() => expect(onChanged.mock.calls[0][0].patch.emailTracking.emailsSent).toBe(3))
   })
 
   it('Archive requires a reason (disabled until 3 chars) then PATCHes the right body and goes back to the list', async () => {
@@ -89,7 +154,7 @@ describe('SignatureActions', () => {
 
   it('Resend sends the chosen method and reason', async () => {
     respond(true)
-    renderWithMantine(<SignatureActions row={row({ signatureType: 'local' })} />)
+    renderWithMantine(<SignatureActions row={row()} />)
     await openMore(/Reenviar/)
     const dialog = await screen.findByRole('dialog', { name: /Reenviar solicitud/ })
     fireEvent.click(within(dialog).getByRole('radio', { name: /SMS/ }))

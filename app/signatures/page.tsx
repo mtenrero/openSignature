@@ -14,7 +14,9 @@ import {
   EmptyState, ListSkeleton, PageHeader, SearchField, StatTiles, type ActionSheetItem,
 } from '@/components/ui'
 import { RowActionMenu } from '@/components/signatures/actions/RowActionMenu'
-import type { ActionResult } from '@/components/signatures/actions/useRequestActions'
+import {
+  RequestActionSheets, type ActionResult, type ActionableRow, type SheetKind,
+} from '@/components/signatures/actions/useRequestActions'
 import { SignatureRow } from '@/components/signatures/SignatureRow'
 import {
   RANGE_OPTIONS, STATUS_OPTIONS, SignaturesFilterSheet, type AppliedFilters,
@@ -45,6 +47,8 @@ function FirmasPageContent() {
   const [contractId, setContractId] = useState<string | null>(searchParams.get('contractId'))
   const [page, setPage] = useState(1)
   const [sheetOpen, setSheetOpen] = useState(false)
+  // ONE set of action sheets for the whole list; the rows only render their trigger.
+  const [target, setTarget] = useState<{ row: ActionableRow; kind: SheetKind | null } | null>(null)
   const { wizard, open: requestAgain, close: closeWizard } = useRequestAgain()
 
   // A link to /signatures?contractId=… while this page is mounted.
@@ -187,7 +191,7 @@ function FirmasPageContent() {
                   key={row.id}
                   row={row}
                   trailing={
-                    <RowActionMenu row={row as any} extraItems={requestAgainItems(row)} onChanged={(r) => onChanged(row, r)} />
+                    <RowActionMenu row={row as any} onSheet={(r, kind) => setTarget({ row: r, kind })} extraItems={requestAgainItems(row)} onChanged={(r) => onChanged(row, r)} />
                   }
                 />
               ))}
@@ -201,6 +205,14 @@ function FirmasPageContent() {
         </Stack>
       </Container>
 
+      {target && (
+        <RequestActionSheets
+          row={target.row}
+          active={target.kind}
+          onClose={() => setTarget((t) => (t ? { ...t, kind: null } : t))}
+          onDone={(r) => onChanged(target.row as any, r)}
+        />
+      )}
       <SignaturesFilterSheet opened={sheetOpen} onClose={() => setSheetOpen(false)} value={applied} contracts={contracts} onApply={apply} />
       <NewSignatureRequestWizard
         mode="sheet"

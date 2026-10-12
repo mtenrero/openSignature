@@ -4,13 +4,19 @@ import React from 'react'
 import { ActionIcon } from '@mantine/core'
 import { IconDots } from '@tabler/icons-react'
 import { ActionMenu, type ActionSheetItem } from '../../ui'
-import { useRequestActions, type ActionableRow, type ActionResult } from './useRequestActions'
+import { useRequestActions, type ActionableRow, type ActionResult, type SheetKind } from './useRequestActions'
 
 /** The 44px trailing button of a list row. `extraItems` go after the standard request actions. */
 export function RowActionMenu({
-  row, onChanged, extraItems = [],
-}: { row: ActionableRow; onChanged: (r: ActionResult) => void; extraItems?: ActionSheetItem[] }) {
-  const { all, toItem, sheets } = useRequestActions(row, onChanged, { includeView: true })
+  row, onSheet, onChanged, extraItems = [],
+}: {
+  row: ActionableRow
+  /** Resend/archive/discard sheets are hosted ONCE by the list page, not per row. */
+  onSheet: (row: ActionableRow, kind: SheetKind) => void
+  onChanged: (r: ActionResult) => void
+  extraItems?: ActionSheetItem[]
+}) {
+  const { all, toItem } = useRequestActions(row, onChanged, { includeView: true, openSheet: (k) => onSheet(row, k) })
   // view first, then request actions, then extras; destructive items are sorted last by ActionMenu.
   const view = all.filter((a) => a.key === 'view')
   const rest = all.filter((a) => a.key !== 'view')
@@ -25,7 +31,6 @@ export function RowActionMenu({
           </ActionIcon>
         }
       />
-      {sheets}
     </>
   )
 }

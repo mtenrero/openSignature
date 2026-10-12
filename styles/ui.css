@@ -168,8 +168,9 @@
 }
 
 /* ---------- Sticky action bar ---------- */
-.os-sab { display: flex; gap: 8px; }
-.os-sab > * { flex: 1; }
+.os-sab { display: flex; flex-wrap: wrap; gap: 8px; }
+.os-sab__caption { flex: 1 0 100%; order: -1; margin: 0; font-size: 12px; line-height: 1.35; color: var(--os-text-dim); }
+.os-sab > :not(.os-sab__caption) { flex: 1; }
 .os-sab-spacer { display: none; }
 @media (max-width: 47.99em) {
   .os-sab {
@@ -186,8 +187,17 @@
   .os-sab-spacer { display: block; height: calc(72px + var(--os-safe-bottom)); }
 }
 @media (min-width: 48em) {
-  .os-sab { justify-content: flex-end; margin-top: 16px; }
-  .os-sab > * { flex: 0 0 auto; }
+  /* top of the content column, always on the first screen */
+  .os-sab {
+    justify-content: flex-end;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    padding: 8px 0;
+    background: var(--os-bg);
+  }
+  .os-sab > :not(.os-sab__caption) { flex: 0 0 auto; }
+  .os-sab__caption { text-align: right; }
 }
 
 /* ---------- ListItemCard ---------- */

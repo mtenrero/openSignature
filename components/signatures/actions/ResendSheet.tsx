@@ -9,9 +9,9 @@ import { EMAIL_LIMIT, emailsSent, methodAvailability, type ActionRow, type Resen
 const METHODS: { key: ResendMethod; title: string; description: string; icon: React.ReactNode }[] = [
   { key: 'email', title: 'Email', description: 'Enviar el enlace al correo del firmante', icon: <IconMail size={22} /> },
   { key: 'sms', title: 'SMS', description: 'Enviar el enlace al móvil del firmante', icon: <IconMessage size={22} /> },
-  { key: 'local', title: 'En este dispositivo', description: 'El firmante firma aquí mismo', icon: <IconDeviceMobile size={22} /> },
-  { key: 'tablet', title: 'Tableta', description: 'Firma en la tableta del mostrador', icon: <IconDeviceTablet size={22} /> },
-  { key: 'qr', title: 'QR', description: 'El firmante escanea un código QR', icon: <IconQrcode size={22} /> },
+  { key: 'local', title: 'En este dispositivo', description: 'Abre la firma ahora en esta pantalla', icon: <IconDeviceMobile size={22} /> },
+  { key: 'tablet', title: 'Tableta', description: 'Envía la solicitud a la tableta del mostrador', icon: <IconDeviceTablet size={22} /> },
+  { key: 'qr', title: 'QR', description: 'Muestra un código QR para que el firmante lo escanee', icon: <IconQrcode size={22} /> },
 ]
 
 export interface ResendSheetProps {

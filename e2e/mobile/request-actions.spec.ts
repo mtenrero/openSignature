@@ -14,8 +14,23 @@ const find = (db: MongoClient, id: string) => col(db).findOne({ _id: new ObjectI
 async function seed(db: MongoClient, authed: APIRequestContext) {
   await dropTestDb(db)
   const c = await seedActiveContract(db, { name: 'Contrato Acciones' })
-  const mk = (n: string) => seedRequest(authed, c._id.toString(), { signerName: n, dynamicFieldValues: { clientName: n, clientTaxId: '12345678A' } })
-  return { remind: await mk('Firmante Recordar'), archive: await mk('Firmante Archivar'), discard: await mk('Firmante Descartar'), signed: await mk('Firmante Firmado'), contractId: c._id.toString() }
+  const mk = (n: string, signatureType = 'local') => seedRequest(authed, c._id.toString(), { signerName: n, signatureType, dynamicFieldValues: { clientName: n, clientTaxId: '12345678A' } })
+  return { remind: await mk('Firmante Recordar', 'email'), local: await mk('Firmante Local'), archive: await mk('Firmante Archivar'), discard: await mk('Firmante Descartar'), signed: await mk('Firmante Firmado'), contractId: c._id.toString() }
+}
+
+/** Wait until a sheet/menu has stopped animating (same box on two frames, inside the viewport) so shots show it. */
+async function settle(page: Page, role: 'dialog' | 'menu' = 'dialog') {
+  const el = page.getByRole(role).last()
+  await expect(el).toBeVisible()
+  let prev = ''
+  await expect.poll(async () => {
+    const b = await el.boundingBox()
+    const cur = b ? [b.x, b.y, b.width, b.height].map(Math.round).join(',') : ''
+    const stable = cur !== '' && cur === prev
+    prev = cur
+    return stable
+  }, { intervals: [150, 150, 150, 150], timeout: 10_000 }).toBe(true)
+  await page.waitForTimeout(150)
 }
 
 const PDF = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF')
@@ -61,7 +76,9 @@ test.describe('request actions', () => {
     const patch = page.waitForResponse((r) => r.url().includes(`/api/signature-requests/${s.remind.id}`) && r.request().method() === 'PATCH')
     await bar.getByRole('button', { name: 'Recordar' }).click()
     expect((await patch).ok()).toBe(true)
-    await expect(page.getByText('Recordatorio enviado')).toBeVisible()
+    // The e2e stack has no mail provider: the audit entry says the email was NOT sent, so the UI must not claim it was.
+    await expect(page.getByText(/Recordatorio: no se pudo enviar/)).toBeVisible()
+    await expect(page.getByText('Recordatorio enviado')).toHaveCount(0)
     const doc: any = await find(db, s.remind.id)
     const entry = doc.auditTrail.find((e: any) => e.action === 'resent')
     expect(entry).toBeTruthy()
@@ -102,6 +119,7 @@ test.describe('request actions', () => {
     // the overflow list itself is a sheet too
     await more.click()
     await expect(page.getByRole('menuitem', { name: /Descartar/ })).toBeVisible()
+    await settle(page, testInfo.project.name === 'mobile' ? 'dialog' : 'menu')
     await shot(page, testInfo, 'overflow-actions')
   })
 
@@ -110,6 +128,7 @@ test.describe('request actions', () => {
     await page.getByRole('button', { name: 'Más acciones' }).click()
     await page.getByRole('menuitem', { name: /Reenviar solicitud/ }).click()
     const dialog = page.getByRole('dialog', { name: /Reenviar solicitud/ })
+    await expect(dialog.getByRole('radio', { name: /Tableta/ })).toBeVisible()
     await dialog.getByRole('radio', { name: /Tableta/ }).click()
     await dialog.getByLabel(/Motivo del reenvío/).fill('Cambio de método')
     const patch = page.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().includes(s.remind.id))
@@ -124,16 +143,18 @@ test.describe('request actions', () => {
   test('list: row overflow -> Archivar -> reason; the row leaves Pendientes and Mongo says archived', async ({ page, db }, testInfo) => {
     await page.goto('/signatures?status=pending')
     const rows = page.getByTestId('signature-row')
-    await expect(rows).toHaveCount(4)
+    await expect(rows).toHaveCount(5)
     const row = rows.filter({ hasText: 'Firmante Archivar' })
     await row.getByRole('button', { name: 'Más acciones de la firma' }).click()
+    await expect(page.getByRole('menuitem', { name: /Archivar/ })).toBeVisible()
+    await settle(page, testInfo.project.name === 'mobile' ? 'dialog' : 'menu')
     await shot(page, testInfo, 'row-menu')
     await page.getByRole('menuitem', { name: /Archivar/ }).click()
     const dialog = page.getByRole('dialog', { name: /Archivar solicitud/ })
     await dialog.getByLabel('Motivo del archivo').fill('Cliente ya no interesado')
     await dialog.getByRole('button', { name: 'Archivar' }).click()
     await expect(dialog).toBeHidden()
-    await expect(rows).toHaveCount(3)
+    await expect(rows).toHaveCount(4)
     await expect(rows.filter({ hasText: 'Firmante Archivar' })).toHaveCount(0)
     const doc: any = await find(db, s.archive.id)
     expect(doc.status).toBe('archived')
@@ -192,5 +213,64 @@ test.describe('request actions', () => {
     await rows.filter({ hasText: 'Firmante Archivar' }).getByRole('button', { name: 'Más acciones de la firma' }).click()
     await expect(page.getByRole('menuitem', { name: /Ver detalles/ })).toBeVisible()
     await expect(page.getByRole('menuitem', { name: /Archivar|Descartar|Reenviar|Recordar/ })).toHaveCount(0)
+  })
+
+  test('local request: no Recordar (nothing to deliver); primary is Reenviar', async ({ page }, testInfo) => {
+    await page.goto(`/signatures/${s.local.id}`)
+    const bar = page.getByTestId('sticky-action-bar')
+    await expect(bar.getByRole('button', { name: 'Reenviar solicitud' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Recordar' })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Más acciones' }).click()
+    await expect(page.getByRole('menuitem', { name: /Recordar/ })).toHaveCount(0)
+  })
+
+  test('local resend lands on the NEW /sign/<shortId> in the same tab (and the old link is dead)', async ({ page, db }) => {
+    await page.goto(`/signatures/${s.local.id}`)
+    await page.getByTestId('sticky-action-bar').getByRole('button', { name: 'Reenviar solicitud' }).click()
+    const dialog = page.getByRole('dialog', { name: /Reenviar solicitud/ })
+    await dialog.getByRole('radio', { name: /En este dispositivo/ }).click()
+    await dialog.getByRole('button', { name: 'Reenviar' }).click()
+    await page.waitForURL(/\/sign\/[^/?]+/)
+    const doc: any = await find(db, s.local.id)
+    expect(doc.shortId).not.toBe(s.local.shortId)
+    expect(new URL(page.url()).pathname).toBe(`/sign/${doc.shortId}`)
+    expect(page.context().pages()).toHaveLength(1)
+  })
+
+  test('QR resend shows a QR of the new link instead of a fake success', async ({ page, db }, testInfo) => {
+    await page.goto(`/signatures/${s.local.id}`)
+    await page.getByTestId('sticky-action-bar').getByRole('button', { name: 'Reenviar solicitud' }).click()
+    const dialog = page.getByRole('dialog', { name: /Reenviar solicitud/ })
+    await dialog.getByRole('radio', { name: /^QR/ }).click()
+    await dialog.getByRole('button', { name: 'Reenviar' }).click()
+    const qr = page.getByTestId('resend-qr')
+    await expect(qr.getByRole('img', { name: /Código QR/ })).toBeVisible()
+    const doc: any = await find(db, s.local.id)
+    expect(doc.signatureType).toBe('qr')
+    await expect(qr).toContainText(`/sign/${doc.shortId}`)
+    await settle(page)
+    await shot(page, testInfo, 'resend-qr')
+  })
+
+  test('email limit: the disabled reason is visible text (no hover needed)', async ({ page, db }, testInfo) => {
+    await col(db).updateOne({ _id: new ObjectId(s.remind.id) }, { $set: { 'emailTracking.emailsSent': 5 } })
+    await page.goto(`/signatures/${s.remind.id}`)
+    const bar = page.getByTestId('sticky-action-bar')
+    await expect(bar.getByRole('button', { name: 'Recordar' })).toBeDisabled()
+    await expect(page.getByTestId('sticky-action-caption')).toBeVisible()
+    await expect(page.getByTestId('sticky-action-caption')).toContainText('Límite de 5 envíos alcanzado')
+    await shot(page, testInfo, 'detail-email-limit')
+  })
+
+  test('desktop/tablet: the action bar is inside the content column and on the first screen', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'covers >= sm')
+    await page.goto(`/signatures/${s.remind.id}`)
+    const bar = page.getByTestId('sticky-action-bar')
+    await expect(bar).toBeInViewport()
+    const [b, c, vp] = await Promise.all([bar.boundingBox(), page.getByTestId('page-content').boundingBox(), page.viewportSize()])
+    expect(b!.x + b!.width).toBeLessThanOrEqual(c!.x + c!.width)
+    expect(b!.x + b!.width).toBeLessThan(vp!.width - 8) // not flush against the viewport edge
+    expect(b!.y + b!.height).toBeLessThan(vp!.height - 8)
+    await shot(page, testInfo, 'detail-bar-first-screen')
   })
 })

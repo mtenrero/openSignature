@@ -62,6 +62,7 @@ export default function SignatureDetailsPage() {
       />
       <Container size="lg" data-testid="page-content" className="os-touch" pb="xl">
         <Stack gap="lg" maw={860}>
+          <SignatureActions row={details as any} onChanged={(r) => update(r.patch)} />
           <StatusHero details={details} steps={steps} />
           <Section title="Firmante">{card(<SignerSection details={details} />)}</Section>
           <Section title="Seguimiento">
@@ -72,8 +73,8 @@ export default function SignatureDetailsPage() {
             <Section title="Contrato">{card(<ContractViewer html={details.contractContent} title={details.contractName} values={details.dynamicFieldValues} signed={signed} />)}</Section>
           )}
         </Stack>
+        <div className="os-sab-spacer" aria-hidden="true" />
       </Container>
-      <SignatureActions row={details as any} onChanged={(r) => update(r.patch)} />
     </>
   )
 }
