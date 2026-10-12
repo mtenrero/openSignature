@@ -1,8 +1,9 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Container, Title, Button, Card, TextInput, Textarea, Stack, Group, Text, Checkbox, Select, Divider, Alert } from '@mantine/core'
-import { IconPlus, IconArrowLeft } from '@tabler/icons-react'
+import { Container, Button, TextInput, Textarea, Stack, Text, Switch, Accordion } from '@mantine/core'
+import { IconPlus } from '@tabler/icons-react'
+import { PageHeader, Section, StickyActionBar } from '@/components/ui'
 import { useRouter } from 'next/navigation'
 import { notifications } from '@mantine/notifications'
 
@@ -111,118 +112,77 @@ export default function NewContractPage() {
   }
 
   return (
-    <Container size="xl" py="xl">
-      <Stack gap="lg">
-        {/* Header */}
-        <Group justify="space-between" align="center">
-          <Group>
+    <>
+      <PageHeader title="Nuevo contrato" subtitle="Crea un contrato desde cero con configuración personalizada" back="/contracts" />
+      <Container size="sm" data-testid="page-content" className="os-touch" pb="xl">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (contractName.trim() && !creating) handleCreateContract()
+          }}
+        >
+          <Stack gap="lg">
+            <Section title="Información básica">
+              <TextInput
+                label="Nombre del contrato"
+                placeholder="Ej: Contrato de Servicios Profesionales"
+                value={contractName}
+                onChange={(event) => setContractName(event.target.value)}
+                required
+                enterKeyHint="next"
+              />
+              <Textarea
+                label="Descripción (opcional)"
+                placeholder="Breve descripción del contrato"
+                value={contractDescription}
+                onChange={(event) => setContractDescription(event.target.value)}
+                minRows={3}
+                autosize
+              />
+            </Section>
+
+            <Section title="Parámetros">
+              <Switch
+                size="md"
+                label="Verificación OTP obligatoria"
+                description={
+                  isSMSDisabled
+                    ? 'SMS está deshabilitado en la configuración del sistema'
+                    : 'El firmante recibirá un código de verificación temporal (válido 10 min) que deberá introducir antes de firmar'
+                }
+                checked={parameters.requireDoubleSignatureSMS && !isSMSDisabled}
+                disabled={isSMSDisabled}
+                onChange={(event) => setParameters({ ...parameters, requireDoubleSignatureSMS: event.currentTarget.checked })}
+              />
+            </Section>
+
+            <Accordion variant="separated" chevronPosition="right">
+              <Accordion.Item value="info">
+                <Accordion.Control>Información importante</Accordion.Control>
+                <Accordion.Panel>
+                  <Stack gap="xs">
+                    <Text size="sm">El contrato se creará vacío: añade el contenido y los campos en el editor.</Text>
+                    <Text size="sm">Los campos dinámicos se configuran en tu panel de configuración; los campos de usuario recogen información del firmante.</Text>
+                    <Text size="sm" fw={600} c="red.7">
+                      Todos los contratos incluyen 4 campos del firmante: Nombre, NIF, SMS (opcional) y Mail (opcional). Nombre y NIF son obligatorios y deben usarse en el contenido para activar el contrato.
+                    </Text>
+                  </Stack>
+                </Accordion.Panel>
+              </Accordion.Item>
+            </Accordion>
+          </Stack>
+          <StickyActionBar>
             <Button
-              variant="subtle"
-              leftSection={<IconArrowLeft size={16} />}
-              onClick={() => router.push('/contracts')}
+              type="submit"
+              leftSection={<IconPlus size={20} />}
+              disabled={!contractName.trim()}
+              loading={creating}
             >
-              Volver a Mis Contratos
+              Crear Contrato
             </Button>
-            <div>
-              <Title size="2rem" fw={700}>
-                Crear Nuevo Contrato
-              </Title>
-              <Text size="sm" c="dimmed">
-                Crea un contrato desde cero con configuración personalizada
-              </Text>
-            </div>
-          </Group>
-        </Group>
-
-
-        {/* Contract Basic Info */}
-        <Card shadow="sm" padding="lg" radius="md" withBorder>
-          <Title size="1.2rem" fw={600} mb="md">
-            Información Básica del Contrato
-          </Title>
-          <Stack gap="md">
-            <TextInput
-              label="Nombre del contrato"
-              placeholder="Ej: Contrato de Servicios Profesionales"
-              value={contractName}
-              onChange={(event) => setContractName(event.target.value)}
-              required
-            />
-            <Textarea
-              label="Descripción (opcional)"
-              placeholder="Breve descripción del contrato"
-              value={contractDescription}
-              onChange={(event) => setContractDescription(event.target.value)}
-              minRows={2}
-            />
-          </Stack>
-        </Card>
-
-        {/* Contract Parameters */}
-        <Card shadow="sm" padding="lg" radius="md" withBorder>
-          <Title size="1.2rem" fw={600} mb="md">
-            Parámetros del Contrato
-          </Title>
-          <Stack gap="md">
-            <Checkbox
-              label="🔐 Verificación OTP obligatoria - Requiere código de verificación vía SMS/email antes de firmar"
-              description={isSMSDisabled ? "SMS está deshabilitado en la configuración del sistema" : "El firmante recibirá un código de verificación temporal (válido 10min) que deberá introducir antes de poder firmar"}
-              checked={parameters.requireDoubleSignatureSMS && !isSMSDisabled}
-              disabled={isSMSDisabled}
-              onChange={(event) => setParameters({
-                ...parameters,
-                requireDoubleSignatureSMS: event.currentTarget.checked
-              })}
-            />
-
-          </Stack>
-        </Card>
-
-
-
-        {/* Create Button */}
-        <Group justify="center">
-          <Button
-            size="lg"
-            leftSection={<IconPlus size={20} />}
-            onClick={handleCreateContract}
-            disabled={!contractName.trim()}
-            loading={creating}
-          >
-            Crear Contrato
-          </Button>
-        </Group>
-
-        {/* Help Card */}
-        <Card shadow="sm" padding="lg" radius="md" withBorder>
-          <Title size="1.2rem" fw={600} mb="md">
-            Información Importante
-          </Title>
-          <Stack gap="sm">
-            <Text size="sm">
-              • El contrato se creará completamente vacío, sin contenido ni campos predefinidos
-            </Text>
-            <Text size="sm">
-              • Podrás agregar campos dinámicos y campos de usuario en el editor
-            </Text>
-            <Text size="sm">
-              • Los campos dinámicos se configuran en tu panel de configuración
-            </Text>
-            <Text size="sm">
-              • Los campos de usuario permiten recopilar información del firmante
-            </Text>
-            <Text size="sm" fw={600} c="red">
-              • IMPORTANTE: Todos los contratos incluyen 4 campos predefinidos del firmante: Nombre, NIF, SMS (opcional) y Mail (opcional)
-            </Text>
-            <Text size="sm">
-              • Los campos Nombre y NIF son OBLIGATORIOS y deben estar usados en el contenido para activar el contrato
-            </Text>
-            <Text size="sm">
-              • Los campos SMS y Mail son opcionales pero recomendados para auditoría
-            </Text>
-          </Stack>
-        </Card>
-      </Stack>
-    </Container>
+          </StickyActionBar>
+        </form>
+      </Container>
+    </>
   )
 }

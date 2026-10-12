@@ -412,3 +412,34 @@ button.os-tile { cursor: pointer; }
 
 .os-ph { max-width: 1140px; margin-inline: auto; padding-inline: max(16px, var(--os-safe-left)) max(16px, var(--os-safe-right)); }
 .os-li__main { padding-block: 10px; }
+
+/* ---------- Contracts list (S4) ---------- */
+.os-crows { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@media (min-width: 62em) { .os-crows { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.os-crow {
+  display: flex;
+  flex-direction: column;
+  background: var(--os-surface);
+  border: 1px solid var(--os-border);
+  border-radius: var(--mantine-radius-lg);
+  overflow: hidden;
+}
+.os-crow .os-li { border: 0; border-radius: 0; }
+.os-crow__actions { display: flex; gap: 8px; padding: 0 16px 12px; }
+.os-crow__actions .mantine-Button-root { flex: 1 1 0; min-height: var(--os-touch); }
+@media (min-width: 48em) { .os-crow__actions .mantine-Button-root { flex: 0 0 auto; } }
+.os-doc-surface {
+  background: var(--os-surface);
+  border: 1px solid var(--os-border);
+  border-radius: var(--mantine-radius-lg);
+  padding: 16px;
+  max-width: 760px;
+  margin-inline: auto;
+  font-size: 16px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 48em) { .os-doc-surface { padding: 32px; } }
+.os-doc-surface img, .os-doc-surface table { max-width: 100%; }
+.os-touch .mantine-CloseButton-root { min-width: var(--os-touch); min-height: var(--os-touch); }
+.os-ph .mantine-Button-root { min-height: var(--os-touch); }

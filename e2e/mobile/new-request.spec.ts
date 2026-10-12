@@ -7,6 +7,7 @@ import { test, expect, dropTestDb, TEST_DB_NAME } from '../fixtures'
 import { loginAsOwner, seedActiveContract, expectNoHorizontalOverflow, expectTouchTargets, shot } from './helpers'
 
 async function checkStep(page: Page, testInfo: TestInfo, name: string) {
+  await page.waitForTimeout(400) // let the sheet's slide-in transition finish before measuring
   await expectNoHorizontalOverflow(page)
   const root = (await page.locator('[role=dialog]').count()) > 0 ? '[role=dialog]' : 'main'
   await expectTouchTargets(page, root)
