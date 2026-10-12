@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, use, type ComponentPropsWithoutRef } from 'react'
-import { Container, Title, Text, Card, Stack, Badge, Group, Loader, Alert, Box, Divider, Progress, List, ThemeIcon, Tabs, Timeline, Code, Button, Collapse, ScrollArea } from '@mantine/core'
+import React, { useState, useEffect, use } from 'react'
+import { Container, Title, Text, Card, Stack, Badge, type BadgeProps, Group, Loader, Alert, Box, Divider, Progress, List, ThemeIcon, Tabs, Timeline, Code, Button, Collapse, ScrollArea } from '@mantine/core'
 import { IconCheck, IconX, IconFileDescription, IconCalendar, IconUser, IconFingerprint, IconShieldCheck, IconAlertTriangle, IconHash, IconLock, IconClock, IconInfoCircle, IconDownload, IconEye, IconCircleCheck, IconCircleX } from '@tabler/icons-react'
 import { useDisclosure } from '@mantine/hooks'
 import axios from 'axios'
@@ -11,7 +11,7 @@ import { KeyValueList } from '../../../components/ui'
 const TONE: Record<string, string> = { green: 'var(--os-success)', orange: 'var(--os-warning)', red: 'var(--os-danger)' }
 
 /** Badge whose text colour comes from the AA-safe oSign tokens (filled mid-tone badges fail contrast). */
-function SafeBadge({ color = 'gray', ...rest }: ComponentPropsWithoutRef<typeof Badge>) {
+function SafeBadge({ color = 'gray', ...rest }: BadgeProps & { className?: string; children?: React.ReactNode }) {
   return <Badge variant="light" color={color} c={TONE[color as string] ?? 'var(--os-text)'} {...rest} />
 }
 

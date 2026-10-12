@@ -38,6 +38,14 @@ test.describe('public pages (signed out)', () => {
     const drawer = page.getByRole('dialog')
     await expect(drawer.getByRole('link', { name: 'Crear cuenta' })).toBeVisible()
     await expect(drawer.getByRole('link', { name: 'Iniciar sesión' })).toBeVisible()
+    for (const name of ['Crear cuenta', 'Iniciar sesión']) {
+      const link = drawer.getByRole('link', { name })
+      await expect(link).toBeInViewport({ ratio: 1 })
+      const box = (await link.boundingBox())!
+      const vw = page.viewportSize()!.width
+      expect(box.x + box.width).toBeLessThanOrEqual(vw)
+    }
+    await page.waitForTimeout(400) // let the drawer transition settle
     await shot(page, testInfo, 'public-burger-drawer')
     await drawer.getByRole('link', { name: 'Precios' }).click()
     await expect(page).toHaveURL(/\/pricing$/)

@@ -14,7 +14,7 @@ export function CodeTab({ value, onChange }: { value: string; onChange: (v: stri
         <br />• HTML estándar para formateo (párrafos, negritas, etc.)
       </Text>
       <textarea
-        className="os-code"
+        className="os-code-editor"
         aria-label="Código del contrato"
         value={value}
         onChange={(event) => onChange(event.target.value)}

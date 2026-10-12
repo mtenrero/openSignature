@@ -115,6 +115,9 @@ export function getActiveTabKey(pathname: string): string | null {
   return best?.key ?? null
 }
 
-export function isNavActive(pathname: string, href: string): boolean {
-  return matches(pathname.split('?')[0], href)
+/** Single active item per group: the longest matching href wins. */
+export function isNavActive(pathname: string, href: string, group: { href: string }[] = [...MAIN_NAV, ...ACCOUNT_NAV]): boolean {
+  const path = pathname.split('?')[0]
+  if (!matches(path, href)) return false
+  return !group.some((g) => g.href.length > href.length && matches(path, g.href))
 }

@@ -33,3 +33,17 @@ describe('BottomTabBar', () => {
     expect(getActiveTabKey('/')).toBeNull()
   })
 })
+
+describe('isNavActive single active item', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { isNavActive } = require('@/components/shell/navItems')
+  it('/settings/api-keys activates only API Keys', () => {
+    expect(isNavActive('/settings/api-keys', '/settings/api-keys')).toBe(true)
+    expect(isNavActive('/settings/api-keys', '/settings')).toBe(false)
+  })
+  it('/settings/billing-wallet and /settings/subscription do not light /settings', () => {
+    expect(isNavActive('/settings/billing-wallet', '/settings')).toBe(false)
+    expect(isNavActive('/settings/subscription', '/settings')).toBe(false)
+    expect(isNavActive('/settings', '/settings')).toBe(true)
+  })
+})

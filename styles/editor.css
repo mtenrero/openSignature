@@ -93,8 +93,8 @@
 .os-editor-tabs .mantine-Tabs-tab { flex: 0 0 auto; min-height: 44px; padding-left: 14px; padding-right: 14px; white-space: nowrap; }
 
 /* Code tab: horizontal scroll inside its own box */
-.os-code { width: 100%; min-height: 50dvh; box-sizing: border-box; padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 16px; line-height: 1.5; color: var(--os-text); background: var(--os-surface-2); border: 1px solid var(--os-border); border-radius: 12px; overflow: auto; white-space: pre; resize: vertical; }
-.os-code:focus-visible { outline: 2px solid var(--os-brand); outline-offset: 2px; }
+.os-code-editor { width: 100%; min-height: 50dvh; box-sizing: border-box; padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 16px; line-height: 1.5; color: var(--os-text); background: var(--os-surface-2); border: 1px solid var(--os-border); border-radius: 12px; overflow: auto; white-space: pre; resize: vertical; }
+.os-code-editor:focus-visible { outline: 2px solid var(--os-brand); outline-offset: 2px; }
 
 /* The palette column only exists from md; below it the "Insertar campo" sheet is used instead. */
 .os-palette-col { display: none; }

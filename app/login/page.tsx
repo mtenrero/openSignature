@@ -42,15 +42,11 @@ function LoginPageContent() {
 
   const handleOAuthSignIn = async () => {
     try {
-      const result = await signIn('auth0', {
+      await signIn('auth0', {
         callbackUrl,
         redirect: true
       })
 
-      if (result?.error) {
-        console.error('OAuth sign in error:', result.error)
-        setError('Error al iniciar sesión')
-      }
     } catch (error) {
       console.error('OAuth sign in error:', error)
       setError('Error al conectar con el proveedor de autenticación')

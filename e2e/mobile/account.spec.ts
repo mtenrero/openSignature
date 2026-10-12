@@ -42,6 +42,30 @@ test.describe('account screens', () => {
     })
   }
 
+  test('api-keys: code block is compact and fits the viewport', async ({ page }) => {
+    await page.goto('/settings/api-keys')
+    const pre = page.getByLabel('Cabecera de autorización')
+    await expect(pre).toBeVisible()
+    const box = (await pre.boundingBox())!
+    expect(box.height).toBeLessThan(120)
+    expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+    const clipped = await pre.evaluate((el) => el.scrollWidth <= el.clientWidth || getComputedStyle(el).overflowX !== 'visible')
+    expect(clipped).toBe(true)
+    const alertBox = (await page.locator('.mantine-Alert-root').first().boundingBox())!
+    expect(box.x + box.width).toBeLessThanOrEqual(alertBox.x + alertBox.width + 1)
+  })
+
+  test('wallet transactions: amount never wraps', async ({ page }) => {
+    await page.goto('/settings/wallet/transactions')
+    await expect(page.getByTestId('transactions')).toBeVisible()
+    const amounts = page.locator('[data-testid=transactions] p:visible', { hasText: /^[-+].*€/ })
+    const n = await amounts.count()
+    for (let i = 0; i < n; i++) {
+      const h = (await amounts.nth(i).boundingBox())!.height
+      expect(h).toBeLessThan(32)
+    }
+  })
+
   test('billing-wallet: tabs scroll inside themselves; wallet and metrics tabs render cards', async ({ page }, testInfo) => {
     await page.goto('/settings/billing-wallet')
     await expect(page.getByTestId('plan-card')).toBeVisible()

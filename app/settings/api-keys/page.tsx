@@ -227,7 +227,7 @@ export default function ApiKeysPage() {
               • <strong>Seguras:</strong> puedes revocarlas en cualquier momento<br />
               • <strong>Simples:</strong> usa la cabecera
             </Text>
-            <pre className="os-code" tabIndex={0} aria-label="Cabecera de autorización">Authorization: Bearer TU_API_KEY</pre>
+            <pre className="os-codeblock" tabIndex={0} aria-label="Cabecera de autorización">Authorization: Bearer TU_API_KEY</pre>
           </Stack>
         </Alert>
 
@@ -237,7 +237,7 @@ export default function ApiKeysPage() {
               <Text size="sm" fw={600}>Guarda esta clave ahora: no se volverá a mostrar por seguridad.</Text>
               <div>
                 <Text size="sm" fw={500} mb={4}>Tu API Key</Text>
-                <pre className="os-code" tabIndex={0} aria-label="Tu API Key">{newlyCreatedKey.apiKey}</pre>
+                <pre className="os-codeblock" tabIndex={0} aria-label="Tu API Key">{newlyCreatedKey.apiKey}</pre>
               </div>
               <CopyButton value={newlyCreatedKey.apiKey}>
                 {({ copied, copy }) => (
@@ -248,7 +248,7 @@ export default function ApiKeysPage() {
               </CopyButton>
               <div>
                 <Text size="sm" fw={500} mb={4}>Ejemplo de uso</Text>
-                <pre className="os-code" tabIndex={0} aria-label="Ejemplo con curl">{`curl -H "Authorization: Bearer ${newlyCreatedKey.apiKey}" \\
+                <pre className="os-codeblock" tabIndex={0} aria-label="Ejemplo con curl">{`curl -H "Authorization: Bearer ${newlyCreatedKey.apiKey}" \\
   https://osign.eu/api/contracts`}</pre>
               </div>
               <Button variant="light" fullWidth onClick={() => setNewlyCreatedKey(null)}>Entendido, cerrar</Button>

@@ -30,7 +30,7 @@ export default function SignUpPage() {
     // Same rules as the server (lib/auth/registration), so the form never promises
     // what the API will refuse.
     const parsed = validateRegistration(formData)
-    if (!parsed.ok) {
+    if (parsed.ok === false) {
       const field = parsed.field === 'body' ? 'name' : parsed.field
       newErrors[field] = parsed.error
     }

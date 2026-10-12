@@ -123,7 +123,7 @@ export default function WalletTransactionsPage() {
   const activeExtra = (reasonFilter ? 1 : 0) + (usageTypeFilter ? 1 : 0)
   const hasReceipt = (t: Transaction) => !!t.stripePaymentIntentId && t.type === 'credit' && t.reason === 'top_up'
   const amount = (t: Transaction) => (
-    <Text fw={600} c={t.type === 'debit' ? 'var(--os-danger)' : 'var(--os-success)'}>
+    <Text fw={600} style={{ whiteSpace: 'nowrap', flexShrink: 0 }} c={t.type === 'debit' ? 'var(--os-danger)' : 'var(--os-success)'}>
       {t.type === 'debit' ? '-' : '+'}
       {t.formattedAmount}
     </Text>
@@ -213,9 +213,9 @@ export default function WalletTransactionsPage() {
               <>
                 <Group justify="space-between" align="flex-start" wrap="nowrap" gap="sm">
                   <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
-                    {t.type === 'debit' ? <IconTrendingDown size={18} color="var(--os-danger)" aria-hidden="true" /> : <IconTrendingUp size={18} color="var(--os-success)" aria-hidden="true" />}
+                    {t.type === 'debit' ? <IconTrendingDown size={18} color="var(--os-danger)" aria-hidden="true" style={{ flexShrink: 0 }} /> : <IconTrendingUp size={18} color="var(--os-success)" aria-hidden="true" style={{ flexShrink: 0 }} />}
                     <div style={{ minWidth: 0 }}>
-                      <Text fw={600}>{t.description}</Text>
+                      <Text fw={600} style={{ overflowWrap: 'anywhere' }}>{t.description}</Text>
                       <Text size="sm" c="dimmed">{formatDate(t.createdAt)}</Text>
                     </div>
                   </Group>
