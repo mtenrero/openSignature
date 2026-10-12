@@ -310,6 +310,12 @@ test.describe('f) Desconectar', () => {
 test.describe('g) SaludControl', () => {
   test('uses the health templates and patient wording on the same oSign account', async ({ playwright }) => {
     const { apiKey } = await connect()
+    // The stack reuses one tenant for both platforms. The registered platform wins
+    // over the Host (custom domains, previews), so register this clinic as salud the
+    // way a SaludControl signup would, and put it back afterwards.
+    const stateId = `osignstate:${TENANT_DB}`
+    const prevState = await couchGet('vetcontrol_osign_keys', stateId)
+    await couchPut('vetcontrol_osign_keys', { ...(prevState || {}), _id: stateId, platform: 'salud' })
     const salud = await mivetLogin(playwright, SALUD_HOST)
     try {
       const list = await json(await salud.get('/api/esign/contract-templates'))
@@ -337,6 +343,10 @@ test.describe('g) SaludControl', () => {
       const nfb = await json(nf)
       expect(nfb.errorCode).toBe('ESIGN_CLIENT_NOT_FOUND')
       expect(nfb.error).toMatch(/paciente/i)
-    } finally { await salud.dispose() }
+    } finally {
+      await salud.dispose()
+      const cur = await couchGet('vetcontrol_osign_keys', stateId)
+      if (cur) await couchPut('vetcontrol_osign_keys', { ...cur, platform: prevState?.platform || 'vet' })
+    }
   })
 })
