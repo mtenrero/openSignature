@@ -14,7 +14,8 @@
   margin-inline: auto;
 }
 @media (max-width: 47.99em) {
-  .os-main { padding-bottom: 0; }
+  /* leave room for the fixed tab bar (Mantine publishes its height; 0 when it is hidden) */
+  .os-main { padding-bottom: var(--app-shell-footer-offset, 0px); }
 }
 
 .os-navbar {
@@ -347,3 +348,38 @@ button.os-tile { cursor: pointer; }
 .os-wizard .mantine-Input-input { font-size: max(16px, 1rem); }
 [role='dialog'] .mantine-Modal-close { min-width: var(--os-touch); min-height: var(--os-touch); }
 .os-ph .mantine-ActionIcon-root { min-width: var(--os-touch); min-height: var(--os-touch); }
+
+/* ---------- Touch-size scope for list/detail pages (44px at every pointer type) ---------- */
+.os-touch .mantine-Button-root,
+.os-touch .mantine-Input-input,
+.os-touch .mantine-ActionIcon-root,
+.os-touch .mantine-SegmentedControl-label { min-height: var(--os-touch); }
+.os-touch .mantine-ActionIcon-root { min-width: var(--os-touch); }
+.os-touch .mantine-Input-input { font-size: max(16px, 1rem); }
+.os-pill { border-radius: 999px; }
+.os-detail-section { background: var(--os-surface); border: 1px solid var(--os-border); border-radius: var(--mantine-radius-lg); padding: 16px; }
+.os-contract-doc { overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; line-height: 1.6; }
+.os-contract-doc img, .os-contract-doc table { max-width: 100%; }
+.os-contract-doc--clamped { max-height: 240px; }
+
+/* ---------- Signature detail ---------- */
+.os-hero-meta { margin: 12px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
+.os-hero-meta dt { font-size: 12px; color: var(--os-text-dim); }
+.os-hero-meta dd { margin: 0; font-size: 14px; display: flex; align-items: center; gap: 4px; overflow-wrap: anywhere; }
+.os-progress { list-style: none; margin: 16px 0 0; padding: 0; display: flex; }
+.os-progress li { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; position: relative; font-size: 12px; color: var(--os-text-dim); }
+.os-progress li + li::before { content: ''; position: absolute; top: 9px; right: 50%; width: 100%; height: 2px; background: var(--os-border); }
+.os-progress li.is-done + li.is-done::before { background: var(--os-brand); }
+.os-progress__dot { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--os-border); background: var(--os-surface); display: flex; align-items: center; justify-content: center; position: relative; z-index: 1; color: #fff; }
+.os-progress li.is-done .os-progress__dot { background: var(--os-brand); border-color: var(--os-brand); }
+.os-progress li.is-done { color: var(--os-text); font-weight: 600; }
+.os-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Compact rows: sentence-case badge, no chevron when the row has its own actions button */
+.os-li .mantine-Badge-root { text-transform: none; font-size: 12px; letter-spacing: 0; flex: none; }
+.os-li:has(.os-li__trailing) .os-li__chev { display: none; }
+.os-li__meta { flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }
+.os-li__meta > span { overflow: hidden; text-overflow: ellipsis; }
+
+.os-ph { max-width: 1140px; margin-inline: auto; padding-inline: max(16px, var(--os-safe-left)) max(16px, var(--os-safe-right)); }
+.os-li__main { padding-block: 10px; }

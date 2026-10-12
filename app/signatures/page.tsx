@@ -1,974 +1,233 @@
 'use client'
 
-import React, { useState, useEffect, Suspense } from 'react'
-import { Box, Container, Title, Text, Button, Group, Card, Stack, SimpleGrid, Badge, ActionIcon, TextInput, Select, NativeSelect, Menu, Loader, Alert, Modal, Chip, Autocomplete, Popover, ScrollArea } from '@mantine/core'
-import { IconSearch, IconFilter, IconDownload, IconEye, IconDots, IconSignature, IconFileText, IconCalendar, IconAlertTriangle, IconCopy, IconQrcode, IconExternalLink, IconMail, IconX, IconPhone } from '@tabler/icons-react'
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { ActionIcon, Button, Container, Group, Indicator, Stack } from '@mantine/core'
+import {
+  IconAdjustmentsHorizontal, IconDots, IconDownload, IconEye, IconFileText, IconMail, IconMessage, IconPlus, IconRefresh, IconSignature, IconX,
+} from '@tabler/icons-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { notifications } from '@mantine/notifications'
-import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { isSMSEnabledClient } from '@/lib/utils/smsConfig'
 import { NewSignatureRequestWizard } from '@/components/signature-request/NewSignatureRequestWizard'
+import {
+  ActionMenu, EmptyState, ListSkeleton, PageHeader, SearchField, StatTiles, type ActionSheetItem,
+} from '@/components/ui'
+import { SignatureRow } from '@/components/signatures/SignatureRow'
+import {
+  RANGE_OPTIONS, STATUS_OPTIONS, SignaturesFilterSheet, type AppliedFilters,
+} from '@/components/signatures/SignaturesFilterSheet'
+import { useRequestAgain } from '@/components/signatures/useRequestAgain'
+import {
+  contractOptions, counts, filterRows, mergeRows, paginate, rowStatus,
+  type DateRange, type SignatureRow as Row, type StatusFilter,
+} from '@/lib/signatures/listModel'
+import { downloadOrShare, fetchSignedPdf } from '@/lib/signatures/download'
+
+const PAGE_SIZE = 20
 
 function FirmasPageContent() {
-  const [firmas, setFirmas] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('todos')
-  const [dateFilter, setDateFilter] = useState('todos')
-
-  // Check if SMS is enabled
-  const smsEnabled = isSMSEnabledClient()
-  const [wizard, setWizard] = useState<{ contractId: string; method: 'email' | 'sms'; prefill: { values: { [k: string]: string }; lockedFields: string[]; signatureRequestId?: string } } | null>(null)
-  const [refreshingList, setRefreshingList] = useState(false)
-  const [contractName, setContractName] = useState<string>('')
-  const [availableContracts, setAvailableContracts] = useState<Array<{id: string, name: string}>>([])
-  const [loadingContracts, setLoadingContracts] = useState(false)
-  const [contractSearchTerm, setContractSearchTerm] = useState('')
-  const [contractDropdownOpened, setContractDropdownOpened] = useState(false)
-
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { data: session, status } = useSession()
-  
-  // Get contractId filter from URL parameters
-  const contractIdFilter = searchParams.get('contractId')
+  const { status: sessionStatus } = useSession()
+  const smsEnabled = isSMSEnabledClient()
 
-  // Fetch contract name when contractId filter is applied
+  const [rows, setRows] = useState<Row[]>([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  // Filter state lives here and is mirrored into the URL (so "back" from a detail restores it).
+  const [query, setQuery] = useState(searchParams.get('q') ?? '')
+  const [status, setStatus] = useState<StatusFilter>((searchParams.get('status') as StatusFilter) || 'all')
+  const [dateRange, setDateRange] = useState<DateRange>((searchParams.get('range') as DateRange) || 'all')
+  const [contractId, setContractId] = useState<string | null>(searchParams.get('contractId'))
+  const [page, setPage] = useState(1)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const { wizard, open: requestAgain, close: closeWizard } = useRequestAgain()
+
+  // A link to /signatures?contractId=… while this page is mounted.
+  const urlContract = searchParams.get('contractId')
+  useEffect(() => setContractId(urlContract), [urlContract])
+
   useEffect(() => {
-    const fetchContractName = async () => {
-      if (!contractIdFilter) {
-        setContractName('')
-        return
-      }
+    const p = new URLSearchParams()
+    if (query) p.set('q', query)
+    if (status !== 'all') p.set('status', status)
+    if (dateRange !== 'all') p.set('range', dateRange)
+    if (contractId) p.set('contractId', contractId)
+    const qs = p.toString()
+    window.history.replaceState(window.history.state, '', qs ? `?${qs}` : window.location.pathname)
+  }, [query, status, dateRange, contractId])
 
-      try {
-        const response = await fetch(`/api/contracts/${contractIdFilter}`)
-        if (response.ok) {
-          const data = await response.json()
-          setContractName(data.name || 'Contrato')
-        } else {
-          setContractName('Contrato no encontrado')
-        }
-      } catch (error) {
-        console.error('Error fetching contract name:', error)
-        setContractName('Error al cargar nombre')
-      }
+  const load = useCallback(async (silent = false) => {
+    try {
+      silent ? setRefreshing(true) : setLoading(true)
+      const [sigRes, reqRes] = await Promise.all([fetch('/api/signatures'), fetch('/api/signature-requests')])
+      const signatures = sigRes.ok ? (await sigRes.json()).signatures || [] : []
+      const requests = reqRes.ok ? (await reqRes.json()).requests || [] : []
+      setRows(mergeRows(signatures, requests))
+      setFailed(false)
+    } catch (err) {
+      console.error('Error fetching signatures:', err)
+      setFailed(true)
+      notifications.show({ title: 'Error', message: 'No se pudieron cargar las firmas', color: 'red' })
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
     }
+  }, [])
 
-    fetchContractName()
-  }, [contractIdFilter])
-
-  // Fetch available contracts for the contract selector
   useEffect(() => {
-    const fetchContracts = async () => {
-      if (status !== 'authenticated') return
+    if (sessionStatus === 'authenticated') load()
+    else if (sessionStatus === 'unauthenticated') router.push('/auth/signin')
+  }, [sessionStatus, load, router])
 
-      try {
-        setLoadingContracts(true)
-        const response = await fetch('/api/contracts?limit=100')
-        if (response.ok) {
-          const data = await response.json()
-          const contracts = data.contracts.map((contract: any) => ({
-            id: contract.id,
-            name: contract.name
-          }))
-          setAvailableContracts(contracts)
-        }
-      } catch (error) {
-        console.error('Error fetching contracts:', error)
-      } finally {
-        setLoadingContracts(false)
-      }
+  const scoped = useMemo(() => rows.filter((r) => !contractId || r.contractId === contractId), [rows, contractId])
+  const c = useMemo(() => counts(scoped), [scoped])
+  const filtered = useMemo(
+    () => filterRows(rows, { query, status, contractId, dateRange }),
+    [rows, query, status, contractId, dateRange]
+  )
+  const { items, hasMore, remaining } = paginate(filtered, page, PAGE_SIZE)
+  const contracts = useMemo(() => contractOptions(rows), [rows])
+  const contractName = contractId ? contracts.find((x) => x.id === contractId)?.name ?? 'Contrato' : ''
+
+  const setFilter = <T,>(set: (v: T) => void) => (v: T) => {
+    set(v)
+    setPage(1)
+  }
+  const applied: AppliedFilters = { status, contractId, dateRange }
+  const apply = (v: AppliedFilters) => {
+    setStatus(v.status); setContractId(v.contractId); setDateRange(v.dateRange); setPage(1)
+  }
+  const clearAll = () => apply({ status: 'all', contractId: null, dateRange: 'all' })
+
+  const download = async (row: Row) => {
+    try {
+      const { blob, filename } = await fetchSignedPdf(row as any)
+      const r = await downloadOrShare(blob, filename)
+      if (r !== 'cancelled') notifications.show({ title: 'PDF listo', message: 'El contrato firmado se ha descargado', color: 'green' })
+    } catch (e) {
+      notifications.show({ title: 'Error de descarga', message: e instanceof Error ? e.message : 'No se pudo descargar el PDF', color: 'red' })
     }
+  }
 
-    fetchContracts()
-  }, [status])
-
-  // Fetch signatures from API (both completed and pending requests)
-  useEffect(() => {
-    const fetchSignatures = async () => {
-      try {
-        setLoading(true)
-        
-        // Fetch both completed signatures and pending signature requests
-        const [signaturesResponse, requestsResponse] = await Promise.all([
-          fetch('/api/signatures'),
-          fetch('/api/signature-requests')
-        ])
-        
-        let signatures = []
-        let requests = []
-        
-        if (signaturesResponse.ok) {
-          const signaturesData = await signaturesResponse.json()
-          signatures = signaturesData.signatures || []
-        }
-        
-        if (requestsResponse.ok) {
-          const requestsData = await requestsResponse.json()
-          requests = requestsData.requests || []
-        }
-        
-        // Combine and format data
-        const combinedData = [
-          // Completed signatures - preserve shortId and accessKey if available
-          ...signatures.map(sig => ({
-            id: sig.id,
-            type: 'signature',
-            contractId: sig.contractId,
-            contractName: sig.contractName || 'Contrato',
-            signerName: sig.signerName,
-            signerEmail: sig.signerEmail,
-            signerPhone: sig.signerPhone,
-            clientName: sig.clientName,
-            clientTaxId: sig.clientTaxId,
-            status: 'completed',
-            signedAt: sig.signedAt,
-            createdAt: sig.createdAt,
-            documentUrl: sig.documentUrl,
-            shortId: sig.shortId, // Preserve for PDF download
-            accessKey: sig.accessKey, // Preserve for PDF download
-            customerId: sig.customerId
-          })),
-          // Pending signature requests
-          ...requests.map(req => ({
-            id: req.id,
-            type: 'request',
-            contractId: req.contractId,
-            contractName: req.contractName || 'Contrato',
-            signerName: req.signerName,
-            signerEmail: req.signerEmail,
-            signerPhone: req.signerPhone,
-            clientName: req.clientName,
-            clientTaxId: req.clientTaxId,
-            signatureType: req.signatureType,
-            status: req.status === 'signed' ? 'completed' : 'pending',
-            signedAt: req.signedAt,
-            createdAt: req.createdAt,
-            updatedAt: req.updatedAt,
-            expiresAt: req.expiresAt,
-            signatureUrl: req.signatureUrl,
-            shortId: req.shortId,
-            accessKey: req.accessKey,
-            customerId: req.customerId
-          }))
-        ]
-
-        // Sort by updatedAt (for requests) or createdAt (for signatures) - newest first
-        combinedData.sort((a, b) => {
-          const dateA = new Date(a.updatedAt || a.createdAt || a.signedAt)
-          const dateB = new Date(b.updatedAt || b.createdAt || b.signedAt)
-          return dateB.getTime() - dateA.getTime()
-        })
-        
-        setFirmas(combinedData)
-        
-      } catch (err) {
-        console.error('Error fetching signatures:', err)
-        setError(err.message)
-        notifications.show({
-          title: 'Error',
-          message: 'No se pudieron cargar las firmas',
-          color: 'red',
-        })
-      } finally {
-        setLoading(false)
-      }
+  const rowActions = (row: Row): ActionSheetItem[] => {
+    const st = rowStatus(row)
+    const items: ActionSheetItem[] = [
+      { key: 'view', label: 'Ver detalles', icon: <IconEye size={18} />, onClick: () => router.push(`/signatures/${row.id}`) },
+      { key: 'contract', label: 'Ver contrato original', icon: <IconFileText size={18} />, onClick: () => router.push(`/contracts/${row.contractId}/edit`) },
+    ]
+    if (st === 'pending' && row.signatureUrl) {
+      items.push({ key: 'email', label: 'Solicitar por Email', icon: <IconMail size={18} />, onClick: () => requestAgain(row, 'email') })
+      if (smsEnabled) items.push({ key: 'sms', label: 'Solicitar por SMS', icon: <IconMessage size={18} />, onClick: () => requestAgain(row, 'sms') })
     }
+    if (st === 'signed') items.push({ key: 'pdf', label: 'Descargar PDF', icon: <IconDownload size={18} />, onClick: () => download(row) })
+    return items
+  }
 
-    // Only fetch signatures when session is loaded
-    if (status === 'authenticated') {
-      fetchSignatures()
-    } else if (status === 'unauthenticated') {
-      // If not authenticated, redirect to signin
-      router.push('/auth/signin')
-    }
-  }, [status, router])
-
-  const filteredFirmas = firmas.filter(firma => {
-    // Text search filter - only filter if searchTerm is not empty
-    let matchesSearch = true
-    if (searchTerm.trim() !== '') {
-      matchesSearch = 
-        (firma.signerName?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (firma.signerEmail?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (firma.signerPhone?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (firma.clientName?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (firma.clientTaxId?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        false
-    }
-
-    const matchesStatus = statusFilter === 'todos' || firma.status === statusFilter
-    
-    // Filter by contractId if provided in URL
-    const matchesContractId = !contractIdFilter || firma.contractId === contractIdFilter
-
-    // Date filtering
-    let matchesDate = true
-    if (dateFilter !== 'todos') {
-      const firmDate = new Date(firma.createdAt || firma.signedAt)
-      const now = new Date()
-      
-      switch (dateFilter) {
-        case 'hoy':
-          matchesDate = firmDate.toDateString() === now.toDateString()
-          break
-        case 'semana':
-          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-          matchesDate = firmDate >= weekAgo
-          break
-        case 'mes':
-          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-          matchesDate = firmDate >= monthAgo
-          break
-        default:
-          matchesDate = true
-      }
-    }
-
-    return matchesSearch && matchesStatus && matchesDate && matchesContractId
+  const activeCount = (status !== 'all' ? 1 : 0) + (dateRange !== 'all' ? 1 : 0) + (contractId ? 1 : 0)
+  const pill = (key: string, label: string, onRemove: () => void) => (
+    <Button key={key} className="os-pill" variant="light" size="sm" rightSection={<IconX size={14} />} onClick={onRemove} aria-label={`Quitar filtro ${label}`}>
+      {label}
+    </Button>
+  )
+  const tile = (label: string, value: number, st: StatusFilter, color: string) => ({
+    label, value, color, active: status === st, onClick: () => setFilter(setStatus)(status === st ? 'all' : st),
   })
 
-  const getStatusBadge = (status: string) => {
-    const statuses = {
-      completed: { label: 'Completado', color: 'green' },
-      pending: { label: 'Pendiente', color: 'yellow' },
-      signed: { label: 'Firmado', color: 'blue' },
-      expired: { label: 'Expirado', color: 'red' },
-      cancelled: { label: 'Cancelado', color: 'gray' },
-      draft: { label: 'Borrador', color: 'blue' }
-    }
-    return statuses[status as keyof typeof statuses] || statuses.completed
-  }
-
-  const getSignatureTypeLabel = (type: string) => {
-    const types = {
-      email: 'Por Email',
-      sms: 'Por SMS',
-      local: 'Firma Local',
-      tablet: 'En Tableta',
-      qr: 'QR Remoto'
-    }
-    return types[type as keyof typeof types] || type
-  }
-
-  const handleDownload = async (firma: any) => {
-    try {
-      // Check if it's a completed signature with shortId
-      if (firma.status === 'completed' && firma.shortId) {
-        // Build the PDF download URL
-        const accessKey = firma.accessKey || Buffer.from(`${firma.shortId}:${firma.customerId || ''}`).toString('base64').slice(0, 6)
-        const pdfUrl = `/api/sign-requests/${firma.shortId}/pdf?a=${accessKey}`
-        
-        // Create a temporary link to download the PDF
-        const link = document.createElement('a')
-        link.href = pdfUrl
-        link.download = `contrato-firmado-${firma.contractName || 'documento'}-${firma.shortId}.pdf`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        
-        notifications.show({
-          title: '📥 Descarga iniciada',
-          message: 'El PDF del contrato firmado se está descargando',
-          color: 'green',
-          autoClose: 4000
-        })
-      } else if (firma.documentUrl) {
-        // Fallback to documentUrl if available
-        window.open(firma.documentUrl, '_blank')
-      } else {
-        notifications.show({
-          title: '⏳ No disponible',
-          message: 'El PDF aún no está disponible para descargar',
-          color: 'orange',
-          autoClose: 4000
-        })
-      }
-    } catch (error) {
-      console.error('Error downloading PDF:', error)
-      notifications.show({
-        title: '❌ Error de descarga',
-        message: 'No se pudo descargar el PDF. Por favor, intente de nuevo.',
-        color: 'red',
-        autoClose: 6000
-      })
-    }
-  }
-
-  const handleViewDetails = (firmaId: string) => {
-    router.push(`/signatures/${firmaId}`)
-  }
-
-  // ⚠️ SECURITY: Removed handleCopyLink, handleShowQR, and handleOpenSignature functions
-  // These functions exposed the signature URL with access key, allowing the partner to sign on behalf of the client
-  // Partners should only be able to REQUEST signatures, not access the signing links directly
-
-  // Handle email signature request for existing pending requests
-  const handleRequestEmailSignature = (firma: any) => {
-    openPrefillModal(firma, 'email')
-  }
-
-  // Handle SMS signature request for existing pending requests
-  const handleRequestSmsSignature = (firma: any) => {
-    openPrefillModal(firma, 'sms')
-  }
-
-  const openPrefillModal = async (firma: any, method: 'email'|'sms') => {
-    // Seed values from the ORIGINAL request so the NIF, identity and custom fields carry over.
-    // Existing recipient => PATCH resend (server keeps every field); otherwise a new POST.
-    const values: { [k: string]: string } = {}
-    try {
-      const reqResp = await fetch(`/api/signature-requests/${firma.id}`)
-      if (reqResp.ok) {
-        const original = (await reqResp.json())?.request?.dynamicFieldValues
-        if (original && typeof original === 'object') {
-          Object.entries(original).forEach(([k, v]) => {
-            if (v !== null && v !== undefined) values[k] = String(v)
-          })
-        }
-      }
-    } catch (seedErr) {
-      console.warn('Could not seed dynamic values from original request:', seedErr)
-    }
-    const name = firma.signerName || firma.clientName
-    if (name) values.clientName = name
-    const recipient = method === 'email' ? firma.signerEmail : firma.signerPhone
-    if (recipient) values[method === 'email' ? 'clientEmail' : 'clientPhone'] = recipient
-    const canResend = !!recipient
-    setWizard({
-      contractId: firma.contractId,
-      method,
-      prefill: {
-        values,
-        lockedFields: canResend ? Object.keys(values).filter((k) => values[k]) : [],
-        signatureRequestId: canResend ? firma.id : undefined,
-      },
-    })
-  }
-
-
-  // Function to refresh signatures list without page reload
-  const refreshSignaturesList = async () => {
-    try {
-      setRefreshingList(true)
-      
-      // Fetch both completed signatures and pending signature requests
-      const [signaturesResponse, requestsResponse] = await Promise.all([
-        fetch('/api/signatures'),
-        fetch('/api/signature-requests')
-      ])
-      
-      let signatures = []
-      let requests = []
-      
-      if (signaturesResponse.ok) {
-        const signaturesData = await signaturesResponse.json()
-        signatures = signaturesData.signatures || []
-      }
-      
-      if (requestsResponse.ok) {
-        const requestsData = await requestsResponse.json()
-        requests = requestsData.requests || []
-      }
-      
-      // Combine and format data
-      const combinedData = [
-        // Completed signatures - preserve shortId and accessKey if available
-        ...signatures.map(sig => ({
-          id: sig.id,
-          type: 'signature',
-          contractId: sig.contractId,
-          contractName: sig.contractName || 'Contrato',
-          signerName: sig.signerName,
-          signerEmail: sig.signerEmail,
-          signerPhone: sig.signerPhone,
-          clientName: sig.clientName,
-          clientTaxId: sig.clientTaxId,
-          status: 'completed',
-          signedAt: sig.signedAt,
-          createdAt: sig.createdAt,
-          documentUrl: sig.documentUrl,
-          shortId: sig.shortId, // Preserve for PDF download
-          accessKey: sig.accessKey, // Preserve for PDF download
-          customerId: sig.customerId
-        })),
-        // Pending signature requests
-        ...requests.map(req => ({
-          id: req.id,
-          type: 'request',
-          contractId: req.contractId,
-          contractName: req.contractName || 'Contrato',
-          signerName: req.signerName,
-          signerEmail: req.signerEmail,
-          signerPhone: req.signerPhone,
-          clientName: req.clientName,
-          clientTaxId: req.clientTaxId,
-          signatureType: req.signatureType,
-          status: req.status === 'signed' ? 'completed' : 'pending',
-          signedAt: req.signedAt,
-          createdAt: req.createdAt,
-          expiresAt: req.expiresAt,
-          signatureUrl: req.signatureUrl,
-          shortId: req.shortId,
-          accessKey: req.accessKey,
-          customerId: req.customerId
-        }))
-      ]
-      
-      // Sort by creation date (newest first)
-      combinedData.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      
-      setFirmas(combinedData)
-      
-    } catch (err) {
-      console.error('Error refreshing signatures:', err)
-      notifications.show({
-        title: '⚠️ Error al actualizar',
-        message: 'No se pudo actualizar la lista de firmas',
-        color: 'orange',
-        autoClose: 4000
-      })
-    } finally {
-      setRefreshingList(false)
-    }
-  }
-
-  const firmasCompletadas = firmas.filter(f => f.status === 'completed').length
-  const firmasPendientes = firmas.filter(f => f.status === 'pending').length
-
-  // Show loading state while checking session or fetching data
-  if (status === 'loading' || loading) {
-    return (
-      <Container size="xl">
-        <Stack align="center" justify="center" style={{ minHeight: '400px' }}>
-          <Loader size="lg" />
-          <Text size="lg" c="dimmed">
-            {status === 'loading' ? 'Verificando sesión...' : 'Cargando firmas...'}
-          </Text>
-        </Stack>
-      </Container>
-    )
-  }
-
-  if (error) {
-    return (
-      <Container size="xl">
-        <Alert icon={<IconAlertTriangle size={16} />} title="Error" color="red" variant="light">
-          {error}
-        </Alert>
-      </Container>
-    )
-  }
-
   return (
-    <Container size="xl">
-      <Stack gap="xl">
-        {/* Header */}
-        <Group justify="space-between" align="center">
-          <Box>
-            <Group align="center" gap="md">
-              <Title size="2rem" fw={700}>Firmas de Contratos</Title>
-              {refreshingList && (
-                <Group gap="xs" style={{ opacity: 0.7 }}>
-                  <Loader size="sm" />
-                  <Text size="sm" c="dimmed">Actualizando...</Text>
-                </Group>
-              )}
+    <>
+      <PageHeader
+        title="Firmas"
+        large
+        actions={
+          <ActionIcon variant="subtle" color="gray" size="lg" aria-label="Actualizar" onClick={() => load(true)} loading={refreshing}>
+            <IconRefresh size={22} />
+          </ActionIcon>
+        }
+      />
+      <Container size="lg" data-testid="page-content" className="os-touch" pb="xl">
+        <Stack gap="md">
+          <StatTiles items={[tile('Total', c.total, 'all', 'blue'), tile('Pendientes', c.pending, 'pending', 'orange'), tile('Firmadas', c.signed, 'signed', 'green')]} />
+          <Group gap="xs" wrap="nowrap" align="flex-end">
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <SearchField value={query} onChange={setFilter(setQuery)} placeholder="Buscar firmante, email, móvil, NIF o contrato" />
+            </div>
+            <Indicator label={activeCount} disabled={!activeCount} size={18} offset={4}>
+              <Button variant="default" leftSection={<IconAdjustmentsHorizontal size={18} />} onClick={() => setSheetOpen(true)}>
+                Filtros
+              </Button>
+            </Indicator>
+          </Group>
+          {activeCount > 0 && (
+            <Group gap="xs" data-testid="active-filters" style={{ overflowX: 'auto', flexWrap: 'nowrap' }}>
+              {contractId && pill('contract', contractName, () => setFilter(setContractId)(null))}
+              {status !== 'all' && pill('status', STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status, () => setFilter(setStatus)('all'))}
+              {dateRange !== 'all' && pill('range', RANGE_OPTIONS.find((o) => o.value === dateRange)?.label ?? dateRange, () => setFilter(setDateRange)('all'))}
             </Group>
-            <Group align="center" mt="xs" gap="md">
-              <Text c="dimmed">
-                {contractIdFilter ? 'Mostrando firmas de un contrato específico' : 'Gestiona todas las firmas realizadas en tus contratos'}
-              </Text>
-              {contractIdFilter && (
-                <Button 
-                  variant="subtle" 
-                  size="xs" 
-                  onClick={() => router.push('/signatures')}
-                >
-                  Ver todas las firmas
+          )}
+
+          {loading || sessionStatus === 'loading' ? (
+            <ListSkeleton rows={6} />
+          ) : failed ? (
+            <EmptyState icon={<IconRefresh size={32} />} title="No se pudieron cargar las firmas" action={<Button onClick={() => load()}>Reintentar</Button>} />
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={<IconSignature size={32} />}
+              title="No se encontraron firmas"
+              description={rows.length ? 'Prueba con otros filtros o términos de búsqueda.' : 'Aún no hay solicitudes de firma.'}
+              action={
+                rows.length ? (
+                  <Button variant="default" onClick={() => { setQuery(''); clearAll() }}>Limpiar filtros</Button>
+                ) : (
+                  <Button leftSection={<IconPlus size={18} />} onClick={() => router.push('/signatures/new')}>Nueva solicitud</Button>
+                )
+              }
+            />
+          ) : (
+            <Stack gap="sm" data-testid="signature-list">
+              {items.map((row) => (
+                <SignatureRow
+                  key={row.id}
+                  row={row}
+                  trailing={
+                    <ActionMenu
+                      title="Acciones de la firma"
+                      items={rowActions(row)}
+                      target={<ActionIcon variant="subtle" color="gray" size="lg" aria-label="Más acciones de la firma"><IconDots size={22} /></ActionIcon>}
+                    />
+                  }
+                />
+              ))}
+              {hasMore && (
+                <Button variant="default" fullWidth onClick={() => setPage((p) => p + 1)}>
+                  Cargar más ({remaining})
                 </Button>
               )}
-            </Group>
-          </Box>
-          <Link href="/contracts">
-            <Button variant="light">
-              Volver a Mis Contratos
-            </Button>
-          </Link>
-        </Group>
-
-        {/* Stats */}
-        <SimpleGrid cols={{ base: 1, md: 3 }} spacing="lg">
-          <Card shadow="sm" padding="lg" radius="md" withBorder>
-            <Group justify="space-between">
-              <Box>
-                <Text size="2rem" fw={700} c="blue">
-                  {firmas.length}
-                </Text>
-                <Text size="sm" c="dimmed">
-                  Total de Firmas
-                </Text>
-              </Box>
-              <IconSignature size={32} color="var(--mantine-color-blue-6)" />
-            </Group>
-          </Card>
-
-          <Card shadow="sm" padding="lg" radius="md" withBorder>
-            <Group justify="space-between">
-              <Box>
-                <Text size="2rem" fw={700} c="green">
-                  {firmasCompletadas}
-                </Text>
-                <Text size="sm" c="dimmed">
-                  Firmas Completadas
-                </Text>
-              </Box>
-              <IconFileText size={32} color="var(--mantine-color-green-6)" />
-            </Group>
-          </Card>
-
-          <Card shadow="sm" padding="lg" radius="md" withBorder>
-            <Group justify="space-between">
-              <Box>
-                <Text size="2rem" fw={700} c="orange">
-                  {firmasPendientes}
-                </Text>
-                <Text size="sm" c="dimmed">
-                  Firmas Pendientes
-                </Text>
-              </Box>
-              <IconCalendar size={32} color="var(--mantine-color-orange-6)" />
-            </Group>
-          </Card>
-        </SimpleGrid>
-
-        {/* Filters */}
-        <Stack gap="md">
-          <Group grow>
-            <TextInput
-              placeholder="Buscar por firmante, email, móvil o NIF del firmante..."
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              leftSection={<IconSearch size={16} />}
-            />
-            <Popover 
-              opened={contractDropdownOpened} 
-              onChange={setContractDropdownOpened}
-              position="bottom-start"
-              width="target"
-              shadow="md"
-              withArrow={false}
-              trapFocus={false}
-              closeOnEscape={true}
-              closeOnClickOutside={true}
-            >
-              <Popover.Target>
-                <TextInput
-                  placeholder={contractName || "Buscar contrato..."}
-                  value={contractSearchTerm}
-                  onChange={(event) => {
-                    setContractSearchTerm(event.target.value)
-                    if (!contractDropdownOpened) {
-                      setContractDropdownOpened(true)
-                    }
-                  }}
-                  onFocus={() => setContractDropdownOpened(true)}
-                  onClick={() => setContractDropdownOpened(true)}
-                  leftSection={<IconFileText size={16} />}
-                  rightSection={
-                    contractIdFilter ? (
-                      <ActionIcon
-                        size="sm"
-                        variant="subtle"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          router.push('/signatures')
-                          setContractSearchTerm('')
-                          setContractDropdownOpened(false)
-                        }}
-                      >
-                        <IconX size={14} />
-                      </ActionIcon>
-                    ) : null
-                  }
-                  disabled={loadingContracts}
-                />
-              </Popover.Target>
-              
-              <Popover.Dropdown p={0}>
-                <ScrollArea h={200}>
-                  <Stack gap={0}>
-                    {/* Opción "Todos los contratos" */}
-                    {!contractSearchTerm && (
-                      <Button
-                        variant="subtle"
-                        justify="flex-start"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          router.push('/signatures')
-                          setContractSearchTerm('')
-                          setContractDropdownOpened(false)
-                        }}
-                        style={{ borderRadius: 0 }}
-                      >
-                        Todos los contratos
-                      </Button>
-                    )}
-                    
-                    {/* Lista de contratos filtrada */}
-                    {availableContracts
-                      .filter(contract => 
-                        contract.name.toLowerCase().includes(contractSearchTerm.toLowerCase())
-                      )
-                      .slice(0, 10)
-                      .map(contract => (
-                        <Button
-                          key={contract.id}
-                          variant="subtle"
-                          justify="flex-start"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            router.push(`/signatures?contractId=${contract.id}`)
-                            setContractSearchTerm('')
-                            setContractDropdownOpened(false)
-                          }}
-                          style={{ borderRadius: 0 }}
-                        >
-                          {contract.name}
-                        </Button>
-                      ))}
-                    
-                    {/* Mensaje cuando no hay resultados */}
-                    {contractSearchTerm && 
-                     availableContracts.filter(contract => 
-                       contract.name.toLowerCase().includes(contractSearchTerm.toLowerCase())
-                     ).length === 0 && (
-                      <Text c="dimmed" size="sm" p="md">
-                        No se encontraron contratos
-                      </Text>
-                    )}
-                  </Stack>
-                </ScrollArea>
-              </Popover.Dropdown>
-            </Popover>
-          </Group>
-          
-          <div style={{ display: 'flex', gap: '16px', width: '100%' }}>
-            <div style={{ flex: 1 }}>
-              <NativeSelect
-                key="status-filter"
-                placeholder="Estado"
-                data={[
-                  { value: 'todos', label: 'Todos los estados' },
-                  { value: 'completed', label: 'Completado' },
-                  { value: 'pending', label: 'Pendiente' },
-                  { value: 'draft', label: 'Borrador' },
-                  { value: 'expired', label: 'Expirado' },
-                  { value: 'cancelled', label: 'Cancelado' }
-                ]}
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.currentTarget.value || 'todos')}
-                leftSection={<IconFilter size={16} />}
-                style={{ width: '100%' }}
-              />
-            </div>
-
-            <div style={{ flex: 1 }}>
-              <NativeSelect
-                key="date-filter"
-                placeholder="Fecha"
-                data={[
-                  { value: 'todos', label: 'Todas las fechas' },
-                  { value: 'hoy', label: 'Hoy' },
-                  { value: 'semana', label: 'Última semana' },
-                  { value: 'mes', label: 'Último mes' }
-                ]}
-                value={dateFilter}
-                onChange={(event) => setDateFilter(event.currentTarget.value || 'todos')}
-                leftSection={<IconCalendar size={16} />}
-                style={{ width: '100%' }}
-              />
-            </div>
-          </div>
-        </Stack>
-
-        {/* Contract Filter Chip */}
-        {contractIdFilter && contractName && (
-          <Group gap="md" align="center">
-            <Text size="sm" c="dimmed">
-              Filtrado por contrato:
-            </Text>
-            <Group gap="xs">
-              <Badge
-                variant="filled"
-                color="blue"
-                size="lg"
-                rightSection={
-                  <ActionIcon
-                    size="xs"
-                    color="white"
-                    variant="transparent"
-                    onClick={() => router.push('/signatures')}
-                    title="Quitar filtro"
-                    style={{ color: 'white' }}
-                  >
-                    <IconX size={12} color="white" />
-                  </ActionIcon>
-                }
-              >
-                {contractName}
-              </Badge>
-            </Group>
-          </Group>
-        )}
-
-        {/* Firmas List */}
-        <Stack gap="md">
-          {filteredFirmas.map((firma) => (
-            <Card key={firma.id} shadow="sm" padding="lg" radius="md" withBorder>
-              <Group justify="space-between" align="center">
-                <Box flex={1}>
-                  <Group justify="space-between" mb="xs">
-                    <Text fw={600} size="1.1rem">
-                      {firma.contractName || 'Contrato sin nombre'}
-                    </Text>
-                    <Badge color={getStatusBadge(firma.status).color} variant="light">
-                      {getStatusBadge(firma.status).label}
-                    </Badge>
-                  </Group>
-
-                  <Group gap="lg">
-                    <Box>
-                      <Text size="sm" fw={500}>
-                        Firmante: {firma.clientName || firma.signerName || firma.signerEmail || 'No especificado'}
-                      </Text>
-                      <Text size="sm" c="dimmed">
-                        {firma.clientTaxId ? `NIF/DNI: ${firma.clientTaxId}` : 
-                         (firma.signerEmail && (firma.clientName || firma.signerName) ? firma.signerEmail : 
-                         (firma.signerPhone || 'No especificado'))}
-                      </Text>
-                    </Box>
-
-                    <Box>
-                      <Text size="sm" fw={500}>
-                        Fecha de {firma.status === 'completed' ? 'firma' : 'creación'}
-                      </Text>
-                      <Text size="sm" c="dimmed">
-                        {new Date(firma.signedAt || firma.createdAt).toLocaleDateString('es-ES', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
-                      </Text>
-                    </Box>
-
-                    {/* Show signature type for pending requests */}
-                    {firma.type === 'request' && firma.signatureType && (
-                      <Box>
-                        <Text size="sm" fw={500}>
-                          Tipo de firma
-                        </Text>
-                        <Text size="sm" c="dimmed">
-                          {getSignatureTypeLabel(firma.signatureType)}
-                        </Text>
-                      </Box>
-                    )}
-
-                    {/* Show client info if available */}
-                    {(firma.clientName || firma.clientTaxId) && (
-                      <Box>
-                        <Text size="sm" fw={500}>
-                          Cliente
-                        </Text>
-                        <Text size="sm" c="dimmed">
-                          {firma.clientName}
-                          {firma.clientName && firma.clientTaxId && ' - '}
-                          {firma.clientTaxId}
-                        </Text>
-                      </Box>
-                    )}
-
-                    {/* Show expiration for pending requests */}
-                    {firma.status === 'pending' && firma.expiresAt && (
-                      <Box>
-                        <Text size="sm" fw={500}>
-                          Expira el
-                        </Text>
-                        <Text size="sm" c="dimmed">
-                          {new Date(firma.expiresAt).toLocaleDateString('es-ES', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric'
-                          })}
-                        </Text>
-                      </Box>
-                    )}
-                  </Group>
-                </Box>
-
-                <Group gap="xs">
-                  {/* Actions for pending signature requests */}
-                  {firma.status === 'pending' && firma.signatureUrl && (
-                    <>
-                      <ActionIcon
-                        variant="light"
-                        color="green"
-                        onClick={() => handleRequestEmailSignature(firma)}
-                        title="Solicitar por Email"
-                      >
-                        <IconMail size={16} />
-                      </ActionIcon>
-
-                      {smsEnabled && (
-                        <ActionIcon
-                          variant="light"
-                          color="blue"
-                          onClick={() => handleRequestSmsSignature(firma)}
-                          title="Solicitar por SMS"
-                        >
-                          <IconPhone size={16} />
-                        </ActionIcon>
-                      )}
-                    </>
-                  )}
-
-                  {/* Standard view details button */}
-                  <ActionIcon
-                    variant="light"
-                    color="gray"
-                    onClick={() => handleViewDetails(firma.id)}
-                    title="Ver detalles"
-                  >
-                    <IconEye size={16} />
-                  </ActionIcon>
-
-                  {/* Download button for completed signatures */}
-                  {firma.status === 'completed' && (
-                    <ActionIcon
-                      variant="light"
-                      color="green"
-                      onClick={() => handleDownload(firma)}
-                      title="Descargar PDF"
-                    >
-                      <IconDownload size={16} />
-                    </ActionIcon>
-                  )}
-
-                  <Menu shadow="md" width={220}>
-                    <Menu.Target>
-                      <ActionIcon variant="subtle" color="gray">
-                        <IconDots size={16} />
-                      </ActionIcon>
-                    </Menu.Target>
-
-                    <Menu.Dropdown>
-                      <Menu.Item 
-                        leftSection={<IconEye size={14} />}
-                        onClick={() => handleViewDetails(firma.id)}
-                      >
-                        Ver detalles
-                      </Menu.Item>
-                      
-                      <Menu.Item 
-                        leftSection={<IconFileText size={14} />}
-                        onClick={() => router.push(`/contracts/${firma.contractId}/edit`)}
-                      >
-                        Ver contrato original
-                      </Menu.Item>
-                      
-                      {/* Actions for pending requests */}
-                      {firma.status === 'pending' && firma.signatureUrl && (
-                        <>
-                          <Menu.Divider />
-                          <Menu.Item
-                            leftSection={<IconMail size={14} />}
-                            onClick={() => handleRequestEmailSignature(firma)}
-                            color="green"
-                          >
-                            Solicitar por Email
-                          </Menu.Item>
-                          {smsEnabled && (
-                            <Menu.Item
-                              leftSection={<IconPhone size={14} />}
-                              onClick={() => handleRequestSmsSignature(firma)}
-                              color="blue"
-                            >
-                              Solicitar por SMS
-                            </Menu.Item>
-                          )}
-                        </>
-                      )}
-                      
-                      {/* Actions for completed signatures */}
-                      {firma.status === 'completed' && (
-                        <>
-                          <Menu.Divider />
-                          <Menu.Item 
-                            leftSection={<IconDownload size={14} />}
-                            onClick={() => handleDownload(firma)}
-                          >
-                            Descargar PDF
-                          </Menu.Item>
-                        </>
-                      )}
-                    </Menu.Dropdown>
-                  </Menu>
-                </Group>
-              </Group>
-            </Card>
-          ))}
-        </Stack>
-
-        {/* Empty State */}
-        {filteredFirmas.length === 0 && (
-          <Box ta="center" py="xl">
-            <Stack align="center" gap="md">
-              <IconSignature size={48} color="var(--mantine-color-gray-4)" />
-              <Title size="1.5rem" c="dimmed">
-                No se encontraron firmas
-              </Title>
-              <Text c="dimmed">
-                {searchTerm ? 'Prueba con otros términos de búsqueda' : 'Aún no hay firmas registradas'}
-              </Text>
-              {!searchTerm && (
-                <Link href="/contracts">
-                  <Button leftSection={<IconFileText size={16} />}>
-                    Crear Primer Contrato
-                  </Button>
-                </Link>
-              )}
             </Stack>
-          </Box>
-        )}
+          )}
+        </Stack>
+      </Container>
 
-        {/* One wizard for "request again by email/SMS" (replaces the old prefill modal) */}
-        <NewSignatureRequestWizard
-          mode="sheet"
-          opened={!!wizard}
-          onClose={() => setWizard(null)}
-          initialContractId={wizard?.contractId}
-          initialMethod={wizard?.method}
-          prefill={wizard?.prefill}
-          onCompleted={() => { refreshSignaturesList() }}
-        />
-      </Stack>
-    </Container>
+      <SignaturesFilterSheet opened={sheetOpen} onClose={() => setSheetOpen(false)} value={applied} contracts={contracts} onApply={apply} />
+      <NewSignatureRequestWizard
+        mode="sheet"
+        opened={!!wizard}
+        onClose={closeWizard}
+        initialContractId={wizard?.contractId}
+        initialMethod={wizard?.method}
+        prefill={wizard?.prefill}
+        onCompleted={() => load(true)}
+      />
+    </>
   )
 }
 
 export default function FirmasPage() {
   return (
-    <Suspense fallback={
-      <Container size="xl">
-        <Stack align="center" justify="center" style={{ minHeight: '400px' }}>
-          <Loader size="lg" />
-          <Text size="lg" c="dimmed">Cargando firmas...</Text>
-        </Stack>
-      </Container>
-    }>
+    <Suspense fallback={<Container size="lg"><ListSkeleton rows={6} /></Container>}>
       <FirmasPageContent />
     </Suspense>
   )
