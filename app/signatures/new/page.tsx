@@ -1,20 +1,39 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import React, { Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Container } from '@mantine/core'
-import { ListSkeleton } from '../../../components/ui'
+import { PageHeader } from '../../../components/ui'
+import { NewSignatureRequestWizard } from '../../../components/signature-request/NewSignatureRequestWizard'
+import type { Method } from '../../../lib/signatureRequest/wizard'
 
-// Placeholder: the new-signature wizard (slice 1) will replace this page. Until then the
-// tab bar's "Nueva" button lands on the contract list, where requests are still created.
-export default function NewSignatureRequestPage() {
+const METHODS = ['email', 'sms', 'local', 'tablet', 'qr']
+
+function NewRequestContent() {
   const router = useRouter()
-  useEffect(() => {
-    router.replace('/contracts')
-  }, [router])
+  const params = useSearchParams()
+  const contractId = params.get('contractId') || undefined
+  const m = params.get('method')
+  const method = m && METHODS.includes(m) ? (m as Method) : undefined
   return (
-    <Container size="sm" py="xl">
-      <ListSkeleton rows={3} />
-    </Container>
+    <>
+      <PageHeader title="Nueva solicitud" back="/signatures" />
+      <Container size="sm" data-testid="page-content" pb="xl">
+        <NewSignatureRequestWizard
+          mode="page"
+          initialContractId={contractId}
+          initialMethod={method}
+          onClose={() => router.push('/signatures')}
+        />
+      </Container>
+    </>
+  )
+}
+
+export default function NewSignatureRequestPage() {
+  return (
+    <Suspense fallback={null}>
+      <NewRequestContent />
+    </Suspense>
   )
 }

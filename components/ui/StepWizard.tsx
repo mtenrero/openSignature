@@ -9,6 +9,36 @@ export interface WizardStep {
   label: string
 }
 
+/** Atrás/Continuar buttons. Reused by StepWizard (sticky bar) and by sheets that pin them in their own footer. */
+export function WizardActions({
+  showBack,
+  onBack,
+  onNext,
+  nextLabel = 'Continuar',
+  nextDisabled,
+  loading,
+}: {
+  showBack?: boolean
+  onBack?: () => void
+  onNext: () => void
+  nextLabel?: string
+  nextDisabled?: boolean
+  loading?: boolean
+}) {
+  return (
+    <>
+      {showBack && onBack ? (
+        <Button variant="default" onClick={onBack} disabled={loading}>
+          Atrás
+        </Button>
+      ) : null}
+      <Button onClick={onNext} disabled={nextDisabled} loading={loading}>
+        {nextLabel}
+      </Button>
+    </>
+  )
+}
+
 /** "Paso N de M" progress + title and a sticky Atrás/Continuar footer. `active` is 0-based. */
 export function StepWizard({
   steps,
@@ -18,6 +48,7 @@ export function StepWizard({
   nextLabel = 'Continuar',
   nextDisabled,
   loading,
+  footer = 'sticky',
   children,
 }: {
   steps: WizardStep[]
@@ -27,6 +58,8 @@ export function StepWizard({
   nextLabel?: string
   nextDisabled?: boolean
   loading?: boolean
+  /** 'none' when the host (e.g. AdaptiveSheet) renders WizardActions in its own pinned footer. */
+  footer?: 'sticky' | 'none'
   children: React.ReactNode
 }) {
   const current = steps[active]
@@ -40,16 +73,18 @@ export function StepWizard({
         {current?.label}
       </Title>
       {children}
-      <StickyActionBar>
-        {active > 0 && onBack ? (
-          <Button variant="default" onClick={onBack} disabled={loading}>
-            Atrás
-          </Button>
-        ) : null}
-        <Button onClick={onNext} disabled={nextDisabled} loading={loading}>
-          {nextLabel}
-        </Button>
-      </StickyActionBar>
+      {footer === 'sticky' ? (
+        <StickyActionBar>
+          <WizardActions
+            showBack={active > 0}
+            onBack={onBack}
+            onNext={onNext}
+            nextLabel={nextLabel}
+            nextDisabled={nextDisabled}
+            loading={loading}
+          />
+        </StickyActionBar>
+      ) : null}
     </div>
   )
 }

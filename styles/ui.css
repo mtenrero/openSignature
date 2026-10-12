@@ -4,8 +4,9 @@
 .os-main {
   min-height: 100dvh;
   padding-bottom: var(--os-safe-bottom);
-  padding-left: var(--os-safe-left);
-  padding-right: var(--os-safe-right);
+  /* keep Mantine's navbar offset: a plain padding-left here used to cancel it and the sidebar covered the content */
+  padding-inline-start: calc(var(--app-shell-navbar-offset, 0px) + var(--os-safe-left));
+  padding-inline-end: var(--os-safe-right);
 }
 .os-content {
   width: 100%;
@@ -336,3 +337,13 @@ button.os-tile { cursor: pointer; }
 }
 .os-link-btn:hover { background: var(--os-surface-2); }
 .os-brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; color: var(--os-brand); min-height: var(--os-touch); }
+
+/* ---------- New signature request wizard: 44px controls at every pointer type ---------- */
+.os-wizard .mantine-Input-input,
+.os-wizard .mantine-Button-root,
+.os-sheet-footer .mantine-Button-root {
+  min-height: var(--os-touch);
+}
+.os-wizard .mantine-Input-input { font-size: max(16px, 1rem); }
+[role='dialog'] .mantine-Modal-close { min-width: var(--os-touch); min-height: var(--os-touch); }
+.os-ph .mantine-ActionIcon-root { min-width: var(--os-touch); min-height: var(--os-touch); }
