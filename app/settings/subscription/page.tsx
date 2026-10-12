@@ -283,7 +283,7 @@ function SubscriptionPageContent() {
                 <Text fw={700} fz="xl">{sd.plan.name}</Text>
               </Group>
               <Group gap={6}>
-                <Badge color={sd.user.subscriptionStatus === 'active' ? 'green' : 'red'} variant="light">
+                <Badge tt="none" color={sd.user.subscriptionStatus === 'active' ? 'green' : 'red'} variant="light">
                   {sd.user.subscriptionStatus === 'active' ? 'Activo' : 'Inactivo'}
                 </Badge>
                 {sd.user.isBarvetCustomer && <Badge color="grape" variant="light">BARVET</Badge>}

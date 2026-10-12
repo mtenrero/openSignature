@@ -70,6 +70,21 @@ textarea,
     display: inline-flex;
     align-items: center;
   }
+  /* Form fields: 44px tall (Mantine md = 42px). */
+  .mantine-Input-input,
+  .mantine-PasswordInput-innerInput {
+    min-height: var(--os-touch);
+  }
+  .mantine-Select-input,
+  .mantine-NumberInput-input {
+    min-height: var(--os-touch);
+  }
+  .mantine-Switch-root label,
+  .mantine-Checkbox-root label {
+    min-height: var(--os-touch);
+    display: inline-flex;
+    align-items: center;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

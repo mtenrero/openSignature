@@ -129,6 +129,7 @@ export async function expectTouchTargets(page: Page, rootSelector: string, min =
         const cs = getComputedStyle(el)
         if (cs.display === 'none' || cs.visibility === 'hidden') return
         if (el.closest('p')) return
+        if (el.closest('[aria-hidden="true"]')) return // honeypots and decorative duplicates are not user targets
         const r = el.getBoundingClientRect()
         if (r.width === 0 && r.height === 0) return
         const iconOnly = (el.textContent ?? '').trim() === ''

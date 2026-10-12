@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Text, Stack, Group, Button, TextInput, PasswordInput, Checkbox, Alert, ThemeIcon } from '@mantine/core'
+import { Text, Stack, Group, Button, TextInput, PasswordInput, Switch, Alert, ThemeIcon } from '@mantine/core'
 import { IconMail, IconLock, IconUser, IconAlertCircle, IconCheck, IconBuildingBank, IconArrowLeft, IconMailForward } from '@tabler/icons-react'
 import Link from 'next/link'
 import { signIn } from 'next-auth/react'
@@ -163,7 +163,7 @@ export default function SignUpPage() {
           <PasswordInput label="Contraseña" placeholder="Mínimo 8 caracteres, 3 de 4 tipos" autoComplete="new-password" description={PASSWORD_POLICY_MESSAGE} leftSection={<IconLock size={16} />} value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} error={errors.password} required />
           <PasswordInput label="Confirmar contraseña" placeholder="Repite tu contraseña" autoComplete="new-password" leftSection={<IconLock size={16} />} value={formData.confirmPassword} onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })} error={errors.confirmPassword} required />
 
-          <Checkbox
+          <Switch
             size="md"
             label={
               <Text size="sm">

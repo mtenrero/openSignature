@@ -74,7 +74,7 @@ export function PlanCard({
               </Group>
             )}
           </div>
-          <Badge color={active ? 'green' : 'red'} size="lg" variant="light">{active ? 'Activo' : 'Inactivo'}</Badge>
+          <Badge color={active ? 'green' : 'red'} size="lg" variant="light" tt="none" style={{ flex: '0 0 auto' }}>{active ? 'Activo' : 'Inactivo'}</Badge>
         </Group>
         <Group justify="space-between" align="center" mt="md" pt="md" wrap="nowrap" style={{ borderTop: '1px solid var(--os-border)' }}>
           <div>

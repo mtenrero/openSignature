@@ -457,7 +457,7 @@ button.os-tile { cursor: pointer; }
 .os-auth { min-height: calc(100dvh - var(--os-header-h) - var(--os-safe-top)); display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 24px max(16px, var(--os-safe-right)) max(24px, var(--os-safe-bottom)) max(16px, var(--os-safe-left)); }
 .os-auth__card { width: 100%; max-width: 440px; }
 .os-hero-title { font-size: clamp(1.9rem, 7vw, 3.4rem); line-height: 1.1; }
-.os-snap { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; margin: 0 calc(-1 * var(--os-gutter)); padding-inline: var(--os-gutter); scroll-padding-inline: var(--os-gutter); }
+.os-snap { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; margin: 0 -16px; padding-inline: 16px; scroll-padding-inline: 16px; }
 .os-snap > * { flex: 0 0 min(84%, 340px); scroll-snap-align: start; }
 @media (min-width: 62em) { .os-snap { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); overflow: visible; margin: 0; padding: 0; } .os-snap > * { flex: initial; } }
 .os-tabs-scroll { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
