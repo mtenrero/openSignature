@@ -29,7 +29,30 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Desktop functional specs (mobile layout specs live in e2e/mobile and run in the 3 projects below).
+    { name: 'chromium', testIgnore: '**/mobile/**', use: { ...devices['Desktop Chrome'] } },
+    {
+      name: 'mobile',
+      testMatch: '**/mobile/**/*.spec.ts',
+      use: {
+        browserName: 'chromium',
+        viewport: { width: 390, height: 844 },
+        deviceScaleFactor: 3,
+        isMobile: true,
+        hasTouch: true,
+        userAgent: devices['iPhone 14'].userAgent,
+      },
+    },
+    {
+      name: 'tablet',
+      testMatch: '**/mobile/**/*.spec.ts',
+      use: { browserName: 'chromium', viewport: { width: 768, height: 1024 }, hasTouch: true },
+    },
+    {
+      name: 'desktop-responsive',
+      testMatch: '**/mobile/**/*.spec.ts',
+      use: { browserName: 'chromium', viewport: { width: 1440, height: 900 } },
+    },
   ],
   // Note: next dev is started by globalSetup (it needs MONGODB_TEST_URI + seeded
   // API key set BEFORE next dev boots, which a webServer block cannot provide).
