@@ -15,6 +15,10 @@ export interface AdaptiveSheetProps {
   fullScreenOnMobile?: boolean
 }
 
+// Mantine wraps Drawer content in a 100vh scroll area, which made every bottom sheet full height.
+// The sheet scrolls its own body, so render the children as they are.
+const NoScrollWrapper = ({ children }: { children?: React.ReactNode }) => <>{children}</>
+
 const MODAL_WIDTH = { sm: 420, md: 560, lg: 760, full: 960 } as const
 
 /** Bottom sheet (Drawer) on mobile, centered Modal from `sm`. Footer is pinned in both. */
@@ -35,18 +39,20 @@ export function AdaptiveSheet({
 
   if (isMobile) {
     return (
-      <Drawer.Root opened={opened} onClose={onClose} position="bottom" zIndex={250} radius="lg" trapFocus>
+      <Drawer.Root opened={opened} onClose={onClose} position="bottom" zIndex={250} radius="lg" trapFocus scrollAreaComponent={NoScrollWrapper}>
         <Drawer.Overlay />
         <Drawer.Content
           className="os-sheet-content"
           data-testid="adaptive-sheet"
-          style={{
-            height: full ? '100dvh' : 'auto',
-            maxHeight: full ? '100dvh' : '92dvh',
-            width: '100%',
-            maxWidth: '100%',
-            borderRadius: full ? 0 : '16px 16px 0 0',
-          }}
+          style={
+            {
+              // Mantine copies className/style onto the fixed `inner` wrapper too, so only custom properties
+              // go here; ui.css reads them on `.mantine-Drawer-content` only.
+              '--os-sheet-h': full ? '100dvh' : 'auto',
+              '--os-sheet-max': full ? '100dvh' : '92dvh',
+              '--os-sheet-radius': full ? '0' : '16px 16px 0 0',
+            } as React.CSSProperties
+          }
         >
           <div className="os-sheet-handle" aria-hidden="true" />
           <Drawer.Header className="os-sheet-header" style={{ position: 'static', minHeight: 48 }}>

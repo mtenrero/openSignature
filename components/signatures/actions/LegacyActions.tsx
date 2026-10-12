@@ -1,11 +1,11 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Alert, Button, Group, Modal, Select, Stack, Text, TextInput, Textarea } from '@mantine/core'
+import { Button, NativeSelect, Stack, Text, Textarea } from '@mantine/core'
 import { IconArchive, IconRefresh, IconX } from '@tabler/icons-react'
 import { useRouter } from 'next/navigation'
 import { notifications } from '@mantine/notifications'
-import type { ActionSheetItem } from '../../ui'
+import { AdaptiveSheet, ConfirmSheet, KeyValueList, type ActionSheetItem } from '../../ui'
 
 /**
  * Resend / archive / discard exactly as they behaved on the old detail page (handlers and modals moved
@@ -22,10 +22,8 @@ export function useLegacyActions(details: any | null) {
   const [resendMessage, setResendMessage] = useState('')
   const [resending, setResending] = useState(false)
 
-  const [archiveReason, setArchiveReason] = useState('')
   const [archiving, setArchiving] = useState(false)
 
-  const [discardReason, setDiscardReason] = useState('')
   const [discarding, setDiscarding] = useState(false)
 
   // Recipient fields are read-only (pre-filled from the original request)
@@ -88,7 +86,7 @@ export function useLegacyActions(details: any | null) {
     }
   }
 
-  const handleArchive = async () => {
+  const handleArchive = async (archiveReason: string) => {
     if (!details || !archiveReason.trim()) return
 
     setArchiving(true)
@@ -127,7 +125,7 @@ export function useLegacyActions(details: any | null) {
     }
   }
 
-  const handleDiscard = async () => {
+  const handleDiscard = async (discardReason: string) => {
     if (!details || !discardReason.trim()) return
 
     setDiscarding(true)
@@ -184,143 +182,88 @@ export function useLegacyActions(details: any | null) {
     { key: 'discard', label: 'Descartar solicitud', icon: <IconX size={18} />, color: 'red', onClick: () => setDiscardModalOpened(true) },
   ]
 
+  const resendOptions = [
+    { value: '', label: 'Selecciona el método' },
+    { value: 'email', label: 'Por Email' },
+    { value: 'sms', label: 'Por SMS' },
+    { value: 'local', label: 'Firma Local' },
+    { value: 'tablet', label: 'En Tableta' },
+    { value: 'qr', label: 'QR Remoto' },
+  ]
+
   const modals = (
     <>
-      {/* Resend Modal */}
-      <Modal
+      <AdaptiveSheet
         opened={resendModalOpened}
         onClose={() => setResendModalOpened(false)}
-        title="Reenviar Solicitud de Firma"
+        title="Reenviar solicitud de firma"
         size="md"
+        footer={
+          <>
+            <Button variant="default" onClick={() => setResendModalOpened(false)} disabled={resending}>
+              Cancelar
+            </Button>
+            <Button onClick={handleResend} loading={resending} disabled={!resendType}>
+              Reenviar
+            </Button>
+          </>
+        }
       >
-        <Stack gap="md">
+        <Stack gap="md" className="os-touch" data-testid="resend-sheet">
           <Text size="sm" c="dimmed">
             Enviar una nueva solicitud de firma para este contrato
           </Text>
-
-          <Select
+          <NativeSelect
             label="Tipo de firma"
-            placeholder="Selecciona el método"
-            data={[
-              { value: 'email', label: 'Por Email' },
-              { value: 'sms', label: 'Por SMS' },
-              { value: 'local', label: 'Firma Local' },
-              { value: 'tablet', label: 'En Tableta' },
-              { value: 'qr', label: 'QR Remoto' }
-            ]}
+            data={resendOptions}
             value={resendType}
-            onChange={(value) => setResendType(value || '')}
+            onChange={(e) => setResendType(e.currentTarget.value)}
             required
           />
-
-          <TextInput
-            label="Nombre del firmante"
-            value={resendName}
-            readOnly
-            disabled={true}
-            description="Nombre asociado a la solicitud original (no modificable)"
-          />
-
-          <TextInput
-            label="Email"
-            type="email"
-            value={resendEmail}
-            readOnly
-            disabled={true}
-            description="Email asociado a la solicitud original (no modificable)"
-          />
-
-          <TextInput
-            label="Teléfono"
-            value={resendPhone}
-            readOnly
-            disabled={true}
-            description="Teléfono asociado a la solicitud original (no modificable)"
-          />
-
+          <div>
+            <Text size="sm" fw={500} mb={4}>Destinatario</Text>
+            <KeyValueList
+              items={[
+                { label: 'Nombre', value: resendName || '—' },
+                { label: 'Email', value: resendEmail || '—' },
+                { label: 'Teléfono', value: resendPhone || '—' },
+              ]}
+            />
+            <Text size="xs" c="dimmed" mt={4}>Datos de la solicitud original (no modificables)</Text>
+          </div>
           <Textarea
             label="Motivo del reenvío (opcional)"
             placeholder="Describe por qué se reenvía la solicitud..."
             value={resendMessage}
             onChange={(event) => setResendMessage(event.currentTarget.value)}
             minRows={3}
+            autosize
           />
-
-          <Group justify="space-between">
-            <Button variant="subtle" onClick={() => setResendModalOpened(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleResend} loading={resending} disabled={!resendType}>
-              Reenviar
-            </Button>
-          </Group>
         </Stack>
-      </Modal>
+      </AdaptiveSheet>
 
-      {/* Archive Modal */}
-      <Modal
+      <ConfirmSheet
         opened={archiveModalOpened}
         onClose={() => setArchiveModalOpened(false)}
-        title="Archivar Solicitud"
-        size="md"
-      >
-        <Stack gap="md">
-          <Alert color="yellow" variant="light">
-            Esta acción archivará la solicitud y no se podrá firmar.
-          </Alert>
+        title="Archivar solicitud"
+        message="Esta acción archivará la solicitud y no se podrá firmar."
+        confirmLabel="Archivar"
+        loading={archiving}
+        requireReason={{ label: 'Motivo del archivo', placeholder: 'Describe por qué se archiva la solicitud...' }}
+        onConfirm={(reason) => handleArchive(reason)}
+      />
 
-          <Textarea
-            label="Motivo del archivo"
-            placeholder="Describe por qué se archiva la solicitud..."
-            value={archiveReason}
-            onChange={(event) => setArchiveReason(event.currentTarget.value)}
-            minRows={3}
-            required
-          />
-
-          <Group justify="space-between">
-            <Button variant="subtle" onClick={() => setArchiveModalOpened(false)}>
-              Cancelar
-            </Button>
-            <Button color="orange" onClick={handleArchive} loading={archiving} disabled={!archiveReason.trim()}>
-              Archivar
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
-
-      {/* Discard Modal */}
-      <Modal
+      <ConfirmSheet
         opened={discardModalOpened}
         onClose={() => setDiscardModalOpened(false)}
-        title="Descartar Solicitud"
-        size="md"
-      >
-        <Stack gap="md">
-          <Alert color="red" variant="light">
-            Esta acción eliminará permanentemente la solicitud de la base de datos.
-            Solo se conservará el historial de auditoría si alguien ha accedido al documento.
-          </Alert>
-
-          <Textarea
-            label="Motivo para descartar"
-            placeholder="Describe por qué se descarta la solicitud..."
-            value={discardReason}
-            onChange={(event) => setDiscardReason(event.currentTarget.value)}
-            minRows={3}
-            required
-          />
-
-          <Group justify="space-between">
-            <Button variant="subtle" onClick={() => setDiscardModalOpened(false)}>
-              Cancelar
-            </Button>
-            <Button color="red" onClick={handleDiscard} loading={discarding} disabled={!discardReason.trim()}>
-              Descartar Solicitud
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        title="Descartar solicitud"
+        message="Esta acción eliminará permanentemente la solicitud de la base de datos. Solo se conservará el historial de auditoría si alguien ha accedido al documento."
+        confirmLabel="Descartar solicitud"
+        destructive
+        loading={discarding}
+        requireReason={{ label: 'Motivo para descartar', placeholder: 'Describe por qué se descarta la solicitud...' }}
+        onConfirm={(reason) => handleDiscard(reason)}
+      />
     </>
   )
 

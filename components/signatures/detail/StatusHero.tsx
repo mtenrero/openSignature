@@ -50,7 +50,7 @@ export function StatusHero({ details, steps }: { details: HeroDetails; steps: Pr
           </Text>
           <Text c="dimmed" style={{ overflowWrap: 'anywhere' }}>{details.contractName}</Text>
         </div>
-        <StatusBadge kind="signature" status={status} />
+        <div className="os-hero-badge"><StatusBadge kind="signature" status={status} /></div>
       </div>
       <dl className="os-hero-meta">
         {method && MethodIcon && (

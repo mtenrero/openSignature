@@ -7,7 +7,7 @@ export function StatusBadge({ kind, status }: { kind: StatusKind; status: string
   const meta = getStatusMeta(kind, status)
   const Icon = statusIcon(meta.icon)
   return (
-    <Badge color={meta.color} variant="light" leftSection={<Icon size={12} />} data-testid="status-badge">
+    <Badge className="os-badge" color={meta.color} variant="light" leftSection={<Icon size={12} />} data-testid="status-badge">
       {meta.label}
     </Badge>
   )

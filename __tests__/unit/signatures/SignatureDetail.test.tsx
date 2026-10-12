@@ -112,4 +112,50 @@ describe('SignatureDetailsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Volver a firmas' }))
     expect(push).toHaveBeenCalledWith('/signatures')
   })
+
+  it('hero badge is unshrinkable and sentence case; contract preview resolves the request values', async () => {
+    mockApi({ ...base, status: 'signed', signedAt: '2026-10-02T10:00:00Z', shortId: 'abc', accessKey: 'k', dynamicFieldValues: { clientName: 'Ada', clientTaxId: '12345678A' } })
+    ;(global as any).fetch = jest.fn(async (url: string) => {
+      const u = String(url)
+      if (u === '/api/signature-requests/req1') return { ok: false, json: async () => ({}) }
+      if (u.startsWith('/api/signature-requests')) return { ok: true, json: async () => ({ requests: [{ ...base, contractName: 'Un nombre de contrato larguísimo '.repeat(4), status: 'signed', signedAt: '2026-10-02T10:00:00Z', dynamicFieldValues: { clientName: 'Ada', clientTaxId: '12345678A' } }] }) }
+      if (u.startsWith('/api/contracts/')) return { ok: true, json: async () => ({ contract: { name: 'NDA', content: '<p>Firmado por {{dynamic:clientName}}, NIF {{dynamic:clientTaxId}} {{dynamic:otro}}</p>' } }) }
+      return { ok: false, json: async () => ({}) }
+    })
+    renderWithMantine(<SignatureDetailsPage />)
+    const hero = await screen.findByTestId('status-hero')
+    const badge = within(hero).getByTestId('status-badge')
+    expect(badge).toHaveClass('os-badge')
+    expect(badge.parentElement).toHaveClass('os-hero-badge')
+    const preview = await screen.findByTestId('contract-preview')
+    expect(preview).toHaveTextContent('Firmado por Ada, NIF 12345678A {{dynamic:otro}}')
+    expect(screen.getByTestId('contract-caption')).toHaveTextContent('Descargar PDF')
+  })
+
+  it('fast path: renders from GET /api/signature-requests/{id} and upgrades with the list audit trail', async () => {
+    const calls: string[] = []
+    ;(global as any).fetch = jest.fn(async (url: string) => {
+      const u = String(url)
+      calls.push(u)
+      if (u === '/api/signature-requests/req1') return { ok: true, json: async () => ({ request: { ...base, id: 'req1' } }) }
+      if (u.startsWith('/api/signature-requests?')) return { ok: true, json: async () => ({ requests: [{ ...base, auditRecords: [{ action: 'solicitud_creada', timestamp: '2026-10-01T10:00:00Z' }] }] }) }
+      if (u.startsWith('/api/contracts/')) return { ok: true, json: async () => ({ contract: { name: 'NDA', content: '<p>x</p>' } }) }
+      return { ok: false, json: async () => ({}) }
+    })
+    renderWithMantine(<SignatureDetailsPage />)
+    await screen.findByTestId('status-hero')
+    expect(calls[0]).toBe('/api/signature-requests/req1')
+    await waitFor(() => expect(screen.getAllByTestId('audit-time')).toHaveLength(1))
+  })
+
+  it('resend opens a sheet with a sticky footer (no centred modal)', async () => {
+    mockApi(base)
+    renderWithMantine(<SignatureDetailsPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Reenviar solicitud' }))
+    const sheet = await screen.findByTestId('adaptive-sheet')
+    expect(within(sheet).getByTestId('sheet-footer')).toBeInTheDocument()
+    expect(within(sheet).getByRole('button', { name: 'Reenviar' })).toBeDisabled()
+    fireEvent.change(within(sheet).getByLabelText(/Tipo de firma/), { target: { value: 'email' } })
+    expect(within(sheet).getByRole('button', { name: 'Reenviar' })).toBeEnabled()
+  })
 })

@@ -92,7 +92,7 @@ export default function SignatureDetailsPage() {
           </Section>
           <Section title="Auditoría">{card(<AuditTimeline entries={trail} />)}</Section>
           {details.contractContent && (
-            <Section title="Contrato">{card(<ContractViewer html={details.contractContent} title={details.contractName} />)}</Section>
+            <Section title="Contrato">{card(<ContractViewer html={details.contractContent} title={details.contractName} values={details.dynamicFieldValues} signed={signed} />)}</Section>
           )}
           {(signed || (pending && details.type === 'request')) && (
             <StickyActionBar aboveTabBar>

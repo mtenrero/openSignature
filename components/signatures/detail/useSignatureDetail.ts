@@ -50,26 +50,8 @@ export function useSignatureDetail(id: string) {
     if (!id) return
 
     let cancelled = false
-    const run = async () => {
+    const loadContract = async (data: any) => {
       try {
-        setLoading(true)
-        let data: any = null
-        const requestResponse = await fetch(`/api/signature-requests?full=true`)
-        if (requestResponse.ok) {
-          data = (await requestResponse.json()).requests?.find((r: any) => r.id === id)
-          if (data) data.type = 'request'
-        }
-        if (!data) {
-          const sigResponse = await fetch(`/api/signatures?full=true`)
-          if (sigResponse.ok) {
-            data = (await sigResponse.json()).signatures?.find((s: any) => s.id === id)
-            if (data) data.type = 'signature'
-          }
-        }
-        if (!data) {
-          if (!cancelled) setError('Solicitud de firma no encontrada')
-          return
-        }
         const contractResponse = await fetch(`/api/contracts/${data.contractId}`)
         if (contractResponse.ok) {
           const body = await contractResponse.json()
@@ -77,6 +59,62 @@ export function useSignatureDetail(id: string) {
           data.contractName = c?.name || data.contractName
           data.contractContent = c?.content
         }
+      } catch {
+        /* the contract section simply stays empty */
+      }
+    }
+    const fromList = async () => {
+      let data: any = null
+      const requestResponse = await fetch(`/api/signature-requests?full=true`)
+      if (requestResponse.ok) {
+        data = (await requestResponse.json()).requests?.find((r: any) => r.id === id)
+        if (data) data.type = 'request'
+      }
+      if (!data) {
+        const sigResponse = await fetch(`/api/signatures?full=true`)
+        if (sigResponse.ok) {
+          data = (await sigResponse.json()).signatures?.find((s: any) => s.id === id)
+          if (data) data.type = 'signature'
+        }
+      }
+      return data
+    }
+    const run = async () => {
+      try {
+        setLoading(true)
+        // Fast path: GET /api/signature-requests/{id} renders the screen without waiting for the (up to 100
+        // row, audit-trail-merging) list. The list then upgrades the details with the combined audit trail.
+        let fast: any = null
+        try {
+          const r = await fetch(`/api/signature-requests/${id}`)
+          if (r.ok) {
+            const req = (await r.json())?.request
+            if (req && String(req.id) === id) fast = { ...req, id, type: 'request', contractName: req.contractSnapshot?.name || req.contractName || 'Contrato' }
+          }
+        } catch {
+          /* fall back to the list below */
+        }
+        if (fast) {
+          await loadContract(fast)
+          if (cancelled) return
+          setDetails(fast)
+          setLoading(false)
+          fromList()
+            .then((full) => {
+              if (cancelled || !full) return
+              return loadContract(full).then(() => {
+                if (!cancelled) setDetails((cur) => ({ ...(cur ?? {}), ...full, contractContent: full.contractContent ?? cur?.contractContent }))
+              })
+            })
+            .catch(() => {})
+          return
+        }
+        const data = await fromList()
+        if (!data) {
+          if (!cancelled) setError('Solicitud de firma no encontrada')
+          return
+        }
+        await loadContract(data)
         if (!cancelled) setDetails(data)
       } catch (err) {
         console.error('Error fetching signature details:', err)

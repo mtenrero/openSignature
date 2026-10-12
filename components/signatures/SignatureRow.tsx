@@ -20,7 +20,7 @@ export function SignatureRow({ row, trailing, now }: { row: Row; trailing?: Reac
     )
   }
   const when = relativeDate(rowDate(row), now)
-  if (when) meta.push(when)
+  if (when) meta.push(<span key="w" className="os-keep">{when}</span>)
   if (status === 'pending' && row.expiresAt) meta.push(`Caduca el ${shortDate(row.expiresAt)}`)
   return (
     <ListItemCard

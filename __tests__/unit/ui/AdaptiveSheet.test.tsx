@@ -35,6 +35,9 @@ describe('AdaptiveSheet', () => {
     renderWithMantine(sheet())
     const el = (await screen.findByTestId('adaptive-sheet')) as HTMLElement
     expect(el.style.flex).toBe('')
-    expect(el.style.width).toBe('100%')
+    // sizing travels as custom properties: Mantine copies inline style onto the fixed inner wrapper too
+    expect(el.style.width).toBe('')
+    expect(el.style.getPropertyValue('--os-sheet-max')).toBe('92dvh')
+    expect(el.style.getPropertyValue('--os-sheet-h')).toBe('auto')
   })
 })
