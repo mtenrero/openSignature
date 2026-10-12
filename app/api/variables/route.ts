@@ -261,6 +261,11 @@ export async function PATCH(request: NextRequest) {
 
     const db = await getDatabase()
     const collection = db.collection('variables')
+    // Optimistic concurrency: read-merge-write is retried when another writer (a second PATCH, a
+    // settings POST) changed the document in between, so neither write is lost.
+    let applied: Array<{ name: string; action: 'created' | 'updated' | 'skipped' }> = []
+    let saved = false
+    for (let attempt = 0; attempt < 6 && !saved; attempt++) {
     const existingDoc = await collection.findOne({ customerId, type: 'variables' })
     const existing: any[] = existingDoc
       ? ((CustomerEncryption.decryptSensitiveFields(existingDoc, customerId) as any).variables || [])
@@ -272,7 +277,7 @@ export async function PATCH(request: NextRequest) {
     //   ifEmpty: true      -> apply only when the stored value (`placeholder`) is empty
     //   ifCurrent: "<old>" -> apply when the stored value is empty OR equals <old>
     // An empty incoming `placeholder` never erases a non-empty stored one when either is set.
-    const applied: Array<{ name: string; action: 'created' | 'updated' | 'skipped' }> = []
+    applied = []
     for (const raw of incoming) {
       const { ifEmpty, ifCurrent, ...inc } = raw
       const name = inc.name.trim()
@@ -311,10 +316,28 @@ export async function PATCH(request: NextRequest) {
     }
 
     const encryptedData = CustomerEncryption.encryptSensitiveFields(
-      { customerId, type: 'variables', variables: merged, updatedAt: new Date() },
+      { customerId, type: 'variables', variables: merged, updatedAt: new Date(), rev: new ObjectId().toHexString() },
       customerId
     )
-    await collection.replaceOne({ customerId, type: 'variables' }, encryptedData, { upsert: true })
+    if (existingDoc) {
+      const r = await collection.replaceOne(
+        { _id: existingDoc._id, rev: existingDoc.rev ?? null, updatedAt: existingDoc.updatedAt ?? null },
+        encryptedData
+      )
+      saved = r.matchedCount === 1
+    } else {
+      try {
+        await collection.insertOne(encryptedData)
+        saved = true
+      } catch (e: any) {
+        if (e?.code !== 11000) throw e
+      }
+    }
+    }
+    if (!saved) {
+      return NextResponse.json({ error: 'Concurrent update, please retry' }, { status: 409 })
+    }
+
 
     const updatedDoc = await collection.findOne({ customerId, type: 'variables' })
     if (!updatedDoc) throw new Error('Failed to retrieve updated document')

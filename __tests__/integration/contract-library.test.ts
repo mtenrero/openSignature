@@ -229,6 +229,16 @@ describe('PATCH /api/variables compare-and-set for partner sync', () => {
     expect((await vars()).find(x => x.name === 'miDireccion').placeholder).toBe('Calle 2')
   })
 
+  it('concurrent PATCHes on different variables never lose a write (optimistic retry)', async () => {
+    await patch([{ name: 'miNombre', placeholder: 'Base', ifEmpty: true }])
+    const names = ['miTelefono', 'miEmail', 'miDireccion', 'miIdentificacionFiscal']
+    const results = await Promise.all(names.map((n) => patch([{ name: n, placeholder: `v-${n}`, ifEmpty: true }])))
+    expect(results.every((r) => r.applied?.[0]?.action === 'updated' || r.applied?.[0]?.action === 'created')).toBe(true)
+    const stored = await vars()
+    for (const n of names) expect(stored.find(x => x.name === n)?.placeholder).toBe(`v-${n}`)
+    expect(stored.find(x => x.name === 'miNombre')?.placeholder).toBe('Base')
+  })
+
   it('unguarded PATCH keeps its previous merge behaviour', async () => {
     const r = await patch([{ name: 'miNombre', placeholder: 'Forced' }])
     expect(r.applied[0].action).toBe('updated')
