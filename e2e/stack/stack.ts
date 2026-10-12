@@ -109,7 +109,7 @@ export interface NewTenant { sub: string; tenant: string; email: string; clinicN
 
 export async function newMivetTenant(
   playwright: Playwright,
-  opts: { clinicName?: string; email?: string; taxId?: string; seedProfile?: boolean; provider?: string } = {},
+  opts: { clinicName?: string; email?: string; taxId?: string; seedProfile?: boolean; provider?: string; host?: string } = {},
 ): Promise<NewTenant> {
   if (!MIVET_DIR) throw new Error('Set MIVET_DIR to the VetControl checkout')
   const req = createRequire(path.join(MIVET_DIR, 'package.json'))
@@ -137,7 +137,8 @@ export async function newMivetTenant(
   }
   const api = await playwright.request.newContext({
     baseURL: MIVET_URL,
-    extraHTTPHeaders: { cookie: `next-auth.session-token=${token}` },
+    // `host`: SaludControl host (platformFromHost) with the very same session.
+    extraHTTPHeaders: { cookie: `next-auth.session-token=${token}`, ...(opts.host ? { host: opts.host } : {}) },
   })
   return { sub, tenant, email, clinicName, api }
 }

@@ -129,12 +129,13 @@ test.describe('b) Vincular con clave existente', () => {
   })
 })
 
-test.describe('c) Crear contrato tipo', () => {
-  test('every vet template is created active in oSign, mapped in config:clinic, and idempotent', async ({ playwright }) => {
+test.describe('c) Crear contrato tipo (biblioteca)', () => {
+  test('every vet library contract is seeded PENDING, then created/activated, mapped in config:clinic, and idempotent', async ({ playwright }) => {
     const { apiKey } = await connect()
     const osign = await osignAs(playwright, apiKey)
     const list = await json(await mivet.get('/api/esign/contract-templates'))
-    expect(list.map((t: any) => t.key)).toEqual(['lopd', 'anesthesia', 'surgery', 'euthanasia', 'hospitalization'])
+    expect(list).toHaveLength(17)
+    expect(list.map((t: any) => t.key)).toEqual(expect.arrayContaining(['lopd', 'cirugia-anestesia', 'eutanasia', 'hospitalizacion']))
 
     for (const { key } of list) {
       const first = await mivet.post('/api/esign/contract-templates', { data: { templateKey: key } })
@@ -155,8 +156,8 @@ test.describe('c) Crear contrato tipo', () => {
       expect(again.created).toBe(false)
       expect(again.contract.id).toBe(id)
     }
-    const all = await json(await osign.get('/api/contracts?limit=100'))
-    expect(all.contracts.filter((c: any) => (c.description || '').includes('vc-template:vet:')).length).toBe(5)
+    const all = await json(await osign.get('/api/contracts?limit=100&full=true'))
+    expect(all.contracts.filter((c: any) => (c.libraryTemplate?.id || '').startsWith('vc-template:vet:')).length).toBe(17)
     await osign.dispose()
   })
 
@@ -171,7 +172,8 @@ async function seedClinicData() {
   // Drop mappings persisted by earlier runs so the template mapping is rebuilt from the current defaults.
   const cfg = await couchGet(TENANT_DB, 'config:clinic')
   await couchPut(TENANT_DB, { ...cfg, contract_mappings: [] })
-  await couchPut(TENANT_DB, { _id: 'billingsettings:general', template: { taxId: 'B76543210', fiscalName: 'Clinica Fiscal SL' } })
+  await couchPut(TENANT_DB, { _id: 'billingsettings:general', template: { taxId: 'B76543210', fiscalName: 'Clinica Fiscal SL', address: 'Calle Clinica 3', zip: '41002', city: 'Sevilla', province: 'Sevilla' } })
+  await couchPut(TENANT_DB, { _id: 'clinic:settings', businessName: 'Clinica Local E2E', phone: '910000222', email: 'clinica@local.test' })
   await couchPut(TENANT_DB, {
     _id: 'employee:e2e-vet', name: 'Marta', lastname: 'Veterinaria Local', email: 'dev@local.test',
     id: 'COL-99887', estate: 'Madrid', active: true, position: 'veterinarian',
@@ -190,16 +192,19 @@ function pdfText(bytes: Buffer): string {
 }
 
 test.describe('d) Solicitud de firma con el contrato tipo', () => {
-  test('anesthesia template: nested address, billing CIF and vet name reach the signed PDF', async ({ playwright }) => {
+  test('cirugia-anestesia library contract: nested address, billing CIF and vet name reach the signed PDF', async ({ playwright }) => {
     const { apiKey } = await connect()
     await seedClinicData()
     const osign = await osignAs(playwright, apiKey)
-    const created = await json(await mivet.post('/api/esign/contract-templates', { data: { templateKey: 'anesthesia' } }))
+    const created = await json(await mivet.post('/api/esign/contract-templates', { data: { templateKey: 'cirugia-anestesia' } }))
     const contractId: string = created.contract.id
     const dyn = created.mapping.dynamicFields as Record<string, any>
+    const meta = created.mapping.fieldMeta as Record<string, any>
     const requestFields: Record<string, string> = {}
     for (const [fid, m] of Object.entries(dyn)) {
-      if ((Array.isArray(m) ? m : [m]).some((x: any) => x?.requestOnSign)) requestFields[fid] = 'Castración programada'
+      if (!(Array.isArray(m) ? m : [m]).some((x: any) => x?.source === 'request') || !meta[fid]?.required) continue
+      const mt = meta[fid]
+      requestFields[fid] = mt.inputType === 'select' ? (mt.default || mt.options[0]) : mt.inputType === 'money' ? '100' : mt.inputType === 'date' ? '2026-10-12' : mt.inputType === 'number' ? '2' : 'Castración programada'
     }
 
     const sr = await mivet.post('/api/esign/request-signature', {
@@ -308,8 +313,10 @@ test.describe('g) SaludControl', () => {
     const salud = await mivetLogin(playwright, SALUD_HOST)
     try {
       const list = await json(await salud.get('/api/esign/contract-templates'))
-      expect(list.map((t: any) => t.key)).toEqual(['lopd', 'anesthesia', 'surgery', 'treatment'])
-      const r = await salud.post('/api/esign/contract-templates', { data: { templateKey: 'euthanasia' } })
+      expect(list).toHaveLength(12)
+      expect(list.map((t: any) => t.key)).toEqual(expect.arrayContaining(['lopd', 'fisioterapia', 'psicologia']))
+      expect(list.map((t: any) => t.key)).not.toContain('eutanasia')
+      const r = await salud.post('/api/esign/contract-templates', { data: { templateKey: 'eutanasia' } })
       expect(r.status()).toBe(400)
 
       const created = await salud.post('/api/esign/contract-templates', { data: { templateKey: 'lopd' } })
@@ -318,7 +325,7 @@ test.describe('g) SaludControl', () => {
       const osign = await osignAs(playwright, apiKey)
       const c = await json(await osign.get(`/api/contracts/${body.contract.id}`))
       const contract = c.contract || c
-      expect(contract.description).toContain('vc-template:salud:lopd')
+      expect(contract.libraryTemplate.id).toBe('vc-template:salud:lopd')
       expect(JSON.stringify(contract.content)).not.toMatch(/animal|mascota/i)
       await osign.dispose()
 
