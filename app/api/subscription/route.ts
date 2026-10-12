@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/config'
 import { rejectPartnerSso } from '@/lib/auth/partnerBilling'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { UsageTracker } from '@/lib/subscription/usage'
+import { getIncludedSummary } from '@/lib/partner/entitlement'
 import { getVisiblePlans, getPlanById } from '@/lib/subscription/plans'
 import { changeToSelfServePlan } from '@/lib/subscription/planChange'
 
@@ -117,6 +118,9 @@ export async function GET(request: NextRequest) {
 
     // Calculate monthly bill for pay-per-use plans
     const monthlyBill = await UsageTracker.calculateMonthlyBill(customerId, subscriptionInfo.limits)
+
+    // Signature requests included by a partner subscription (VetControl), or null.
+    const includedSignatures = await getIncludedSummary(customerId)
 
     // Get subscription dates from Stripe if user has an active subscription
     let subscriptionDates = null
@@ -242,6 +246,7 @@ export async function GET(request: NextRequest) {
         apiCalls: currentUsage.apiCalls
       },
       usageLimits,
+      includedSignatures,
       billing: monthlyBill,
       subscriptionDates,
       availablePlans: getVisiblePlans()

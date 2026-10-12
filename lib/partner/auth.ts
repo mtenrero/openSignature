@@ -3,7 +3,12 @@
  *
  * Partners are configured through OSIGN_PARTNERS, a JSON array:
  *   [{"id":"vetcontrol","secretSha256":"<hex sha256 of the secret>",
- *     "defaultPlan":"pyme","ssoAllowedReturn":["/contracts","/dashboard"]}]
+ *     "defaultPlan":"pyme","ssoAllowedReturn":["/contracts","/dashboard"],
+ *     "includedQuotaPerMonth":500}]
+ *
+ * `includedQuotaPerMonth` (optional, default 500) is the number of signature requests per
+ * calendar month included for that partner's customers with an active entitlement. The
+ * server value is authoritative; the partner can never raise it from a request body.
  *
  * Requests authenticate with `Authorization: Partner <secret>`. The secret is
  * hashed and compared against EVERY configured digest with crypto.timingSafeEqual
@@ -17,7 +22,10 @@ export interface PartnerConfig {
   secretSha256: string
   defaultPlan: string
   ssoAllowedReturn: string[]
+  includedQuotaPerMonth: number
 }
+
+export const DEFAULT_PARTNER_INCLUDED_QUOTA = 500
 
 export function loadPartners(): PartnerConfig[] {
   const raw = process.env.OSIGN_PARTNERS
@@ -38,6 +46,10 @@ export function loadPartners(): PartnerConfig[] {
           ssoAllowedReturn: Array.isArray(p.ssoAllowedReturn)
             ? p.ssoAllowedReturn.filter((r: unknown) => typeof r === 'string' && (r as string).startsWith('/'))
             : [],
+          includedQuotaPerMonth:
+            Number.isInteger(p.includedQuotaPerMonth) && p.includedQuotaPerMonth >= 0 && p.includedQuotaPerMonth <= 100_000
+              ? p.includedQuotaPerMonth
+              : DEFAULT_PARTNER_INCLUDED_QUOTA,
         })
       }
     }

@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/config'
 import { UsageTracker } from '@/lib/subscription/usage'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { VirtualWallet } from '@/lib/wallet/wallet'
+import { getIncludedSummary } from '@/lib/partner/entitlement'
 
 export const runtime = 'nodejs'
 
@@ -63,11 +64,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if the action is allowed
-    const validation = await UsageTracker.canPerformAction(
+    let validation: { allowed: boolean, reason?: string, extraCost?: number, shouldDebit?: boolean } = await UsageTracker.canPerformAction(
       customerId,
       subscriptionInfo.limits,
       action as 'create_contract' | 'email_signature' | 'sms_signature'
     )
+
+    // Partner-included signature requests (never SMS, never contracts): free while any remain.
+    const included = action === 'email_signature' ? await getIncludedSummary(customerId) : null
+    if (included && included.remaining > 0) {
+      validation = { allowed: true, extraCost: 0, shouldDebit: false }
+    }
 
     // Get current wallet balance
     const walletBalance = await VirtualWallet.getBalance(customerId)
@@ -90,6 +97,7 @@ export async function POST(request: NextRequest) {
         formattedBalance: VirtualWallet.formatAmount(walletBalance.balance),
         canAfford: validation.extraCost ? walletBalance.balance >= validation.extraCost : true
       },
+      included,
       limits: {
         plan: subscriptionInfo.plan.displayName,
         current: usageLimits,

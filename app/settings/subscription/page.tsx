@@ -37,6 +37,12 @@ interface SubscriptionData {
     limit: number
     exceeded: boolean
   }>
+  includedSignatures?: {
+    source: string
+    quotaPerMonth: number
+    usedThisMonth: number
+    remaining: number
+  } | null
   billing: {
     totalExtraCost: number
   }
@@ -326,7 +332,17 @@ function SubscriptionPageContent() {
         <Section title="Uso este mes">
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
             <UsageCard label="Contratos creados" value={sd.usage.contractsCreated} limit={sd.limits.contracts} />
-            <UsageCard label="Firmas por email" value={sd.usage.emailSignaturesSent} limit={sd.limits.emailSignatures} />
+            <UsageCard
+              label="Firmas por email"
+              value={sd.usage.emailSignaturesSent}
+              limit={sd.limits.emailSignatures}
+              extra={sd.includedSignatures && (
+                <Text size="xs" c="dimmed" data-testid="included-signatures">
+                  Incluidos{sd.includedSignatures.source === 'vetcontrol' ? ' con VetControl' : ''}:{' '}
+                  quedan {sd.includedSignatures.remaining} de {sd.includedSignatures.quotaPerMonth} este mes
+                </Text>
+              )}
+            />
             <UsageCard label="Firmas por SMS" value={sd.usage.smsSignaturesSent} extra={<Text size="sm" c="dimmed">SMS siempre con coste extra</Text>} />
             <UsageCard label="Generaciones IA" value={sd.usage.aiGenerationsUsed} limit={sd.limits.aiUsage} />
           </SimpleGrid>
