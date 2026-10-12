@@ -47,6 +47,7 @@ describe('route inventory: every API route authenticates itself or is public by 
     'partner/accounts': 'Authorization: Partner secret',
     'partner/accounts/[externalId]': 'Authorization: Partner secret',
     'partner/accounts/[externalId]/rotate-key': 'Authorization: Partner secret',
+    'partner/accounts/[externalId]/entitlement': 'Authorization: Partner secret',
     'partner/accounts/link': 'Authorization: Partner secret',
     'partner/sso': 'Authorization: Partner secret',
     'session': 'validates the presented API key itself (401 without a valid one)',

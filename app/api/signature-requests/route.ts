@@ -7,6 +7,7 @@ import { ObjectId } from 'mongodb'
 import { auditTrailService } from '@/lib/auditTrail'
 import { extractClientIP } from '@/lib/deviceMetadata'
 import { UsageAuditService } from '@/lib/usage/usageAudit'
+import { claimIncludedSend, exhaustedNotice, type IncludedClaim } from '@/lib/partner/entitlement'
 import { UsageTracker } from '@/lib/subscription/usage'
 import { extractSignerInfo, extractDynamicFieldNames, extractVariableFieldNames, normalizeFieldName, getUnconfiguredAccountVariables } from '@/lib/contractUtils'
 import { auth0UserManager } from '@/lib/auth/userManagement'
@@ -577,13 +578,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Partner-included sends (e.g. VetControl: N signature requests/month). Claimed
+    // atomically per send (resends included, like the existing metering); when claimed the
+    // plan/wallet charge is skipped. SMS is never included. Fails closed (normal path).
+    let includedClaim: IncludedClaim = { included: false }
+
     // Send notification based on signature type
     // Note: QR signatures and remote links now count as email signatures and require validation
     // email, QR, SMS, local, and tablet signatures require validation and count towards limits
     if ((signatureType === 'email' && signerEmail) || signatureType === 'qr') {
       try {
+        includedClaim = await claimIncludedSend(customerId, signatureType)
         // Check if email signature is allowed (may require payment)
-        const subscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(userId)
+        const subscriptionInfo = includedClaim.included ? null : await auth0UserManager.getUserSubscriptionInfo(userId)
         if (subscriptionInfo) {
           const emailValidation = await UsageTracker.canPerformAction(
             customerId,
@@ -595,7 +602,7 @@ export async function POST(request: NextRequest) {
             console.error(`[Signature Request] Email validation failed: ${emailValidation.reason}`)
             return NextResponse.json({
               success: false,
-              error: emailValidation.reason || 'Cannot send email signature request',
+              error: exhaustedNotice(includedClaim) + (emailValidation.reason || 'Cannot send email signature request'),
               errorCode: 'EMAIL_LIMIT_EXCEEDED',
               extraCost: emailValidation.extraCost
             }, { status: 403 })
@@ -635,7 +642,7 @@ export async function POST(request: NextRequest) {
             const emailsLimit = usageLimits.find(l => l.type === 'email_signatures')
 
             // For pay-per-use plan (limit = 0), all emails are extra and charged
-            const isExtra = emailsLimit?.limit === 0 || emailsLimit?.exceeded || false
+            const isExtra = !includedClaim.included && (emailsLimit?.limit === 0 || emailsLimit?.exceeded || false)
             const cost = isExtra ? (qrAuditSubscriptionInfo?.limits?.extraSignatureCost || 0) : 0
 
             await UsageAuditService.recordEmailSent({
@@ -701,7 +708,7 @@ export async function POST(request: NextRequest) {
               const emailsLimit = usageLimits.find(l => l.type === 'email_signatures')
 
               // For pay-per-use plan (limit = 0), all emails are extra and charged
-              const isExtra = emailsLimit?.limit === 0 || emailsLimit?.exceeded || false
+              const isExtra = !includedClaim.included && (emailsLimit?.limit === 0 || emailsLimit?.exceeded || false)
               const cost = isExtra ? (emailAuditSubscriptionInfo?.limits?.extraSignatureCost || 0) : 0
 
               await UsageAuditService.recordEmailSent({
@@ -746,7 +753,11 @@ export async function POST(request: NextRequest) {
               // Don't fail the request if tracking fails
             }
           } else {
-            // Don't fail the request creation if email fails, just log it
+            // Don't fail the request creation if email fails, just log it.
+            // The included slot is NOT given back: the request exists and its signatureUrl
+            // is returned below, so it can still be signed (shared by hand). Refunding would
+            // let a deliberately undeliverable address mint unlimited free requests. Same as
+            // the wallet path, which debits before sending and never refunds.
           }
           } else {
             console.error(`[Signature Request] Email service not available - check configuration`)
@@ -754,7 +765,8 @@ export async function POST(request: NextRequest) {
         }
 
       } catch (emailError) {
-        // Don't fail the request creation if email fails, just log it
+        // Don't fail the request creation if email fails, just log it. The slot stays
+        // consumed (the request and its signatureUrl still exist; see above).
       }
     } else if (signatureType === 'sms' && signerPhone) {
       // Check if SMS is enabled
@@ -887,8 +899,9 @@ export async function POST(request: NextRequest) {
       }
     } else if (signatureType === 'local' || signatureType === 'tablet') {
       try {
+        includedClaim = await claimIncludedSend(customerId, signatureType)
         // Check if local signature is allowed (has monthly limit for free/pay-per-use plans)
-        const localSubscriptionInfo = await auth0UserManager.getUserSubscriptionInfo(userId)
+        const localSubscriptionInfo = includedClaim.included ? null : await auth0UserManager.getUserSubscriptionInfo(userId)
         if (localSubscriptionInfo) {
           const localValidation = await UsageTracker.canPerformAction(
             customerId,
@@ -900,7 +913,7 @@ export async function POST(request: NextRequest) {
             console.error(`[Signature Request] Local validation failed: ${localValidation.reason}`)
             return NextResponse.json({
               success: false,
-              error: localValidation.reason || 'Cannot create local signature request',
+              error: exhaustedNotice(includedClaim) + (localValidation.reason || 'Cannot create local signature request'),
               errorCode: 'LOCAL_LIMIT_EXCEEDED'
             }, { status: 403 })
           }
@@ -917,7 +930,8 @@ export async function POST(request: NextRequest) {
       shortId,
       signatureUrl: signatureRequest.signatureUrl,
       signatureType,
-      status: 'pending'
+      status: 'pending',
+      includedSend: includedClaim.included
     })
 
   } catch (error) {
