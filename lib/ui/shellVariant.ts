@@ -44,3 +44,9 @@ export function getShellVariant(pathname: string, sessionStatus: SessionStatus):
   // loading
   return isPublicPath ? 'public' : 'loading'
 }
+
+/** True when the page runs inside the kiosk iframe (`?embed=1`): the signer drops its own header. */
+export function isEmbedded(search: string): boolean {
+  const q = search.startsWith('?') ? search.slice(1) : search
+  return new URLSearchParams(q).get('embed') === '1'
+}

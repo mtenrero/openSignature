@@ -1,12 +1,19 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, use, type ComponentPropsWithoutRef } from 'react'
 import { Container, Title, Text, Card, Stack, Badge, Group, Loader, Alert, Box, Divider, Progress, List, ThemeIcon, Tabs, Timeline, Code, Button, Collapse, ScrollArea } from '@mantine/core'
 import { IconCheck, IconX, IconFileDescription, IconCalendar, IconUser, IconFingerprint, IconShieldCheck, IconAlertTriangle, IconHash, IconLock, IconClock, IconInfoCircle, IconDownload, IconEye, IconCircleCheck, IconCircleX } from '@tabler/icons-react'
 import { useDisclosure } from '@mantine/hooks'
 import axios from 'axios'
 import { notifications } from '@mantine/notifications'
 import { KeyValueList } from '../../../components/ui'
+
+const TONE: Record<string, string> = { green: 'var(--os-success)', orange: 'var(--os-warning)', red: 'var(--os-danger)' }
+
+/** Badge whose text colour comes from the AA-safe oSign tokens (filled mid-tone badges fail contrast). */
+function SafeBadge({ color = 'gray', ...rest }: ComponentPropsWithoutRef<typeof Badge>) {
+  return <Badge variant="light" color={color} c={TONE[color as string] ?? 'var(--os-text)'} {...rest} />
+}
 
 export default function VerifySignature({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -127,14 +134,14 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
       <Stack gap="lg">
         {/* Header with Integrity Status */}
         <Box ta="center">
-          <Badge size="xl" color={getIntegrityColor()} variant="filled" mb="md" className="os-wrap-badge">
+          <SafeBadge size="xl" color={getIntegrityColor()} mb="md" className="os-wrap-badge">
             <Group gap="xs">
               {getIntegrityIcon()}
               {integrityData?.overallIntegrity?.level === 'HIGH' ? 'INTEGRIDAD VERIFICADA' : 
                integrityData?.overallIntegrity?.level === 'MEDIUM' ? 'INTEGRIDAD PARCIAL' : 
                'VERIFICACIÓN REQUERIDA'}
             </Group>
-          </Badge>
+          </SafeBadge>
           <Title order={1} fz={{ base: 24, sm: 32 }}>Verificación de Firma Electrónica</Title>
           <Text c="dimmed" mt="xs">
             Análisis completo de integridad y validez legal del documento
@@ -147,9 +154,9 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
             <Stack gap="md">
               <Group justify="space-between">
                 <Text fw={600} size="lg">Puntuación de Integridad</Text>
-                <Badge size="lg" color={getIntegrityColor()}>
+                <SafeBadge size="lg" color={getIntegrityColor()}>
                   {integrityData.overallIntegrity?.score || 0}%
-                </Badge>
+                </SafeBadge>
               </Group>
               <Progress 
                 value={integrityData.overallIntegrity?.score || 0} 
@@ -161,7 +168,7 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
                 spacing="xs"
                 size="sm"
                 icon={
-                  <ThemeIcon color={getIntegrityColor()} size={24} radius="xl">
+                  <ThemeIcon variant="light" color={getIntegrityColor()} size={24} radius="xl">
                     <IconCheck size={16} />
                   </ThemeIcon>
                 }
@@ -170,9 +177,9 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
                   <List.Item 
                     key={idx}
                     icon={rec.startsWith('✅') ? 
-                      <ThemeIcon color="green" size={24} radius="xl"><IconCircleCheck size={16} /></ThemeIcon> :
+                      <ThemeIcon variant="light" color="green" size={24} radius="xl"><IconCircleCheck size={16} /></ThemeIcon> :
                       rec.startsWith('⚠️') ?
-                      <ThemeIcon color="orange" size={24} radius="xl"><IconAlertTriangle size={16} /></ThemeIcon> :
+                      <ThemeIcon variant="light" color="orange" size={24} radius="xl"><IconAlertTriangle size={16} /></ThemeIcon> :
                       undefined
                     }
                   >
@@ -235,7 +242,7 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
                     { label: 'Nombre', value: integrityData?.document?.name || 'Contrato' },
                     { label: 'ID de firma', value: integrityData?.signatureId ?? 'No disponible', mono: true, copyable: typeof integrityData?.signatureId === 'string' },
                     { label: 'Fecha de firma', value: integrityData?.document?.signedAt ? new Date(integrityData.document.signedAt).toLocaleString('es-ES') : 'No disponible' },
-                    { label: 'Estado', value: <Badge color="green">FIRMADO</Badge> },
+                    { label: 'Estado', value: <SafeBadge color="green">FIRMADO</SafeBadge> },
                   ]}
                 />
               </Card>
@@ -290,7 +297,7 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
                     </Code>
                   </Box>
                   
-                  <Badge
+                  <SafeBadge
                     size="lg"
                     className="os-wrap-badge"
                     color={integrityData?.hashVerification?.isValid ? 'green' : 'red'}
@@ -298,7 +305,7 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
                     {integrityData?.hashVerification?.isValid ? 
                       'HASHES COINCIDEN - DOCUMENTO ÍNTEGRO' : 
                       'HASHES NO COINCIDEN - POSIBLE ALTERACIÓN'}
-                  </Badge>
+                  </SafeBadge>
                 </Stack>
               </Card>
 
@@ -314,9 +321,9 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
                       {
                         label: 'Estado del Snapshot',
                         value: (
-                          <Badge color={integrityData?.document?.hasSnapshot ? 'green' : 'orange'} className="os-wrap-badge">
+                          <SafeBadge color={integrityData?.document?.hasSnapshot ? 'green' : 'orange'} className="os-wrap-badge">
                             {integrityData?.document?.snapshotIntegrity || 'No disponible'}
-                          </Badge>
+                          </SafeBadge>
                         ),
                       },
                     ]}
@@ -349,11 +356,11 @@ export default function VerifySignature({ params }: { params: Promise<{ id: stri
                   
                   <KeyValueList
                     items={[
-                      { label: 'Estado', value: <Badge color={integrityData?.auditTrail?.isSealed ? 'green' : 'orange'}>{integrityData?.auditTrail?.isSealed ? 'SELLADO' : 'NO SELLADO'}</Badge> },
+                      { label: 'Estado', value: <SafeBadge color={integrityData?.auditTrail?.isSealed ? 'green' : 'orange'}>{integrityData?.auditTrail?.isSealed ? 'SELLADO' : 'NO SELLADO'}</SafeBadge> },
                       ...(integrityData?.auditTrail?.sealedAt
                         ? [{ label: 'Sellado en', value: new Date(integrityData.auditTrail.sealedAt).toLocaleString('es-ES') }]
                         : []),
-                      { label: 'Eventos registrados', value: <Badge>{integrityData?.auditTrail?.recordsCount || 0} eventos</Badge> },
+                      { label: 'Eventos registrados', value: <SafeBadge>{integrityData?.auditTrail?.recordsCount || 0} eventos</SafeBadge> },
                     ]}
                   />
                 </Stack>

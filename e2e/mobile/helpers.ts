@@ -152,3 +152,40 @@ export async function shot(page: Page, testInfo: TestInfo, name: string) {
   fs.mkdirSync(dir, { recursive: true })
   await page.screenshot({ path: path.join(dir, `${testInfo.project.name}-${name}.png`), fullPage: false })
 }
+
+/** WCAG contrast of an element's text against its effective (alpha-composited) background. */
+export async function contrastOf(locator: import('@playwright/test').Locator): Promise<number> {
+  return locator.evaluate((el) => {
+    const parse = (c: string) => {
+      const m = c.match(/rgba?\(([^)]+)\)/)
+      if (!m) return [0, 0, 0, 0]
+      const p = m[1].split(/[ ,/]+/).filter(Boolean).map(Number)
+      return [p[0], p[1], p[2], p[3] === undefined ? 1 : p[3]]
+    }
+    const chain: number[][] = []
+    for (let n: Element | null = el; n; n = n.parentElement) chain.push(parse(getComputedStyle(n).backgroundColor))
+    let bg = [255, 255, 255]
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const [r, g, b, a] = chain[i]
+      bg = [r * a + bg[0] * (1 - a), g * a + bg[1] * (1 - a), b * a + bg[2] * (1 - a)]
+    }
+    const [fr, fg, fb, fa] = parse(getComputedStyle(el).color)
+    const fgc = [fr * fa + bg[0] * (1 - fa), fg * fa + bg[1] * (1 - fa), fb * fa + bg[2] * (1 - fa)]
+    const lum = (c: number[]) => {
+      const [r, g, b] = c.map((v) => v / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4))
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+    const [hi, lo] = [lum(fgc), lum(bg)].sort((a, b) => b - a)
+    return (hi + 0.05) / (lo + 0.05)
+  })
+}
+
+/** Collects uncaught page errors and console errors; call `.errors` at the end of a test. */
+export function collectPageErrors(page: import('@playwright/test').Page, allow: RegExp[] = []) {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error' && !allow.some((r) => r.test(m.text()))) errors.push(`console: ${m.text()}`)
+  })
+  return { errors }
+}

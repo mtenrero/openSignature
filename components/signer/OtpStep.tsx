@@ -62,7 +62,7 @@ export function OtpStep({ opened, onClose, otpSent, method, availableMethods, co
                   onChange={onCodeChange}
                   size="lg"
                   gap={6}
-                  placeholder="0"
+                  placeholder="·"
                   ariaLabel="Código de verificación"
                 />
               </Center>

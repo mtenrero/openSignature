@@ -38,3 +38,13 @@ describe('shouldHideTabBar', () => {
     expect(shouldHideTabBar(p)).toBe(false)
   })
 })
+
+describe('isEmbedded', () => {
+  const { isEmbedded } = require('./shellVariant')
+  it('detects embed=1 only', () => {
+    expect(isEmbedded('?a=k&embed=1')).toBe(true)
+    expect(isEmbedded('embed=1')).toBe(true)
+    expect(isEmbedded('?embed=0')).toBe(false)
+    expect(isEmbedded('')).toBe(false)
+  })
+})

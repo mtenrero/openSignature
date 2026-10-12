@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Alert, Button, Stack, Text, Title } from '@mantine/core'
 import { IconAlertTriangle, IconArrowLeft, IconCheck, IconLogout, IconQrcode, IconSignature } from '@tabler/icons-react'
 import { LogoMark } from '../shell/Logo'
+import { getKioskOutcome } from '../../lib/ui/kioskOutcome'
 
 export interface KioskRequest {
   id: string
@@ -20,6 +21,8 @@ export interface KioskViewProps {
   activeId: string | null
   /** True for a few seconds after the active request left the pending list. */
   justFinished?: boolean
+  /** Final status of the request that just left the list (null/undefined when unknown). */
+  finishedStatus?: string | null
   onStart: (r: KioskRequest) => void
   onBackToWaiting: () => void
   onShowQr: (r: KioskRequest) => void
@@ -37,13 +40,20 @@ export function signerPath(signatureUrl: string): string {
   }
 }
 
+/** Signer path for the kiosk iframe: `embed=1` drops the signer's own header (the kiosk bar carries the brand). */
+export function embedPath(signatureUrl: string): string {
+  const p = signerPath(signatureUrl)
+  return p + (p.includes('?') ? '&' : '?') + 'embed=1'
+}
+
 const LONG_PRESS_MS = 900
 
-export function KioskView({ requests, error, activeId, justFinished, onStart, onBackToWaiting, onShowQr, onExitRequest }: KioskViewProps) {
+export function KioskView({ requests, error, activeId, justFinished, finishedStatus, onStart, onBackToWaiting, onShowQr, onExitRequest }: KioskViewProps) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [pressing, setPressing] = useState(false)
   const active = activeId ? requests.find((r) => r.id === activeId) : undefined
   const first = requests[0]
+  const outcome = getKioskOutcome(finishedStatus)
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
   const startPress = () => {
@@ -59,7 +69,7 @@ export function KioskView({ requests, error, activeId, justFinished, onStart, on
   }
 
   const topBar = (
-    <div className="os-kiosk__top">
+    <div className="os-kiosk__top" data-testid="kiosk-bar">
       <div
         onPointerDown={startPress}
         onPointerUp={endPress}
@@ -82,7 +92,7 @@ export function KioskView({ requests, error, activeId, justFinished, onStart, on
   if (active) {
     return (
       <div className="os-kiosk" data-testid="kiosk" style={{ height: '100dvh' }}>
-        <div className="os-kiosk__top" style={{ minHeight: 48, padding: '4px var(--os-gutter)' }}>
+        <div className="os-kiosk__top os-kiosk__top--compact" data-testid="kiosk-bar">
           <Button variant="subtle" color="gray" size="md" leftSection={<IconArrowLeft size={18} />} onClick={onBackToWaiting}>
             Volver a la espera
           </Button>
@@ -90,13 +100,15 @@ export function KioskView({ requests, error, activeId, justFinished, onStart, on
             Salir
           </Button>
         </div>
+        <div className="os-kiosk__frame-wrap">
         <iframe
           title={`Firma de ${active.contractName || 'contrato'}`}
-          src={signerPath(active.signatureUrl)}
+          src={embedPath(active.signatureUrl)}
           className="os-kiosk__frame"
           sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
           data-testid="kiosk-signer-frame"
         />
+        </div>
       </div>
     )
   }
@@ -106,10 +118,14 @@ export function KioskView({ requests, error, activeId, justFinished, onStart, on
       {topBar}
       <div className="os-kiosk__main">
         {justFinished ? (
-          <Stack align="center" gap="sm" role="status">
-            <IconCheck size={72} color="var(--os-success)" aria-hidden="true" />
-            <Title order={1} size="2rem">Solicitud finalizada</Title>
-            <Text c="dimmed" size="lg">Gracias. La tableta vuelve a quedar en espera.</Text>
+          <Stack align="center" gap="sm" role="status" data-testid="kiosk-finished">
+            {outcome.success ? (
+              <IconCheck size={72} color="var(--os-success)" aria-hidden="true" />
+            ) : (
+              <IconAlertTriangle size={72} color="var(--os-warning)" aria-hidden="true" />
+            )}
+            <Title order={1} size="2rem">{outcome.title}</Title>
+            <Text c="dimmed" size="lg">{outcome.message}</Text>
           </Stack>
         ) : first ? (
           <Stack align="center" gap="lg" w="100%" maw={520} data-testid="kiosk-incoming">

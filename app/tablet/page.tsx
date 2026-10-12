@@ -29,6 +29,7 @@ function TabletInner() {
   const [error, setError] = useState<string | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [justFinished, setJustFinished] = useState(false)
+  const [finishedStatus, setFinishedStatus] = useState<string | null>(null)
   const [exitOpen, setExitOpen] = useState(false)
   const [qr, setQr] = useState<{ open: boolean; img: string; contractName: string; url: string }>({ open: false, img: '', contractName: '', url: '' })
 
@@ -65,8 +66,14 @@ function TabletInner() {
   useEffect(() => {
     if (!activeId || loading) return
     if (!requests.some((r) => r.id === activeId)) {
+      const id = activeId
       setActiveId(null)
-      setJustFinished(true)
+      // Signed here, or cancelled / discarded from another device? Ask the server before thanking the customer.
+      fetch(`/api/signature-requests/${id}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => setFinishedStatus(d?.request?.status ?? null))
+        .catch(() => setFinishedStatus(null))
+        .finally(() => setJustFinished(true))
     }
   }, [requests, activeId, loading])
   useEffect(() => {
@@ -145,6 +152,7 @@ function TabletInner() {
           error={error}
           activeId={activeId}
           justFinished={justFinished}
+          finishedStatus={finishedStatus}
           onStart={(r) => setActiveId(r.id)}
           onBackToWaiting={() => setActiveId(null)}
           onShowQr={showQr}

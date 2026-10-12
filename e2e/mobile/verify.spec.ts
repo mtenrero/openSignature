@@ -3,7 +3,7 @@
  * browser (the page only reads two GETs).
  */
 import { test, expect } from '../fixtures'
-import { expectNoHorizontalOverflow, expectTouchTargets, shot } from './helpers'
+import { expectNoHorizontalOverflow, expectTouchTargets, shot, contrastOf } from './helpers'
 
 const LONG = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90'
 const integrity = {
@@ -34,6 +34,10 @@ test.describe('verify page', () => {
     await page.goto('/verify/sig123')
     await expect(page.getByRole('heading', { name: 'Verificación de Firma Electrónica' })).toBeVisible()
     await expectNoHorizontalOverflow(page)
+    // Design rule 13: result badges are >= 4.5:1.
+    for (const t of ['INTEGRIDAD VERIFICADA', '98%']) {
+      expect(await contrastOf(page.locator('.mantine-Badge-root', { hasText: t }).first())).toBeGreaterThanOrEqual(4.5)
+    }
     await shot(page, testInfo, 's6-verify-overview')
     for (const name of ['Integridad', 'Auditoría', 'Técnico']) {
       await page.getByRole('tab', { name }).click()

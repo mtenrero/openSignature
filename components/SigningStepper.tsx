@@ -47,10 +47,12 @@ export function SigningStepper({ currentStep, steps, completed = false }: Signin
         <Text size="sm" fw={600} mb="sm" data-testid="signer-step-label-lg">
           {completed ? 'Completado' : `Paso ${Math.min(currentStep + 1, total)} de ${total} · ${label}`}
         </Text>
+        <Box style={{ position: 'relative' }} data-testid="stepper-track">
         <Group justify="space-between" align="flex-start" wrap="nowrap">
           {steps.map((step, index) => (
             <Box key={step.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, minWidth: 0, position: 'relative', zIndex: 1 }}>
               <Box
+                data-testid="stepper-circle"
                 aria-current={index === currentStep && !completed ? 'step' : undefined}
                 style={{
                   width: rem(40),
@@ -77,17 +79,18 @@ export function SigningStepper({ currentStep, steps, completed = false }: Signin
             </Box>
           ))}
         </Group>
-        <Box style={{ position: 'absolute', top: rem(20), left: `${50 / total}%`, right: `${50 / total}%`, height: rem(2), backgroundColor: 'var(--os-border)' }} />
+        <Box data-testid="stepper-connector" style={{ position: 'absolute', top: rem(19), left: `${50 / total}%`, right: `${50 / total}%`, height: rem(2), backgroundColor: 'var(--os-border)' }} />
         <Box
           style={{
             position: 'absolute',
-            top: rem(20),
+            top: rem(19),
             left: `${50 / total}%`,
             width: `${Math.max(0, Math.min(100, total <= 1 ? 0 : (completed ? 1 : currentStep / (total - 1)) * ((total - 1) / total) * 100))}%`,
             height: rem(2),
             backgroundColor: completed ? 'var(--os-success)' : 'var(--os-brand)',
           }}
         />
+        </Box>
       </Box>
     </Box>
   )

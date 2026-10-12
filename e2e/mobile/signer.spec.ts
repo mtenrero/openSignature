@@ -4,7 +4,7 @@
  */
 import type { Page } from '@playwright/test'
 import { test, expect, dropTestDb, TEST_DB_NAME } from '../fixtures'
-import { seedActiveContract, seedRequest, expectNoHorizontalOverflow, expectTouchTargets, shot } from './helpers'
+import { seedActiveContract, seedRequest, expectNoHorizontalOverflow, expectTouchTargets, shot, contrastOf, collectPageErrors } from './helpers'
 
 async function draw(page: Page) {
   const box = (await page.getByTestId('signature-canvas').boundingBox())!
@@ -66,6 +66,12 @@ test.describe('signer page', () => {
       expect(Math.round(doc.x)).toBe(0)
       expect(Math.round(doc.width)).toBe(page.viewportSize()!.width)
     }
+    if (testInfo.project.name !== 'mobile') {
+      // sm+ stepper: the connector line runs through the centre of the circles, not through the step label.
+      const circle = (await page.locator('[data-testid=stepper-circle]:visible').first().boundingBox())!
+      const line = (await page.locator('[data-testid=stepper-connector]:visible').first().boundingBox())!
+      expect(Math.abs(line.y + line.height / 2 - (circle.y + circle.height / 2))).toBeLessThanOrEqual(2)
+    }
     await shot(page, testInfo, 's6-signer-2-review')
     await cta.click()
 
@@ -98,6 +104,8 @@ test.describe('signer page', () => {
     await submit.click()
 
     await expect(page.getByText('¡Contrato firmado exitosamente!')).toBeVisible()
+    // Design rule 13: the success title is AA (>= 3:1 large, we hold it to 4.5).
+    expect(await contrastOf(page.getByText('¡Contrato firmado exitosamente!'))).toBeGreaterThanOrEqual(4.5)
     await expect(page.getByRole('link', { name: 'Descargar copia' })).toBeVisible()
     await shot(page, testInfo, 's6-signer-7-done')
     const doc = await db.db(TEST_DB_NAME).collection('signatureRequests').findOne({ shortId: req.shortId })
@@ -143,6 +151,10 @@ test.describe('signer page', () => {
 
   test('OTP step renders six numeric cells (delivery mocked)', async ({ page, db, authed }, testInfo) => {
     page.setDefaultTimeout(30_000)
+    const pe = collectPageErrors(page, [
+      // The browser logs the expected 403 OTP_REQUIRED answer of the sign PUT (it is the trigger of the OTP step).
+      /Failed to load resource: the server responded with a status of 403/,
+    ])
     const contract = await seedActiveContract(db, { name: 'Contrato con OTP' })
     await db.db(TEST_DB_NAME).collection('contracts').updateOne({ _id: contract._id }, { $set: { 'parameters.requireDoubleSignatureSMS': true } })
     const req = await seedRequest(authed, contract._id.toString())
@@ -168,6 +180,9 @@ test.describe('signer page', () => {
     await page.waitForTimeout(400)
     await expectNoHorizontalOverflow(page)
     if (testInfo.project.name !== 'desktop-responsive') await expectTouchTargets(page, '[role=dialog]')
+    // Empty cells must not look like an entered 000000.
+    for (const i of [0, 1, 2, 3, 4, 5]) expect(await cells.nth(i).getAttribute('placeholder')).not.toBe('0')
     await shot(page, testInfo, 's6-signer-otp')
+    expect(pe.errors, pe.errors.join('\n')).toEqual([])
   })
 })

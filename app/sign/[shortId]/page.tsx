@@ -245,14 +245,14 @@ export default function SignDocument() {
             // Success
             setCompleted(true)
         } catch (err: any) {
-            console.error('Error signing contract:', err)
-
-            // Check if OTP is required
+            // Check if OTP is required (an expected 403 step of the flow, not an error: no console.error,
+            // which would raise the Next dev overlay "1 Issue" on the signer's critical path).
             if (err.response?.data?.code === 'OTP_REQUIRED' || err.response?.data?.requiresOTP) {
                 setRequiresOtp(true)
                 // Automatically request OTP
                 await handleRequestOtp()
             } else {
+                console.error('Error signing contract:', err)
                 const errorMessage = err.response?.data?.error || 'Ocurrió un error al firmar el contrato. Por favor, intenta nuevamente.'
                 setError(errorMessage)
             }
@@ -304,7 +304,7 @@ export default function SignDocument() {
                 <Center>
                     <Stack align="center" gap="lg">
                         <IconCheck size={64} color="var(--os-success)" aria-hidden="true" />
-                        <Title order={1} size="1.6rem" c="green" ta="center">
+                        <Title order={1} size="1.6rem" c="var(--os-success)" ta="center">
                             ¡Contrato firmado exitosamente!
                         </Title>
                         <Text ta="center" c="dimmed" size="lg">

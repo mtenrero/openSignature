@@ -7,9 +7,10 @@
   --os-text: #0f1720;
   --os-text-dim: #5b6472;
   --os-brand: var(--mantine-color-primary-7);
-  --os-success: var(--mantine-color-green-8);
-  --os-warning: var(--mantine-color-orange-8);
-  --os-danger: var(--mantine-color-red-7);
+  /* Text-safe on --os-bg / --os-surface (>= 4.5:1, see __tests__/unit/tokensContrast.test.ts). */
+  --os-success: #1e7a32;
+  --os-warning: #a84300;
+  --os-danger: #c92a2a;
   --os-info: var(--mantine-color-primary-7);
 
   --os-header-h: 56px;

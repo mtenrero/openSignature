@@ -3,7 +3,7 @@
 import React, { Suspense, useEffect, useState } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { getShellVariant } from '../../lib/ui/shellVariant'
+import { getShellVariant, isEmbedded } from '../../lib/ui/shellVariant'
 import { AppLayout } from './AppLayout'
 import { PublicHeader } from './PublicHeader'
 import { SignerHeader } from './SignerHeader'
@@ -30,14 +30,16 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
       <Suspense fallback={null}>
         <SearchSync onChange={setSearch} />
       </Suspense>
-      <Frame variant={variant}>{children}</Frame>
+      <Frame variant={variant} embedded={isEmbedded(search)}>{children}</Frame>
     </>
   )
 }
 
-function Frame({ variant, children }: { variant: ReturnType<typeof getShellVariant>; children: React.ReactNode }) {
+function Frame({ variant, embedded, children }: { variant: ReturnType<typeof getShellVariant>; embedded: boolean; children: React.ReactNode }) {
   switch (variant) {
     case 'signer':
+      // Inside the kiosk iframe (?embed=1) the kiosk bar already carries the brand: no second header.
+      if (embedded) return <main style={{ minHeight: '100dvh' }}>{children}</main>
       return (
         <>
           <SignerHeader />
@@ -49,7 +51,7 @@ function Frame({ variant, children }: { variant: ReturnType<typeof getShellVaria
         <main
           style={{
             minHeight: '100dvh',
-            padding: 'var(--os-safe-top) var(--os-safe-right) var(--os-safe-bottom) var(--os-safe-left)',
+            // Safe areas are applied by the kiosk bars/main themselves (styles/signer.css).
           }}
         >
           {children}
