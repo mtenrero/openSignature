@@ -68,6 +68,12 @@ interface SubscriptionData {
     limit: number
     exceeded: boolean
   }>
+  includedSignatures?: {
+    source: string
+    quotaPerMonth: number
+    usedThisMonth: number
+    remaining: number
+  } | null
   billing: {
     totalExtraCost: number
   }
@@ -387,6 +393,12 @@ function SubscriptionPageContent() {
                 size="sm"
                 mt="xs"
               />
+            )}
+            {subscriptionData.includedSignatures && (
+              <Text size="xs" c="dimmed" mt="xs" data-testid="included-signatures">
+                Incluidos{subscriptionData.includedSignatures.source === 'vetcontrol' ? ' con VetControl' : ''}:{' '}
+                quedan {subscriptionData.includedSignatures.remaining} de {subscriptionData.includedSignatures.quotaPerMonth} este mes
+              </Text>
             )}
           </Card>
 
