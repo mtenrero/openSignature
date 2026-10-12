@@ -145,6 +145,14 @@ export async function POST(request: NextRequest) {
       }, { status: 404 })
     }
 
+    // Library contracts (seeded by a partner) stay unusable until the clinic activates them.
+    if (contract.libraryTemplate?.id && contract.status !== 'active') {
+      return NextResponse.json({
+        error: 'Este contrato está pendiente de activación. Actívalo antes de solicitar firmas.',
+        errorCode: 'CONTRACT_PENDING_ACTIVATION'
+      }, { status: 409 })
+    }
+
     // Decrypt the contract content for the snapshot
     const decryptedContract = CustomerEncryption.decryptSensitiveFields(contract, customerId)
 

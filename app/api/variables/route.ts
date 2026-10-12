@@ -261,18 +261,47 @@ export async function PATCH(request: NextRequest) {
 
     const db = await getDatabase()
     const collection = db.collection('variables')
+    // Optimistic concurrency: read-merge-write is retried when another writer (a second PATCH, a
+    // settings POST) changed the document in between, so neither write is lost.
+    let applied: Array<{ name: string; action: 'created' | 'updated' | 'skipped' }> = []
+    let saved = false
+    for (let attempt = 0; attempt < 6 && !saved; attempt++) {
     const existingDoc = await collection.findOne({ customerId, type: 'variables' })
     const existing: any[] = existingDoc
       ? ((CustomerEncryption.decryptSensitiveFields(existingDoc, customerId) as any).variables || [])
       : defaultVariablesTemplate.map(v => ({ ...v }))
 
     const merged = existing.map(v => ({ ...v }))
-    for (const inc of incoming) {
+    // Compare-and-set options (never stored): a partner syncing values must not
+    // blank or overwrite what the clinic typed by hand.
+    //   ifEmpty: true      -> apply only when the stored value (`placeholder`) is empty
+    //   ifCurrent: "<old>" -> apply when the stored value is empty OR equals <old>
+    // An empty incoming `placeholder` never erases a non-empty stored one when either is set.
+    applied = []
+    for (const raw of incoming) {
+      const { ifEmpty, ifCurrent, ...inc } = raw
       const name = inc.name.trim()
       const idx = merged.findIndex(v => v.name === name)
+      const guarded = ifEmpty === true || typeof ifCurrent === 'string'
       if (idx >= 0) {
+        const current = typeof merged[idx].placeholder === 'string' ? merged[idx].placeholder : ''
+        if (guarded && 'placeholder' in inc) {
+          const incomingValue = typeof inc.placeholder === 'string' ? inc.placeholder : ''
+          const mayWrite = current.trim() === '' || (typeof ifCurrent === 'string' && current === ifCurrent)
+          if (!mayWrite || incomingValue.trim() === '') {
+            applied.push({ name, action: 'skipped' })
+            continue
+          }
+          // a value arriving into an empty variable also switches it on (miCuentaBancaria ships disabled)
+          if (!('enabled' in inc) && merged[idx].enabled === false && current.trim() === '') inc.enabled = true
+        }
         merged[idx] = { ...merged[idx], ...inc, name, id: merged[idx].id }
+        applied.push({ name, action: 'updated' })
       } else {
+        if (guarded && (typeof inc.placeholder !== 'string' || inc.placeholder.trim() === '')) {
+          applied.push({ name, action: 'skipped' })
+          continue
+        }
         merged.push({
           type: 'text',
           required: false,
@@ -282,21 +311,40 @@ export async function PATCH(request: NextRequest) {
           name,
           id: inc.id ?? `var-${new ObjectId().toHexString()}`,
         })
+        applied.push({ name, action: 'created' })
       }
     }
 
     const encryptedData = CustomerEncryption.encryptSensitiveFields(
-      { customerId, type: 'variables', variables: merged, updatedAt: new Date() },
+      { customerId, type: 'variables', variables: merged, updatedAt: new Date(), rev: new ObjectId().toHexString() },
       customerId
     )
-    await collection.replaceOne({ customerId, type: 'variables' }, encryptedData, { upsert: true })
+    if (existingDoc) {
+      const r = await collection.replaceOne(
+        { _id: existingDoc._id, rev: existingDoc.rev ?? null, updatedAt: existingDoc.updatedAt ?? null },
+        encryptedData
+      )
+      saved = r.matchedCount === 1
+    } else {
+      try {
+        await collection.insertOne(encryptedData)
+        saved = true
+      } catch (e: any) {
+        if (e?.code !== 11000) throw e
+      }
+    }
+    }
+    if (!saved) {
+      return NextResponse.json({ error: 'Concurrent update, please retry' }, { status: 409 })
+    }
+
 
     const updatedDoc = await collection.findOne({ customerId, type: 'variables' })
     if (!updatedDoc) throw new Error('Failed to retrieve updated document')
     const cleanDoc = mongoHelpers.cleanDocument(
       CustomerEncryption.decryptSensitiveFields(updatedDoc, customerId)
     )
-    return NextResponse.json({ success: true, message: 'Variables merged successfully', data: cleanDoc })
+    return NextResponse.json({ success: true, message: 'Variables merged successfully', applied, data: cleanDoc })
   } catch (error) {
     console.error('Error merging variables:', error)
     const errorResponse = handleDatabaseError(error)

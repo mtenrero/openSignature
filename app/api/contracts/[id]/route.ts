@@ -11,6 +11,7 @@ import {
 } from '@/lib/db/mongodb'
 import { ObjectId } from 'mongodb'
 import { validateMandatoryFields } from '@/lib/contractUtils'
+import { isPendingActivation, libraryContentHash } from '@/lib/contractLibrary'
 
 // GET /api/contracts/[id] - Get a specific contract
 export async function GET(
@@ -61,7 +62,11 @@ export async function GET(
     const decrypted = CustomerEncryption.decryptSensitiveFields(contract, customerId)
     const cleanContract = mongoHelpers.cleanDocument(decrypted)
 
-    return NextResponse.json(cleanContract)
+    return NextResponse.json(
+      cleanContract.libraryTemplate
+        ? { ...cleanContract, pendingActivation: isPendingActivation(contract) }
+        : cleanContract
+    )
 
   } catch (error) {
     console.error('Error fetching contract:', error)
@@ -138,6 +143,11 @@ export async function PUT(
       )
     }
 
+    // The library marker is server-managed: a client can neither forge nor erase it.
+    delete body.libraryTemplate
+    delete body.id
+    delete body._id
+
     // Prepare update data
     const updateData = {
       ...body,
@@ -167,6 +177,22 @@ export async function PUT(
         { error: 'Contract not found' },
         { status: 404 }
       )
+    }
+
+    // Library contract: remember that the clinic changed what the partner seeded
+    // (name / description / content), so the partner never overwrites the edit.
+    if (existingContract.libraryTemplate?.id && !existingContract.libraryTemplate.edited) {
+      const prev = CustomerEncryption.decryptSensitiveFields(existingContract, customerId)
+      const nextHash = libraryContentHash({
+        name: body.name ?? prev.name,
+        description: body.description ?? prev.description,
+        content: body.content ?? prev.content,
+      })
+      if (nextHash !== existingContract.libraryTemplate.contentHash) {
+        await collection.updateOne(updateQuery, {
+          $set: { 'libraryTemplate.edited': true, 'libraryTemplate.editedAt': new Date() },
+        })
+      }
     }
 
     // Get updated contract

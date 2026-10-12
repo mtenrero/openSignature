@@ -15,6 +15,7 @@ import { validateMandatoryFields } from '@/lib/contractUtils'
 import { UsageTracker } from '@/lib/subscription/usage'
 import { UsageAuditService } from '@/lib/usage/usageAudit'
 import { auth0UserManager } from '@/lib/auth/userManagement'
+import { isPendingActivation } from '@/lib/contractLibrary'
 
 // Helper function to get the sign_requests collection from the same database
 async function getSignRequestsCollection() {
@@ -124,7 +125,8 @@ export async function GET(request: NextRequest) {
         
         return {
           ...cleanDoc,
-          usageCount
+          usageCount,
+          ...(doc.libraryTemplate ? { pendingActivation: isPendingActivation(doc) } : {})
         }
       })
     )
