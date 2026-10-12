@@ -104,7 +104,8 @@
   }
   .os-ph__title { font-size: 1.0625rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
   .os-ph__subtitle { display: none; }
-  .os-ph--back .os-ph__title { text-align: left; }
+  /* Detail pages (back arrow): the name may wrap to two lines before ellipsising, so a long name is not cut at ~10 chars next to the actions. */
+  .os-ph--back .os-ph__title { text-align: left; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; line-height: 1.2; overflow-wrap: anywhere; }
   /* Large title (root tab pages): actions on the first row, title beneath. */
   .os-ph--large {
     grid-template-areas: 'back . actions' 'title title title';
@@ -476,3 +477,31 @@ button.os-tile { cursor: pointer; }
 
 .os-codeblock:focus-visible { outline: 2px solid var(--os-brand); outline-offset: 2px; }
 .os-alert-body-fit .mantine-Alert-body, .mantine-Alert-body { min-width: 0; }
+
+/* ---------- Editor header: compact Guardar on narrow phones so the contract name keeps its room ---------- */
+@media (max-width: 24.99em) {
+  .os-save { width: 44px; min-width: 44px; padding-inline: 0; }
+  .os-save__text { display: none; }
+  .os-save .mantine-Button-section { margin: 0; }
+}
+
+/* ---------- Dark mode: inputs, chips and cards follow the tokens (not Mantine's #2e2e2e/#242424 grays) ---------- */
+:root[data-mantine-color-scheme='dark'] .os-search,
+:root[data-mantine-color-scheme='dark'] .mantine-TextInput-input,
+:root[data-mantine-color-scheme='dark'] .mantine-Textarea-input,
+:root[data-mantine-color-scheme='dark'] .mantine-Select-input {
+  background-color: var(--os-surface-2);
+  border-color: var(--os-border);
+  color: var(--os-text);
+}
+:root[data-mantine-color-scheme='dark'] .mantine-Chip-label {
+  background-color: var(--os-surface);
+  border-color: var(--os-border);
+  color: var(--os-text);
+}
+:root[data-mantine-color-scheme='dark'] .mantine-Chip-input:checked + .mantine-Chip-label {
+  background-color: var(--os-surface-2);
+  border-color: var(--os-brand);
+  color: var(--os-text);
+}
+:root[data-mantine-color-scheme='dark'] .mantine-Card-root { background-color: var(--os-surface); border-color: var(--os-border); color: var(--os-text); }

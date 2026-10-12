@@ -42,12 +42,14 @@ export function EditorHeader(p: EditorHeaderProps) {
       overflowActions={items}
       actions={
         <Button
+          className="os-save"
+          aria-label="Guardar"
           leftSection={<IconDeviceFloppy size={18} />}
           onClick={p.onSave}
           loading={p.saving}
           style={{ minHeight: 44 }}
         >
-          Guardar
+          <span className="os-save__text">Guardar</span>
         </Button>
       }
     />

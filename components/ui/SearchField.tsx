@@ -27,6 +27,7 @@ export function SearchField({ value, onChange, placeholder = 'Buscar', label, de
   }
   return (
     <TextInput
+      classNames={{ input: 'os-search' }}
       type="search"
       inputMode="search"
       enterKeyHint="search"

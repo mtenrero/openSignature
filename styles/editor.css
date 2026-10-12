@@ -22,6 +22,14 @@
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   margin-bottom: 8px;
+  /* Scroll affordance: edge shadows appear only on the side that still has hidden controls (covers are `local`,
+     shadows are `scroll`, so a cover hides its shadow when the row is scrolled to that end). */
+  background:
+    linear-gradient(to right, var(--os-surface), var(--os-surface)) left center / 20px 100% local no-repeat,
+    linear-gradient(to left, var(--os-surface), var(--os-surface)) right center / 20px 100% local no-repeat,
+    linear-gradient(to right, color-mix(in srgb, var(--os-text) 22%, transparent), transparent) left center / 20px 100% scroll no-repeat,
+    linear-gradient(to left, color-mix(in srgb, var(--os-text) 22%, transparent), transparent) right center / 20px 100% scroll no-repeat,
+    var(--os-surface);
 }
 .os-etb::-webkit-scrollbar { display: none; }
 .os-etb > * { flex: 0 0 auto; }

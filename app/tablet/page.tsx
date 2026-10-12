@@ -251,7 +251,7 @@ function TabletInner() {
       </Stack>
 
       <StickyActionBar aboveTabBar>
-        <Button size="md" leftSection={<IconPlayerPlay size={18} />} onClick={startKiosk}>
+        <Button size="md" style={{ minHeight: 44 }} leftSection={<IconPlayerPlay size={18} />} onClick={startKiosk}>
           Iniciar monitoreo
         </Button>
       </StickyActionBar>

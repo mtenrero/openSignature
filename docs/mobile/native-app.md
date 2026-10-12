@@ -12,7 +12,7 @@ plataformas nativas aquí (no hay `ios/` ni `android/`) y no hay dependencias `@
 | `capacitor.config.ts` | Configuración con tipo local (compila sin `@capacitor/cli`). `appId` placeholder `eu.osign.app`, `server.url` (`CAP_SERVER_URL`, por defecto `https://osign.eu/signatures`), `cleartext:false`, `allowNavigation` solo `osign.eu` y `*.osign.eu`. |
 | `capacitor-www/index.html` | Página "Sin conexión" con botón Reintentar. Capacitor exige un `webDir`; la UI real viene de `server.url`. |
 | `app/manifest.ts` + `public/icons/*` | Manifiesto PWA e iconos (`node scripts/generate-icons.mjs` los regenera). |
-| `app/layout.tsx` | `viewport-fit=cover`, `theme-color` claro/oscuro, metas de iOS. |
+| `app/layout.tsx` | `viewport-fit=cover`, `theme-color` claro (#ffffff = `--os-surface`) / oscuro (#0e1116 = `--os-bg`), metas de iOS. `theme_color` del manifiesto es el claro (#ffffff) para coincidir con el cromo de la app; el azul de marca `#0058e6` solo se usa en los iconos. |
 | `styles/tokens.css` | Variables `--os-safe-*` basadas en `env(safe-area-inset-*)`. |
 
 `__tests__/unit/capacitorConfig.test.ts` protege los invariantes (https, sin cleartext, appId con formato
