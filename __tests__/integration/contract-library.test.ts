@@ -150,8 +150,14 @@ describe('contract library', () => {
     expect(lib.find((t: any) => t.id === a).activatedAt).toBeTruthy()
     expect(lib.find((t: any) => t.id === b)).toMatchObject({ status: 'archived', pendingActivation: false }) // archived are listed
 
-    const again = await seed('vet', [tpl('a', { version: 9 }), tpl('b', { version: 9 })])
-    expect(again).toMatchObject({ created: 0, updated: 0, existing: 2 })
+    // An activated, unedited contract is refreshed (and stays active); an archived one never is.
+    const again = await seed('vet', [tpl('a', { version: 9, content: '<p>V9 {{dynamic:clientName}} {{dynamic:clientTaxId}}</p>' }), tpl('b', { version: 9 })])
+    expect(again).toMatchObject({ created: 0, updated: 1, existing: 1 })
+    expect((await json(await contractGET(req('GET', `/api/contracts/${a}`), ctx(a)))).content).toContain('V9')
+    const lib2 = (await json(await libraryGET(req('GET', '/api/contracts/library')))).templates
+    expect(lib2.find((t: any) => t.id === a)).toMatchObject({ status: 'active', pendingActivation: false, version: 9 })
+    expect(lib2.find((t: any) => t.id === a).activatedAt).toBeTruthy()
+    expect(lib2.find((t: any) => t.id === b)).toMatchObject({ status: 'archived', version: 1 })
     expect(await (await rawContracts()).countDocuments({ customerId: A })).toBe(2)
   })
 

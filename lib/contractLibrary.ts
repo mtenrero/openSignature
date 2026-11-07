@@ -164,8 +164,8 @@ function buildMeta(platform: LibraryPlatform, t: LibraryTemplateInput, contentHa
 
 /**
  * Idempotent, atomic seeding of one customer's library. Never duplicates (partial
- * unique index + upsert), never overwrites a contract the clinic edited, archived or
- * activated; an untouched pending contract is refreshed only when `version` grows.
+ * unique index + upsert), never overwrites a contract the clinic edited or archived;
+ * an unedited contract (pending or activated) is refreshed only when `version` grows.
  */
 export async function seedLibrary(
   customerId: string,
@@ -224,10 +224,15 @@ export async function seedLibrary(
 
     const lib = existing.libraryTemplate || {}
     let action: SeedAction = 'exists'
-    const untouched = !lib.edited && !lib.activatedAt && existing.status === 'draft'
+    // Untouched = the clinic never edited it and did not archive it. An ACTIVATED contract the
+    // clinic has not edited is refreshed too (keeping its status and activation date): otherwise
+    // fixes to the library (optional fields, fewer required ones) never reach clinics that
+    // already activated the contract.
+    const currentStatus = existing.status || 'draft'
+    const untouched = !lib.edited && (currentStatus === 'draft' || currentStatus === 'active')
     if (untouched && meta.version > (lib.version ?? 1)) {
       await collection.updateOne(
-        { _id: existing._id, customerId, 'libraryTemplate.edited': false, status: 'draft' },
+        { _id: existing._id, customerId, 'libraryTemplate.edited': false, status: currentStatus },
         {
           $set: {
             name: encrypted.name, description: encrypted.description, content: encrypted.content,
