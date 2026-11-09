@@ -82,9 +82,12 @@ export default function SignDocument() {
         ? getUnfilledContentDynamicFields(contract.content, dynamicFieldValues, accountVariableNames)
         : []
     const unfilledSet = new Set(unfilledContentFields)
+    // Consent checkboxes (type accept) are the signer's free choice: they are shown, but never
+    // forced to be ticked just because they have no value yet.
     const allFormFields = baseFormFields.map((field: any) =>
-        unfilledSet.has(field.name) ? { ...field, required: true } : field
+        unfilledSet.has(field.name) && field.type !== 'accept' ? { ...field, required: true } : field
     )
+    const unfilledAcceptFields = allFormFields.filter((f: any) => unfilledSet.has(f.name) && f.type === 'accept')
 
     // Determine if we need dynamic fields step
     const needsDynamicFields = contract ? (
@@ -98,6 +101,9 @@ export default function SignDocument() {
         if (allFormFields.length === 0) {
             return true // No fields needed
         }
+
+        // Unanswered consent checkboxes must still be shown to the signer (without blocking)
+        if (unfilledAcceptFields.length > 0) return false
 
         // Check each required field
         for (const field of allFormFields) {
@@ -129,6 +135,13 @@ export default function SignDocument() {
     }
 
     const handleDynamicFieldsSubmit = () => {
+        // A consent left unticked is an explicit "no" (otherwise its placeholder would remain)
+        const answered = { ...dynamicFieldValues }
+        let changed = false
+        for (const f of unfilledAcceptFields) {
+            if (!answered[f.name]) { answered[f.name] = 'false'; changed = true }
+        }
+        if (changed) setDynamicFieldValues(answered)
         setCurrentStep(currentStep + 1)
         setError('')
     }

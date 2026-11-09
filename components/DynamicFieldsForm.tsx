@@ -46,6 +46,8 @@ interface DynamicFieldsFormProps {
   skipMandatoryValidation?: boolean // Skip mandatory field validation (e.g., when fields were collected in a previous step)
 }
 
+export const EMPTY_OPTIONAL_PLACEHOLDER = '—'
+
 export function DynamicFieldsForm({
   fields,
   values,
@@ -165,7 +167,9 @@ export function DynamicFieldsForm({
       return `${label} es obligatorio`
     }
 
-    if (value?.trim()) {
+    // «—» is what a partner sends for an OPTIONAL value it does not have: it satisfies the
+    // field and must not be validated as an email/phone.
+    if (value?.trim() && value.trim() !== EMPTY_OPTIONAL_PLACEHOLDER) {
       switch (field.type) {
         case 'email':
           const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/

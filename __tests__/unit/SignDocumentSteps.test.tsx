@@ -12,7 +12,7 @@
  * values for every required field, the signer lands directly on the review step.
  */
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
 import { SignDataContext } from '@/app/sign/[shortId]/layout'
 import SignDocument from '@/app/sign/[shortId]/page'
@@ -98,5 +98,82 @@ describe('SignDocument step resolution', () => {
     expect(
       screen.getByRole('heading', { name: /Completa tu información/i })
     ).toBeInTheDocument()
+  })
+
+  // LOPD from the VetControl library: partner pre-fills every data field (— for the optional
+  // ones it does not have) and leaves the consent checkboxes for the signer to answer.
+  describe('library LOPD: optional data and consents', () => {
+    const lopd = (extra: Record<string, unknown> = {}) =>
+      buildSignData({
+        contract: {
+          name: 'LOPD',
+          content:
+            '<p>{{dynamic:clientName}} {{dynamic:clientTaxId}} {{dynamic:clientEmail}} {{dynamic:aceptaComunicacionesComerciales}} {{dynamic:aceptaUsoImagenes}}</p>',
+          userFields: [
+            { id: '1', name: 'clientName', type: 'name', required: true, label: 'Nombre' },
+            { id: '2', name: 'clientTaxId', type: 'text', required: true, label: 'NIF' },
+            { id: '3', name: 'clientEmail', type: 'email', required: false, label: 'Email' },
+          ],
+          parameters: {},
+        },
+        signRequest: {
+          signerName: 'Ada Lovelace',
+          signerEmail: '—',
+          signerPhone: null,
+          dynamicFieldValues: { clientName: 'Ada Lovelace', clientTaxId: '12345678A', clientEmail: '—' },
+          status: 'pending',
+          signatureType: 'local',
+        },
+        ...extra,
+      })
+
+    it('shows the consent checkboxes to the signer (they are answered, not pre-recorded)', () => {
+      renderSigner(lopd())
+      expect(screen.getByRole('heading', { name: /Completa tu información/i })).toBeInTheDocument()
+      expect(screen.getAllByRole('checkbox')).toHaveLength(2)
+    })
+
+    it('consent checkboxes are NOT required and the — email is not an error', () => {
+      renderSigner(lopd())
+      const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
+      expect(boxes.length).toBe(2)
+      boxes.forEach((b) => { expect(b).not.toBeRequired(); expect(b.checked).toBe(false) })
+      fireEvent.click(screen.getByRole('button', { name: /Continuar/i }))
+      expect(screen.queryByText(/email válido/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/es obligatorio/i)).not.toBeInTheDocument()
+      // Moves on to the review step even though no consent was ticked.
+      expect(screen.queryByRole('heading', { name: /Completa tu información/i })).not.toBeInTheDocument()
+    })
+
+    it('a ticked consent is kept and the flow continues', () => {
+      renderSigner(lopd())
+      const [first] = screen.getAllByRole('checkbox') as HTMLInputElement[]
+      fireEvent.click(first)
+      fireEvent.click(screen.getByRole('button', { name: /Continuar/i }))
+      expect(screen.queryByRole('heading', { name: /Completa tu información/i })).not.toBeInTheDocument()
+    })
+
+    it('a contract WITHOUT consent fields still skips the data step when all is pre-filled', () => {
+      renderSigner(buildSignData())
+      expect(screen.queryByRole('heading', { name: /Completa tu información/i })).not.toBeInTheDocument()
+    })
+
+    it('a still-empty non-consent field (plain text) is still required', () => {
+      renderSigner(
+        lopd({
+          contract: {
+            name: 'X',
+            content: '<p>{{dynamic:clientName}} {{dynamic:clientTaxId}} {{dynamic:razon}}</p>',
+            userFields: [
+              { id: '1', name: 'clientName', type: 'name', required: true, label: 'Nombre' },
+              { id: '2', name: 'clientTaxId', type: 'text', required: true, label: 'NIF' },
+            ],
+            parameters: {},
+          },
+        })
+      )
+      fireEvent.click(screen.getByRole('button', { name: /Continuar/i }))
+      expect(screen.getByRole('heading', { name: /Completa tu información/i })).toBeInTheDocument()
+    })
   })
 })
