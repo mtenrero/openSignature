@@ -16,6 +16,7 @@ import { UsageTracker } from '@/lib/subscription/usage'
 import { UsageAuditService } from '@/lib/usage/usageAudit'
 import { auth0UserManager } from '@/lib/auth/userManagement'
 import { isPendingActivation } from '@/lib/contractLibrary'
+import { normalizeLanguage } from '@/lib/contractLanguage'
 
 // Helper function to get the sign_requests collection from the same database
 async function getSignRequestsCollection() {
@@ -201,6 +202,10 @@ export async function POST(request: NextRequest) {
       // Continue with creation if subscription check fails to avoid blocking users
     }
 
+    if (body.language !== undefined && body.language !== null && body.language !== '' && !normalizeLanguage(body.language)) {
+      return NextResponse.json({ error: "language must be 'es' or 'en'" }, { status: 400 })
+    }
+
     // Skip mandatory field validation during draft creation
     // Validation will only run when activating the contract for signing
 
@@ -211,6 +216,7 @@ export async function POST(request: NextRequest) {
       content: body.content || '',
       dynamicFields: body.dynamicFields || [],
       userFields: body.userFields || [],
+      ...(normalizeLanguage(body.language) ? { language: normalizeLanguage(body.language) } : {}),
       parameters: body.parameters || {
         requireDoubleSignatureSMS: false,
         collectDataTiming: 'before'

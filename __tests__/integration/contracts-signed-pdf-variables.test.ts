@@ -55,4 +55,26 @@ describe('PDF firmado por contrato — overrides del partner', () => {
     expect(content).not.toContain('[clinicName]')
     expect(content).not.toContain('[Nombre del animal]')
   })
+
+  // Un PDF por test: cada uno genera un documento y juntos pasaban del límite de 5 s bajo carga.
+  const ES = '<p>El cliente acepta: {{dynamic:aceptaX}} según el contrato de la clínica.</p>'
+  const EN = '<p>The client agrees: {{dynamic:acceptsX}} as this agreement states.</p>'
+  it.each([
+    ['es_true', ES, { aceptaX: 'true' }, undefined, 'acepta: SÍ según'],
+    ['es_false', ES, { aceptaX: 'false' }, undefined, 'acepta: NO según'],
+    ['en_true', EN, { acceptsX: 'true' }, undefined, 'agrees: YES as'],
+    ['en_false', EN, { acceptsX: 'false' }, undefined, 'agrees: NO as'],
+    ['explicit_language_wins', ES, { aceptaX: 'true' }, 'en', 'acepta: YES según'],
+  ])('signed_pdf_by_contract_prints_checkboxes_as_yes_no_%s', async (tag, content, values, language, expected) => {
+    const contract = await insertContract({ content })
+    const contractId = contract._id.toString()
+    await insertSignatureRequest({
+      _id: new ObjectId(), shortId: `CPDFYN${tag}`.slice(0, 16), customerId: TEST_CUSTOMER_ID, contractId, signatureType: 'local',
+      status: 'signed', signedAt: new Date(), dynamicFieldValues: values,
+      contractSnapshot: { name: 'C', content, userFields: [], ...(language ? { language } : {}) },
+    })
+    const { res, content: pdf } = await capture(contractId)
+    expect(res.status).toBe(200)
+    expect(pdf.replace(/<[^>]*>/g, '')).toContain(expected)
+  }, 20000)
 })

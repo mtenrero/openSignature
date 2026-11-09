@@ -196,7 +196,7 @@ export default function ContractPreviewPage() {
   // Use the shared contract processing utility
   const getProcessedContent = () => {
     if (!contract?.content) return '<p>El contrato no tiene contenido aún.</p>'
-    return processContractContent(contract.content, accountVariableValues, dynamicFieldValues)
+    return processContractContent(contract.content, accountVariableValues, dynamicFieldValues, { language: (contract as any).language })
   }
 
   const validateForm = () => {

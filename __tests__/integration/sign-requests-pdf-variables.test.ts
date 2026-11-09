@@ -68,3 +68,42 @@ describe('PDF firmado — variables y campos sin rellenar', () => {
     expect(content).toContain('Ada Lovelace')
   })
 })
+
+describe('PDF firmado — casillas como SÍ/NO o YES/NO según el idioma del contrato', () => {
+  const ES = '<p>El cliente acepta comunicaciones: {{dynamic:aceptaComunicaciones}} y uso de imágenes: {{dynamic:aceptaImagenes}} según el contrato de la clínica.</p>'
+  const EN = '<p>The client agrees to messages: {{dynamic:acceptsMessages}} and to the use of images: {{dynamic:acceptsImages}} as this agreement states.</p>'
+  const plain = (html: string) => html.replace(/<[^>]*>/g, '')
+
+  it('contrato en español: «true»/«false» salen SÍ / NO', async () => {
+    await insertSignatureRequest(signed('PDFYN00001', {
+      dynamicFieldValues: { aceptaComunicaciones: 'true', aceptaImagenes: 'false' },
+      contractSnapshot: { name: 'LOPD', content: ES, userFields: [] },
+    }))
+    const { res, content } = await capture('PDFYN00001')
+    expect(res.status).toBe(200)
+    expect(plain(content)).toContain('comunicaciones: SÍ y')
+    expect(plain(content)).toContain('imágenes: NO según')
+    expect(content).not.toMatch(/true|false/i)
+  })
+
+  it('contrato en inglés: YES / NO', async () => {
+    await insertSignatureRequest(signed('PDFYN00002', {
+      dynamicFieldValues: { acceptsMessages: 'true', acceptsImages: 'false' },
+      contractSnapshot: { name: 'Consent', content: EN, userFields: [] },
+    }))
+    const { content } = await capture('PDFYN00002')
+    expect(plain(content)).toContain('messages: YES and')
+    expect(plain(content)).toContain('images: NO as')
+    expect(content).not.toMatch(/true|false|SÍ/i)
+  })
+
+  it('el idioma del contrato (snapshot) manda sobre el del texto', async () => {
+    await insertSignatureRequest(signed('PDFYN00003', {
+      dynamicFieldValues: { aceptaComunicaciones: 'true', aceptaImagenes: 'false' },
+      contractSnapshot: { name: 'LOPD', content: ES, userFields: [], language: 'en' },
+    }))
+    const { content } = await capture('PDFYN00003')
+    expect(plain(content)).toContain('comunicaciones: YES y')
+    expect(plain(content)).toContain('imágenes: NO según')
+  })
+})

@@ -864,7 +864,7 @@ export async function PUT(
               signatureRequest.contractSnapshot?.content || '',
               pdfVariableValues,
               dynamicFieldValues || {},
-              { forPdf: true }
+              { forPdf: true, language: signatureRequest.contractSnapshot?.language }
             )
 
             const pdfResult = await signedContractPDFGenerator.generateSignedContractPDF(

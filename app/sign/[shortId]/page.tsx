@@ -349,7 +349,7 @@ export default function SignDocument() {
     // Process contract content using shared utility
     const getProcessedContent = () => {
         if (!contract?.content) return '<p>Cargando contenido del contrato...</p>'
-        return processContractContent(contract.content, accountVariableValues, dynamicFieldValues)
+        return processContractContent(contract.content, accountVariableValues, dynamicFieldValues, { language: contract.language })
     }
 
     const stepId = steps[currentStep]?.id
