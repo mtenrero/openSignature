@@ -98,4 +98,68 @@ describe('DynamicFieldsForm', () => {
     })
     expect(screen.getByText(/Campos obligatorios faltantes/i)).toBeInTheDocument()
   })
+
+  describe('optional placeholder «—» (value a partner sends for data it does not have)', () => {
+    const base = [
+      { id: '1', name: 'clientName', type: 'name', required: true, label: 'Nombre' } as any,
+      { id: '2', name: 'clientTaxId', type: 'text', required: true, label: 'NIF' } as any,
+    ]
+    const ok = { clientName: 'Ada Lovelace', clientTaxId: '12345678A' }
+
+    it('an optional email set to — does not fail email validation', () => {
+      const { onSubmit } = renderForm({
+        fields: [...base, { id: '3', name: 'clientEmail', type: 'email', required: false, label: 'Email' } as any],
+        values: { ...ok, clientEmail: '—' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /Continuar/i }))
+      expect(screen.queryByText(/email válido/i)).not.toBeInTheDocument()
+      expect(onSubmit).toHaveBeenCalledTimes(1)
+    })
+
+    it('an optional phone set to — does not fail phone validation', () => {
+      const { onSubmit } = renderForm({
+        fields: [...base, { id: '3', name: 'clientPhone', type: 'phone', required: false, label: 'Teléfono' } as any],
+        values: { ...ok, clientPhone: '—' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /Continuar/i }))
+      expect(onSubmit).toHaveBeenCalledTimes(1)
+    })
+
+    it('a REQUIRED email set to — is accepted too (a value was provided)', () => {
+      const { onSubmit } = renderForm({
+        fields: [...base, { id: '3', name: 'clientEmail', type: 'email', required: true, label: 'Email' } as any],
+        values: { ...ok, clientEmail: '—' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /Continuar/i }))
+      expect(onSubmit).toHaveBeenCalledTimes(1)
+    })
+
+    it('a real malformed email is still rejected', () => {
+      const { onSubmit } = renderForm({
+        fields: [...base, { id: '3', name: 'clientEmail', type: 'email', required: false, label: 'Email' } as any],
+        values: { ...ok, clientEmail: 'no-es-un-email' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /Continuar/i }))
+      expect(screen.getByText(/email válido/i)).toBeInTheDocument()
+      expect(onSubmit).not.toHaveBeenCalled()
+    })
+
+    it('a real malformed phone is still rejected', () => {
+      const { onSubmit } = renderForm({
+        fields: [...base, { id: '3', name: 'clientPhone', type: 'phone', required: false, label: 'Teléfono' } as any],
+        values: { ...ok, clientPhone: 'abc' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /Continuar/i }))
+      expect(onSubmit).not.toHaveBeenCalled()
+    })
+
+    it('an empty required field is still rejected (— only counts when sent)', () => {
+      const { onSubmit } = renderForm({
+        fields: [...base, { id: '3', name: 'clientEmail', type: 'email', required: true, label: 'Email' } as any],
+        values: { ...ok, clientEmail: '' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /Continuar/i }))
+      expect(onSubmit).not.toHaveBeenCalled()
+    })
+  })
 })
