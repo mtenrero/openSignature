@@ -294,7 +294,7 @@ export async function GET(
       contractContent || '<p>Contract content not available</p>',
       finalAccountVariableValues,
       dynamicFieldValues,
-      { forPdf: true }
+      { forPdf: true, language: decryptedSignature.contractSnapshot?.language || decryptedContract?.language }
     )
     
 

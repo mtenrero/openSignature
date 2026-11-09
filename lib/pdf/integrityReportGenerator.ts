@@ -5,6 +5,7 @@
 
 import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
+import { formatFieldValue } from '../contractLanguage'
 
 export interface IntegrityReportData {
   signatureId: string
@@ -334,7 +335,7 @@ export class IntegrityReportGenerator {
       doc.setFontSize(10)
       doc.setFont('helvetica', 'normal')
       Object.entries(data.dynamicFields).forEach(([key, value]) => {
-        this.addLabelValue(doc, `${key}:`, String(value), 20, yPosition)
+        this.addLabelValue(doc, `${key}:`, formatFieldValue(value, 'es'), 20, yPosition)
         yPosition += 7
       })
       yPosition += 10

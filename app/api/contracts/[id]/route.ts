@@ -12,6 +12,7 @@ import {
 import { ObjectId } from 'mongodb'
 import { validateMandatoryFields } from '@/lib/contractUtils'
 import { isPendingActivation, libraryContentHash } from '@/lib/contractLibrary'
+import { normalizeLanguage } from '@/lib/contractLanguage'
 
 // GET /api/contracts/[id] - Get a specific contract
 export async function GET(
@@ -141,6 +142,17 @@ export async function PUT(
         },
         { status: 400 }
       )
+    }
+
+    // Idioma del contrato (es | en): decide SÍ/NO o YES/NO en las casillas. Vacío = deducirlo del texto.
+    if (body.language !== undefined) {
+      if (body.language === null || body.language === '') {
+        body.language = null
+      } else {
+        const lang = normalizeLanguage(body.language)
+        if (!lang) return NextResponse.json({ error: "language must be 'es' or 'en'" }, { status: 400 })
+        body.language = lang
+      }
     }
 
     // The library marker is server-managed: a client can neither forge nor erase it.

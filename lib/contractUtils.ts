@@ -1,4 +1,5 @@
 // Utilities for processing contract content and variables
+import { formatFieldValue, resolveContractLanguage } from './contractLanguage'
 
 interface Variable {
   id: string
@@ -167,9 +168,13 @@ export function processContractContent(
   dynamicFieldValues: {[key: string]: string | boolean} = {},
   // forPdf: el documento final firmado no debe imprimir el nombre entre corchetes
   // de un campo/variable sin valor; se deja en blanco.
-  options: { forPdf?: boolean } = {}
+  options: { forPdf?: boolean; language?: unknown } = {}
 ): string {
   if (!content) return '<p>El contrato no tiene contenido aún.</p>'
+
+  // Idioma del contrato: el indicado (campo `language`) o el que se deduce de su texto. Las casillas
+  // se imprimen como SÍ/NO (español) o YES/NO (inglés) en la vista previa y en el PDF.
+  const lang = resolveContractLanguage({ content }, options.language)
 
   
   let processedContent = content
@@ -192,7 +197,7 @@ export function processContractContent(
     const value = dynamicFieldValues[fieldName]
     if (value !== undefined && value !== '') {
       // If field has value, show it
-      const displayValue = typeof value === 'boolean' ? (value ? '✓ Aceptado' : '☐ No aceptado') : value
+      const displayValue = formatFieldValue(value, lang)
       return `<span style="background: #e3f2fd; padding: 2px 6px; border-radius: 4px; border: 1px solid #2196f3; color: #1976d2; font-weight: 600; margin: 0 4px;">${displayValue}</span>`
     }
     // If no value, show placeholder (en el PDF final, en blanco)
@@ -210,7 +215,7 @@ export function processContractContent(
   // Replace old format variables {{field}} for dynamic fields
   Object.entries(dynamicFieldValues).forEach(([field, value]) => {
     if (value !== undefined && value !== '') {
-      const displayValue = typeof value === 'boolean' ? (value ? '✓ Aceptado' : '☐ No aceptado') : value
+      const displayValue = formatFieldValue(value, lang)
       const regex = new RegExp(`\\{\\{${field}\\}\\}`, 'g')
       processedContent = processedContent.replace(regex, `<span style="background: #e3f2fd; padding: 2px 6px; border-radius: 4px; border: 1px solid #2196f3; color: #1976d2; font-weight: 600; margin: 0 4px;">${displayValue}</span>`)
     }
@@ -228,7 +233,7 @@ export function processContractContent(
   // Support for bracket format [field] for dynamic fields
   Object.entries(dynamicFieldValues).forEach(([field, value]) => {
     if (value !== undefined && value !== '') {
-      const displayValue = typeof value === 'boolean' ? (value ? '✓ Aceptado' : '☐ No aceptado') : value
+      const displayValue = formatFieldValue(value, lang)
       const regex = new RegExp(`\\[${field}\\]`, 'g')
       const matches = processedContent.match(regex)
       if (matches) {

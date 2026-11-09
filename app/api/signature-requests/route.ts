@@ -165,6 +165,8 @@ export async function POST(request: NextRequest) {
       content: decryptedContract.content,
       userFields: decryptedContract.userFields || [],
       parameters: decryptedContract.parameters || {},
+      // Idioma del contrato (SÍ/NO o YES/NO en las casillas); sin él se deduce del texto.
+      language: decryptedContract.language,
       snapshotCreatedAt: new Date(),
       snapshotCreatedBy: userId,
       // Hash for integrity verification

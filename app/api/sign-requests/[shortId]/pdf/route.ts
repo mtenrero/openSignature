@@ -262,7 +262,7 @@ export async function GET(
         signatureRequest.contractSnapshot?.content || '',
         accountVariableValues,
         dynamicFieldValues,
-        { forPdf: true }
+        { forPdf: true, language: signatureRequest.contractSnapshot?.language }
       )
       
       // Generate PDF with simple PDF generator (with basic HTML rendering)
